@@ -15,6 +15,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 NOTE = ROOT / "docs" / "devices" / "tvision-hub.md"
 TROUBLE = ROOT / "docs" / "TROUBLESHOOTING.md"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
 README = ROOT / "README.cleanyourtv.md"
 EXAMPLES_README = ROOT / "examples" / "README.md"
 PROMPT = ROOT / "PROMPT.md"

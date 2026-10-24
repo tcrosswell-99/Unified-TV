@@ -287,11 +287,12 @@ final class TvUi {
 
     /**
      * A screen another app (or another of ours) covers lets go of its pictures, which the cache alone can't free while
-     * views show them; back in front, they come again from the cache or the disk.
+     * views show them; back in front, the ones on or near the screen come again from the cache or the disk, the rest
+     * when a scroll brings them near (Scroll's sweep).
      */
     static void releaseImages(View v) {
         if (v instanceof ImageView) {
-            if (v.getTag() instanceof String) ((ImageView) v).setImageDrawable(null);
+            Images.release((ImageView) v);
         } else if (v instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) v;
             for (int i = 0; i < g.getChildCount(); i++) releaseImages(g.getChildAt(i));
@@ -299,12 +300,55 @@ final class TvUi {
     }
 
     static void restoreImages(View v) {
+        int h = v.getRootView().getHeight();
+        restoreImages(v, -h / 2, h + h / 2, true);
+    }
+
+    /**
+     * Asks again for the pictures let go of (and, with `empty`, the ones that never came) in views that reach into
+     * `top`..`bottom` (window coordinates); a view not laid out or not shown counts as near.
+     */
+    private static void restoreImages(View v, int top, int bottom, boolean empty) {
         if (v instanceof ImageView) {
             ImageView img = (ImageView) v;
-            if (img.getTag() instanceof String && img.getDrawable() == null) Images.load(img, (String) img.getTag());
+            if (img.getTag() instanceof String && (Images.released(img) || (empty && img.getDrawable() == null)) && near(img, top, bottom)) {
+                Images.load(img, (String) img.getTag());
+            }
         } else if (v instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) v;
-            for (int i = 0; i < g.getChildCount(); i++) restoreImages(g.getChildAt(i));
+            for (int i = 0; i < g.getChildCount(); i++) restoreImages(g.getChildAt(i), top, bottom, empty);
+        }
+    }
+
+    private static final int[] AT = new int[2];
+
+    private static boolean near(View v, int top, int bottom) {
+        if (bottom <= top || v.getHeight() == 0 || !v.isShown()) return true;
+        v.getLocationInWindow(AT);
+        return AT[1] + v.getHeight() > top && AT[1] < bottom;
+    }
+
+    /**
+     * After a scroll: grid lines more than a screen above or below let go of their pictures (a feed of hundreds of
+     * posters would otherwise hold them all), and pictures let go of within half a screen come back. `top`, `h`: the
+     * scroll's place in the window and its height. The gap between the two keeps a line from flapping.
+     */
+    static void sweep(View v, int top, int h) {
+        if (v instanceof Grid) {
+            Grid g = (Grid) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View line = g.getChildAt(i);
+                if (line.getHeight() == 0) continue;
+                line.getLocationInWindow(AT);
+                int lineTop = AT[1], lineBottom = AT[1] + line.getHeight();
+                if (lineBottom < top - h || lineTop > top + 2 * h) releaseImages(line);
+                else if (lineBottom > top - h / 2 && lineTop < top + h + h / 2) restoreImages(line, top - h / 2, top + h + h / 2, false);
+            }
+        } else if (v instanceof ImageView) {
+            restoreImages(v, top - h / 2, top + h + h / 2, false);
+        } else if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) sweep(g.getChildAt(i), top, h);
         }
     }
 
@@ -550,7 +594,13 @@ final class TvUi {
      * told, so it builds its next lines.
      */
     static final class Scroll extends ScrollView {
-        private int aim = -1;
+        private int aim = -1, swept = Integer.MIN_VALUE / 2;
+        private final Runnable sweep = () -> {
+            if (getChildCount() == 0 || getHeight() == 0) return;
+            int[] at = new int[2];
+            getLocationInWindow(at);
+            TvUi.sweep(getChildAt(0), at[1], getHeight());
+        };
 
         Scroll(Context c) {
             super(c);
@@ -589,6 +639,11 @@ final class TvUi {
         @Override protected void onScrollChanged(int l, int t, int oldl, int oldt) {
             super.onScrollChanged(l, t, oldl, oldt);
             if (t == aim) aim = -1;
+            if (Math.abs(t - swept) >= getHeight() / 4) {   // every quarter screen, after this frame
+                swept = t;
+                removeCallbacks(sweep);
+                post(sweep);
+            }
         }
 
         void top() {

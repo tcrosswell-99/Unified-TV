@@ -12,9 +12,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 /**
- * For firmware that locks the shell out of Android/data (TCL G07, Android 11): install.sh writes config.json
- * here with `content write`, as tools/theme.sh does for the launcher. Write-only, one file name, and only the
- * shell can call it (WRITE_SECURE_SETTINGS on the provider). The file is imported once it is closed.
+ * install.sh writes config.json here with `content write`, as tools/theme.sh does for the launcher, so the
+ * passwords never pass through shared storage. Write-only, one file name, and only the shell can call it
+ * (WRITE_SECURE_SETTINGS on the provider). The file is staged in private storage and imported once it is closed.
  */
 public class ConfigProvider extends ContentProvider {
     private static final String NAME = "config.json";
@@ -22,10 +22,9 @@ public class ConfigProvider extends ContentProvider {
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!mode.contains("w") || !NAME.equals(uri.getLastPathSegment())) throw new FileNotFoundException(uri.toString());
-        File dir = getContext().getExternalFilesDir(null);
-        if (dir == null || (!dir.isDirectory() && !dir.mkdirs())) throw new FileNotFoundException("no files folder");
+        File dir = getContext().getFilesDir();
         try {
-            return ParcelFileDescriptor.open(new File(dir, NAME),
+            return ParcelFileDescriptor.open(new File(dir, ConfigStore.STAGED_NAME),
                     ParcelFileDescriptor.MODE_WRITE_ONLY | ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE,
                     new Handler(Looper.getMainLooper()),
                     e -> {

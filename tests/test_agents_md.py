@@ -35,9 +35,14 @@ def text():
 
 
 def ignored_prefixes():
-    """Folders .gitignore names: they exist on a contributor's machine, not in a clone."""
+    """Paths .gitignore names: they exist on a contributor's machine, not in a clone.
+
+    `tools/venv` is written without a trailing slash (it may be a folder or a symlink), so every plain
+    entry counts, not only the ones ending in "/". Globs such as `*.apk` are left out: they name no path.
+    """
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").split("\n")
-    return [l.strip().rstrip("/") for l in lines if l.strip().endswith("/") and not l.startswith("#")]
+    return [l.strip().rstrip("/") for l in lines
+            if l.strip() and not l.strip().startswith("#") and not TEMPLATE.search(l)]
 
 
 def file_names():

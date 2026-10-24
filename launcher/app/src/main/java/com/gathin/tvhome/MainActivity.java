@@ -958,8 +958,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             diya.start();
             LocalDate today = LocalDate.now();
             if (!reducedMotion && !today.equals(lastPetalShower)) {
-                lastPetalShower = today;
-                handler.postDelayed(this::playPetalShower, 450);
+                handler.postDelayed(petalShower, 450);
             }
         }
     }
@@ -1127,6 +1126,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ambient.animate().cancel();
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
+        handler.removeCallbacks(petalShower);
         stopStats();
         if (diya != null) diya.stop();
         cancelPendingFocusScroll();
@@ -2456,6 +2456,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     private void updateRace() {
         if (raceCalendar.isEmpty()) return;
+        try {
+            showRace();
+        } catch (RuntimeException e) {
+            // A calendar entry Java's clock cannot place (Config keeps years 2000-2100, so this is a backstop):
+            // no panel rather than a Home that crashes on every resume.
+            racePanel.setVisibility(View.GONE);
+        }
+    }
+
+    private void showRace() {
         RaceWeekend.State s = RaceWeekend.at(raceCalendar, java.time.Instant.now());
         if (s == null) {
             racePanel.setVisibility(View.GONE);
@@ -2681,8 +2691,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         });
     }
 
+    /** One instance, so onPause can take back a shower still waiting to start. */
+    private final Runnable petalShower = this::playPetalShower;
+
     private void playPetalShower() {
         if (isFinishing() || isDestroyed()) return;
+        // Counted when it plays: a Home left within the delay gets its shower on the next return instead.
+        lastPetalShower = LocalDate.now();
         PetalShowerView shower = new PetalShowerView(this);
         root.addView(shower, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));

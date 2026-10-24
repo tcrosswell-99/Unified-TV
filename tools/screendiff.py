@@ -48,7 +48,8 @@ def _compare(a, b, masks, threshold):
     worst = ImageChops.lighter(ImageChops.lighter(r, g), bl)
     over = worst.point(lambda v: 255 if v > threshold else 0)
     count = over.histogram()[255]
-    return count, over.getbbox(), max(worst.getdata()), over
+    # getextrema, not max(getdata()): getdata is deprecated from Pillow 13 and goes in Pillow 14.
+    return count, over.getbbox(), worst.getextrema()[1], over
 
 
 def redact(im, region):

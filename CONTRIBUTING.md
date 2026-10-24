@@ -8,6 +8,8 @@ Thank you for helping make different televisions feel like one familiar, calm en
 
 Read [README.md](README.md), [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md), [docs/ROADMAP.md](docs/ROADMAP.md) and [CREDITS.md](CREDITS.md).
 
+Using a coding agent (Claude Code, Codex, Gemini CLI or similar)? It should follow [AGENTS.md](AGENTS.md), which `CLAUDE.md` and `GEMINI.md` import. AGENTS.md also lists the checks CI runs and the inherited contributor workflows.
+
 The non-negotiable product rule is: **Content first, underlying technology hidden.** Children, guests and family members must get a simple TV, not an administration dashboard.
 
 ## Useful contributions
@@ -35,7 +37,7 @@ The non-negotiable product rule is: **Content first, underlying technology hidde
 
 ## Testing and releases
 
-The current source is still largely upstream CleanYourTV UI. Check existing build instructions under `launcher-ui/` and original launcher's `launcher/` separately. The future Unified TV release must carry its own verified build, installation, rollback and package-signing instructions. Do **not** distribute unofficial APKs as a completed Unified TV release.
+The current source is still largely upstream CleanYourTV UI. Check existing build instructions under `launcher-ui/` and original launcher's `launcher/` separately. Before a pull request, run the Python suite as CI does: `python3 -m unittest discover -s tests -v` (the build, lint and APK size checks are listed in [AGENTS.md](AGENTS.md#checks-ci-runs)). Many documentation tests read the inherited [README.cleanyourtv.md](README.cleanyourtv.md), so update that page, not README.md, when you change an inherited tool, TV list or theme. The future Unified TV release must carry its own verified build, installation, rollback and package-signing instructions. Do **not** distribute unofficial APKs as a completed Unified TV release.
 
 No personal Home Assistant URLs, Ring snapshots, NAS share details, API keys, music account data, family photographs or private GitHub tokens should ever be committed. Use sample configuration and secrets outside the repository.
 

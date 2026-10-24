@@ -47,9 +47,8 @@ final class Config {
 
     /** Takes a pushed config.json ({"url": ..., "token": ...}) if there is one, and deletes it. True when taken. */
     static boolean importPushed(Context c) {
-        File dir = c.getExternalFilesDir(null);
-        File f = dir == null ? null : new File(dir, PUSHED);
-        if (f == null || !f.isFile()) return false;
+        File f = new File(c.getFilesDir(), PUSHED);
+        if (!f.isFile()) return false;
         try {
             JSONObject o = new JSONObject(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8));
             if (o.has("url")) saveUrl(c, o.optString("url"));

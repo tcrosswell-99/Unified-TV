@@ -1,0 +1,314 @@
+<!doctype html>
+<!--
+  Source for the README / social marketing images in docs/marketing/*.png.
+  Concept artwork of the PLANNED Unified TV design, drawn with CSS only: no photographs, no brand logos,
+  no family or Ring images (AGENTS.md rule 6). Every board carries a "concept" label so nobody mistakes it
+  for a screenshot of a finished feature (rule 1). Font: Inter, bundled in launcher-ui under the OFL.
+  Render: node docs/marketing/source/render.js   (needs Playwright + Chromium)
+-->
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Unified TV marketing boards</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("../../../launcher-ui/app/assets/fonts/InterVariable.ttf"); font-weight: 100 900; }
+  :root {
+    --ink: #f5f3ef; --ink-2: rgba(245,243,239,.72); --ink-3: rgba(245,243,239,.48);
+    --night: #0b0d12; --night-2: #12151d; --line: rgba(255,255,255,.12);
+    --accent: #7cc4ff; --warm: #ffb36b; --ok: #5fd39a; --alert: #ff6b6b;
+    --glass: rgba(255,255,255,.12); --glass-line: rgba(255,255,255,.22);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #222; font-family: "Inter", system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .board { position: relative; overflow: hidden; background: radial-gradient(1200px 700px at 80% -10%, #1d2a44 0%, transparent 60%), radial-gradient(900px 600px at -10% 110%, #2a1d33 0%, transparent 60%), var(--night); margin: 40px; }
+  .concept { position: absolute; right: 28px; bottom: 22px; font-size: 15px; letter-spacing: .02em; color: var(--ink-3); }
+  .brand { display: flex; align-items: center; gap: 14px; font-weight: 650; letter-spacing: -.01em; }
+  .mark { width: 44px; height: 44px; border-radius: 12px; background: conic-gradient(from 210deg, #7cc4ff, #b69cff, #ffb36b, #7cc4ff); position: relative; box-shadow: 0 8px 24px rgba(124,196,255,.25); }
+  .mark::after { content: ""; position: absolute; inset: 9px 7px 13px; border-radius: 5px; background: var(--night); }
+  .mark::before { content: ""; position: absolute; left: 16px; right: 16px; bottom: 7px; height: 3px; border-radius: 2px; background: var(--night); }
+  h1 { font-weight: 700; letter-spacing: -.035em; line-height: 1.02; }
+  h2 { font-weight: 650; letter-spacing: -.025em; line-height: 1.1; }
+  .muted { color: var(--ink-2); }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-line); font-size: 17px; color: var(--ink-2); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+
+  /* --- A television: thin bezel, screen, small stand --- */
+  .tv { position: relative; }
+  .tv .bezel { background: #050608; border-radius: 14px; padding: 9px; box-shadow: 0 30px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
+  .tv .screen { position: relative; aspect-ratio: 16 / 9; border-radius: 7px; overflow: hidden; }
+  .tv .stand { margin: 0 auto; width: 30%; height: 10px; border-radius: 0 0 8px 8px; background: linear-gradient(#1a1d24, #0c0e12); }
+  .tv .label { margin-top: 16px; text-align: center; font-size: 19px; font-weight: 600; }
+  .tv .sub { margin-top: 4px; text-align: center; font-size: 15px; color: var(--ink-3); }
+
+  /* Artwork: CSS landscapes standing in for the focused title's own artwork */
+  .art-dusk { background: linear-gradient(180deg, #1b2547 0%, #4b3a6b 38%, #c9735a 62%, #2b2033 63%, #15121c 100%); }
+  .art-dusk::before { content: ""; position: absolute; left: 58%; top: 40%; width: 13%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, #ffd9a0 0%, #ff9e6b 60%, transparent 70%); filter: blur(1px); }
+  .art-dusk::after { content: ""; position: absolute; inset: 55% 0 0 0; background: linear-gradient(170deg, transparent 0 30%, #241a2b 31% 100%), linear-gradient(195deg, transparent 0 42%, #1a1420 43% 100%); }
+  .art-sea { background: linear-gradient(180deg, #0e2a3f 0%, #1f5f7a 45%, #7fc1c9 58%, #0d3346 59%, #071c29 100%); }
+  .art-sea::after { content: ""; position: absolute; inset: 59% 0 0 0; background: repeating-linear-gradient(180deg, rgba(255,255,255,.08) 0 2px, transparent 2px 14px); }
+  .art-forest { background: linear-gradient(180deg, #13261f 0%, #2e5a45 40%, #a9c99a 60%, #183326 61%, #0b1912 100%); }
+  .art-forest::before { content: ""; position: absolute; inset: 38% 0 0 0; background: #24453a; clip-path: polygon(0 45%, 12% 25%, 26% 38%, 40% 12%, 55% 34%, 70% 18%, 84% 36%, 100% 22%, 100% 100%, 0 100%); }
+  .art-forest::after { content: ""; position: absolute; inset: 52% 0 0 0; background: #10231b; clip-path: polygon(0 30%, 18% 12%, 33% 34%, 50% 16%, 68% 38%, 85% 14%, 100% 30%, 100% 100%, 0 100%); }
+  .shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, transparent 30%, transparent 55%, rgba(0,0,0,.55) 100%); }
+
+  .hud { position: absolute; inset: 0; z-index: 2; }
+  .clock { position: absolute; left: 5%; top: 6%; font-weight: 300; letter-spacing: -.02em; color: rgba(255,255,255,.92); }
+  .status { position: absolute; right: 5%; top: 7%; display: flex; gap: .6em; align-items: center; color: rgba(255,255,255,.7); }
+  .status i { display: block; width: .55em; height: .55em; border-radius: 50%; background: rgba(255,255,255,.65); }
+  .title { position: absolute; left: 5%; bottom: 30%; color: #fff; }
+  .title b { display: block; font-weight: 650; letter-spacing: -.02em; }
+  .title span { color: rgba(255,255,255,.72); }
+  .dock { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); display: flex; gap: 2.2%; padding: 1.4% 1.8%; border-radius: 1.4em; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.24); backdrop-filter: blur(14px); width: 76%; justify-content: space-between; }
+  .tile { flex: 1; aspect-ratio: 16 / 10; border-radius: .55em; display: grid; place-items: center; position: relative; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+  .tile svg { width: 38%; height: 38%; fill: rgba(255,255,255,.95); }
+  .tile.focus { transform: translateY(-14%) scale(1.12); box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 10px 22px rgba(0,0,0,.45); }
+  .t1 { background: linear-gradient(135deg, #e5484d, #a3262a); }
+  .t2 { background: linear-gradient(135deg, #3b5bdb, #1c2f8a); }
+  .t3 { background: linear-gradient(135deg, #2bb3a3, #126b62); }
+  .t4 { background: linear-gradient(135deg, #4a4a52, #26262c); }
+  .t5 { background: linear-gradient(135deg, #f08c3a, #b3551b); }
+  .t6 { background: linear-gradient(135deg, #b069e0, #6a2f9a); }
+  .names { position: absolute; left: 50%; bottom: 2.2%; transform: translateX(-50%); width: 76%; display: flex; justify-content: space-between; padding: 0 1.8%; color: rgba(255,255,255,.75); }
+  .names span { flex: 1; text-align: center; }
+
+  /* "Every TV is different" screens */
+  .messy { position: absolute; inset: 0; padding: 4%; display: flex; flex-direction: column; gap: 3.5%; }
+  .messy .bar { display: flex; gap: 3%; align-items: center; color: rgba(255,255,255,.75); font-weight: 600; }
+  .messy .row { display: flex; gap: 2.5%; }
+  .messy .row div { flex: 1; aspect-ratio: 16 / 10; border-radius: 4px; }
+  .messy .ad { flex: 1.2; border-radius: 6px; display: grid; place-items: center; font-weight: 700; letter-spacing: .06em; color: rgba(255,255,255,.85); }
+  .tag { display: inline-block; padding: .15em .5em; border-radius: 4px; background: #ffcc00; color: #111; font-weight: 800; letter-spacing: .04em; }
+
+  /* Home view overlays */
+  .glance { position: absolute; right: 3%; top: 6%; z-index: 3; display: flex; flex-direction: column; gap: 10px; width: 30%; }
+  .toast { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; background: rgba(14,16,22,.62); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(16px); font-size: 15px; line-height: 1.25; }
+  .toast b { display: block; font-size: 16px; font-weight: 650; }
+  .toast span { color: var(--ink-2); }
+  .ico { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; }
+  .ico svg { width: 20px; height: 20px; fill: #fff; }
+  .door { position: absolute; left: 4%; bottom: 8%; z-index: 3; width: 34%; border-radius: 16px; overflow: hidden; background: rgba(14,16,22,.7); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 20px 40px rgba(0,0,0,.5); }
+  .door .cam { aspect-ratio: 16/9; background: linear-gradient(180deg, #2c3442 0%, #3e4656 55%, #20252e 56%, #181c23 100%); position: relative; }
+  .door .cam::before { content: ""; position: absolute; left: 30%; top: 18%; width: 40%; height: 72%; border-radius: 4px; background: linear-gradient(180deg, #5b4636, #3d2f25); box-shadow: inset 0 0 0 6px #2a211b; }
+  .door .cam::after { content: ""; position: absolute; left: 61%; top: 52%; width: 5%; aspect-ratio: 1; border-radius: 50%; background: #c9a464; }
+  .door .live { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; align-items: center; padding: 4px 9px; border-radius: 999px; background: rgba(0,0,0,.55); font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+  .door .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--alert); }
+  .door .cap { padding: 10px 14px; font-size: 15px; }
+  .door .cap b { font-weight: 650; }
+  .door .cap span { color: var(--ink-2); font-size: 14px; display: block; margin-top: 2px; }
+
+  /* Priority ladder */
+  .ladder { display: flex; flex-direction: column; gap: 12px; }
+  .rung { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 18px; padding: 14px 20px; border-radius: 16px; background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+  .rung .n { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 750; font-size: 20px; color: #111; }
+  .rung b { font-size: 21px; font-weight: 650; }
+  .rung span { display: block; font-size: 15px; color: var(--ink-2); margin-top: 2px; }
+  .rung em { font-style: normal; font-size: 14px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--glass-line); color: var(--ink-2); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5Z"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm1 2v2h2V6H5Zm12 0v2h2V6h-2ZM5 11v2h2v-2H5Zm12 0v2h2v-2h-2ZM5 16v2h2v-2H5Zm12 0v2h2v-2h-2ZM9 6v12h6V6H9Z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7L12 3Z"/></symbol>
+    <symbol id="i-news" viewBox="0 0 24 24"><path d="M4 5h13a1 1 0 0 1 1 1v12a2 2 0 0 0 2-2V8h1v8a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Zm2 3v4h5V8H6Zm7 0v1.5h3V8h-3Zm0 3v1.5h3V11h-3Zm-7 3v1.5h10V14H6Z"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><path d="M12 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm-5.66-3.66 1.42 1.42a6 6 0 0 0 0 8.48l-1.42 1.42a8 8 0 0 1 0-11.32Zm11.32 0a8 8 0 0 1 0 11.32l-1.42-1.42a6 6 0 0 0 0-8.48l1.42-1.42ZM3.5 3.5l1.42 1.42a10 10 0 0 0 0 14.16L3.5 20.5a12 12 0 0 1 0-17Zm17 0a12 12 0 0 1 0 17l-1.42-1.42a10 10 0 0 0 0-14.16L20.5 3.5Z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M19 3v12.5a3.5 3.5 0 1 1-2-3.16V7.4l-8 1.8v8.3A3.5 3.5 0 1 1 7 14.34V5.6L19 3Z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3v1H4v-1l2-3V9a6 6 0 0 1 6-6Zm-2 16h4a2 2 0 0 1-4 0Z"/></symbol>
+    <symbol id="i-ball" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 4.2-3.3 2.4 1.3 3.9h4l1.3-3.9L12 6.2Z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2 9 4.5v11L12 22l-9-4.5v-11L12 2Zm0 2.2L5.5 7.5 12 10.7l6.5-3.2L12 4.2Z"/></symbol>
+    <symbol id="i-bin" viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM5 8h14l-1.2 12.1A2 2 0 0 1 15.8 22H8.2a2 2 0 0 1-2-1.9L5 8Z"/></symbol>
+    <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 2s6 5 6 11a6 6 0 0 1-12 0c0-3 1.5-5 3-6.5 0 2 1 3.5 2.5 3.5C11 7 12 2 12 2Z"/></symbol>
+    <symbol id="i-baby" viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 1 7 7v4a7 7 0 0 1-14 0v-4a7 7 0 0 1 7-7Zm-2.5 9a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm5 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm-1 8v7h2v-7h-2Zm0-4v2h2V6h-2Z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m12 3 9 8h-3v9h-5v-6h-2v6H6v-9H3l9-8Z"/></symbol>
+  </defs>
+</svg>
+
+<template id="tv">
+  <div class="tv">
+    <div class="bezel"><div class="screen">
+      <div class="shade"></div>
+      <div class="hud">
+        <div class="clock">19:42</div>
+        <div class="status"><i></i><i></i></div>
+        <div class="title"><b>Film night</b><span>Your library · 2 h 04 m</span></div>
+        <div class="dock">
+          <div class="tile t1"><svg><use href="#i-play"/></svg></div>
+          <div class="tile t2 focus"><svg><use href="#i-film"/></svg></div>
+          <div class="tile t3"><svg><use href="#i-star"/></svg></div>
+          <div class="tile t4"><svg><use href="#i-news"/></svg></div>
+          <div class="tile t5"><svg><use href="#i-live"/></svg></div>
+          <div class="tile t6"><svg><use href="#i-music"/></svg></div>
+        </div>
+        <div class="names"><span>Videos</span><span>Films</span><span>Kids</span><span>News</span><span>Live TV</span><span>Music</span></div>
+      </div>
+    </div></div>
+    <div class="stand"></div>
+  </div>
+</template>
+
+<!-- 1. HERO 1600x800 -->
+<section class="board" id="hero" style="width:1600px;height:800px">
+  <div style="position:absolute;left:96px;top:118px;width:640px">
+    <div class="brand" style="font-size:30px"><div class="mark"></div>Unified TV</div>
+    <h1 style="font-size:78px;margin-top:46px">Different TVs.<br>One familiar home.</h1>
+    <p class="muted" style="font-size:25px;line-height:1.45;margin-top:28px">The same calm home screen on every TV in the house: the same apps, in the same order, with your own films up front. Optional, reversible clean-up and Home Assistant alerts.</p>
+    <div style="display:flex;gap:12px;margin-top:36px;flex-wrap:wrap">
+      <span class="pill"><span class="dot"></span>Android TV: Sony &amp; TCL</span>
+      <span class="pill">Samsung Frame (Tizen) in development</span>
+      <span class="pill">Open source</span>
+    </div>
+  </div>
+  <div data-tv data-art="art-dusk" data-scale="1" style="position:absolute;right:80px;top:170px;width:760px"></div>
+  <div class="concept">Concept artwork of the planned design · not a screenshot</div>
+</section>
+
+<!-- 2. EVERY ROOM 1600x900 -->
+<section class="board" id="every-room" style="width:1600px;height:900px">
+  <div style="text-align:center;padding-top:96px">
+    <h2 style="font-size:60px">Same apps. Same order. Every room.</h2>
+    <p class="muted" style="font-size:24px;margin-top:16px">Family and visitors never have to learn another TV again.</p>
+  </div>
+  <div style="position:absolute;left:60px;right:60px;top:300px;display:flex;gap:44px;justify-content:center">
+    <div style="flex:1"><div data-tv data-art="art-dusk" data-scale=".62"></div><div class="tv"><div class="label">Living room</div><div class="sub">Sony · Android TV</div></div></div>
+    <div style="flex:1"><div data-tv data-art="art-dusk" data-scale=".62"></div><div class="tv"><div class="label">Bedroom</div><div class="sub">TCL · Google TV</div></div></div>
+    <div style="flex:1"><div data-tv data-art="art-dusk" data-scale=".62"></div><div class="tv"><div class="label">Kitchen</div><div class="sub">Samsung Frame · native Tizen app</div></div></div>
+  </div>
+  <p class="muted" style="position:absolute;left:0;right:0;bottom:120px;text-align:center;font-size:21px">Room-only extras, such as a games-console shortcut, stay on the TV they belong to.</p>
+  <div class="concept">Concept artwork of the planned design · not a screenshot</div>
+</section>
+
+<!-- 3. BEFORE / AFTER 1600x900 -->
+<section class="board" id="before-after" style="width:1600px;height:900px">
+  <div style="position:absolute;left:70px;top:70px;width:700px">
+    <div class="pill" style="font-size:18px">Today</div>
+    <h2 style="font-size:46px;margin-top:20px">Every TV is different</h2>
+    <p class="muted" style="font-size:20px;margin-top:10px">Each brand, its own menus, adverts and preinstalled apps.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:40px">
+      <div class="tv"><div class="bezel"><div class="screen" style="background:#1d2230">
+        <div class="messy" style="font-size:11px">
+          <div class="bar"><span>HOME</span><span>APPS</span><span>STORE</span><span class="tag">SPONSORED</span></div>
+          <div class="row" style="flex:1.3;min-height:0"><div class="ad" style="background:linear-gradient(90deg,#c0392b,#8e44ad);aspect-ratio:auto">BIG ADVERT</div><div class="ad" style="background:#2c3e50;flex:.8;aspect-ratio:auto">PROMOTED</div></div>
+          <div class="row"><div style="background:#e67e22"></div><div style="background:#16a085"></div><div style="background:#8e44ad"></div><div style="background:#2980b9"></div><div style="background:#7f8c8d"></div></div>
+          <div class="row"><div style="background:#34495e"></div><div style="background:#c0392b"></div><div style="background:#27ae60"></div><div style="background:#f1c40f"></div><div style="background:#95a5a6"></div></div>
+        </div></div></div><div class="label" style="font-size:16px">Brand A</div></div>
+      <div class="tv"><div class="bezel"><div class="screen" style="background:#f2f2f2">
+        <div class="messy" style="font-size:11px">
+          <div class="bar" style="color:#333"><span>For you</span><span>Live</span><span>Shop</span><span class="tag">AD</span></div>
+          <div class="row"><div style="background:#5e60ce"></div><div style="background:#ff595e"></div><div style="background:#8ac926"></div><div style="background:#1982c4"></div></div>
+          <div class="row" style="flex:1;min-height:0"><div class="ad" style="background:#ff924c;color:#222;aspect-ratio:auto">NEW! WATCH NOW</div></div>
+          <div class="row"><div style="background:#6a4c93"></div><div style="background:#ffca3a"></div><div style="background:#1982c4"></div><div style="background:#ff595e"></div></div>
+        </div></div></div><div class="label" style="font-size:16px">Brand B</div></div>
+      <div class="tv"><div class="bezel"><div class="screen" style="background:linear-gradient(135deg,#0f3b57,#0b1d2b)">
+        <div class="messy" style="font-size:11px">
+          <div class="bar"><span>Recommended</span><span class="tag">PROMO</span></div>
+          <div class="row"><div style="background:#e63946"></div><div style="background:#f1faee"></div><div style="background:#a8dadc"></div><div style="background:#457b9d"></div><div style="background:#1d3557"></div><div style="background:#e9c46a"></div></div>
+          <div class="row"><div style="background:#2a9d8f"></div><div style="background:#e76f51"></div><div style="background:#264653"></div><div style="background:#f4a261"></div><div style="background:#e9c46a"></div><div style="background:#e63946"></div></div>
+          <div class="row"><div style="background:#457b9d"></div><div style="background:#a8dadc"></div><div style="background:#e63946"></div><div style="background:#1d3557"></div><div style="background:#2a9d8f"></div><div style="background:#f4a261"></div></div>
+        </div></div></div><div class="label" style="font-size:16px">Brand C</div></div>
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:14px;font-size:19px;color:var(--ink-2)">
+        <div>✕ Different app order on every TV</div>
+        <div>✕ Adverts and sponsored rows</div>
+        <div>✕ Slow, crowded menus</div>
+        <div>✕ “Which button was it on this TV?”</div>
+      </div>
+    </div>
+  </div>
+  <svg viewBox="0 0 80 40" style="position:absolute;left:792px;top:420px;width:80px;opacity:.6"><path d="M0 20h66M52 6l16 14-16 14" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div style="position:absolute;right:70px;top:70px;width:640px">
+    <div class="pill" style="font-size:18px;color:var(--ink)"><span class="dot"></span>With Unified TV</div>
+    <h2 style="font-size:46px;margin-top:20px">One harmonised home</h2>
+    <p class="muted" style="font-size:20px;margin-top:10px">The same calm screen on every TV, with your choices.</p>
+    <div data-tv data-art="art-dusk" data-scale=".86" style="margin-top:40px"></div>
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:19px;color:var(--ink-2);margin-top:34px">
+      <div style="color:var(--ink)">✓ Same apps, same order, every room</div>
+      <div>✓ No adverts on the home screen</div>
+      <div>✓ Optional, reversible clean-up with backups</div>
+    </div>
+  </div>
+  <div class="concept">Illustrative mock-ups, not real brands · concept artwork of the planned design</div>
+</section>
+
+<!-- 4. HOME VIEW 1600x900 -->
+<section class="board" id="home-view" style="width:1600px;height:900px">
+  <div style="position:absolute;left:80px;top:64px;right:80px;display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div class="pill" style="font-size:17px"><svg style="width:16px;height:16px;fill:var(--accent)"><use href="#i-home"/></svg>Optional · powered by Home Assistant</div>
+      <h2 style="font-size:54px;margin-top:18px">Your home, at a glance, on the TV.</h2>
+    </div>
+    <p class="muted" style="font-size:20px;width:440px;text-align:right;line-height:1.4">Calm alerts over whatever you’re watching. Nothing appears unless you switch it on.</p>
+  </div>
+  <div class="tv" style="position:absolute;left:280px;right:280px;top:220px">
+    <div class="bezel"><div class="screen art-sea" style="font-size:22px">
+      <div class="shade"></div>
+      <div class="hud"><div class="clock" style="font-size:40px">14:52</div></div>
+      <div class="glance">
+        <div class="toast"><div class="ico" style="background:#2e7d4f"><svg><use href="#i-ball"/></svg></div><div><b>Matchday · kick-off 15:00</b><span>Your team · open the match app</span></div></div>
+        <div class="toast"><div class="ico" style="background:#3b5bdb"><svg><use href="#i-box"/></svg></div><div><b>Parcel delivered</b><span>Front porch · 2 min ago</span></div></div>
+        <div class="toast"><div class="ico" style="background:#6b6f7a"><svg><use href="#i-bin"/></svg></div><div><b>Reminder: bins out tonight</b><span>From your Alexa reminders</span></div></div>
+      </div>
+      <div class="door">
+        <div class="cam"><div class="live"><i></i>LIVE</div></div>
+        <div class="cap"><b>Someone’s at the front door</b><span>Doorbell · press Back to return to your programme</span></div>
+      </div>
+    </div></div>
+    <div class="stand"></div>
+  </div>
+  <div class="concept">Concept artwork of a planned feature · needs real-TV testing · not a screenshot</div>
+</section>
+
+<!-- 5. ALERT PRIORITY 1200x700 -->
+<section class="board" id="alert-priority" style="width:1200px;height:700px">
+  <div style="position:absolute;left:70px;top:58px;right:70px">
+    <h2 style="font-size:42px">One alert at a time, the doorbell first</h2>
+    <p class="muted" style="font-size:19px;margin-top:10px">Each one is optional. A higher alert replaces a lower one; nothing stacks up over your programme.</p>
+    <div class="ladder" style="margin-top:30px">
+      <div class="rung"><div class="n" style="background:#ffb36b">1</div><div><b>Doorbell</b><span>Ring press or person detected</span></div><em>Live picture</em></div>
+      <div class="rung"><div class="n" style="background:#b69cff">2</div><div><b>Reminders</b><span>For example from Alexa</span></div><em>Small toast</em></div>
+      <div class="rung"><div class="n" style="background:#7cc4ff">3</div><div><b>Deliveries and arrivals</b><span>Parcel delivered, someone home</span></div><em>Small toast</em></div>
+      <div class="rung"><div class="n" style="background:#5fd39a">4</div><div><b>Sport</b><span>Matchday kick-off, no score spoilers</span></div><em>Glance</em></div>
+      <div class="rung"><div class="n" style="background:#c9ced8">5</div><div><b>Everything else</b><span>Weather, bins, energy prices</span></div><em>Glance</em></div>
+    </div>
+  </div>
+  <div class="concept">Planned design · see docs/HOME_VIEW.md</div>
+</section>
+
+<!-- 6. SOCIAL PREVIEW 1280x640 -->
+<section class="board" id="social-preview" style="width:1280px;height:640px">
+  <div style="position:absolute;left:80px;top:80px;width:560px">
+    <div class="brand" style="font-size:28px"><div class="mark"></div>Unified TV</div>
+    <h1 style="font-size:64px;margin-top:40px">Different TVs.<br>One familiar home.</h1>
+    <p class="muted" style="font-size:23px;line-height:1.45;margin-top:24px">A calm, ad-free home screen that looks the same on every TV in the house.</p>
+    <p style="font-size:18px;margin-top:28px;color:var(--ink-3)">Android TV · Samsung Frame (Tizen) next · open source</p>
+  </div>
+  <div style="position:absolute;right:60px;top:70px;width:560px">
+    <div data-tv data-art="art-dusk" data-scale=".72"></div>
+    <div style="display:flex;gap:24px;margin-top:22px;padding:0 50px">
+      <div data-tv data-art="art-dusk" data-scale=".36" style="flex:1"></div>
+      <div data-tv data-art="art-dusk" data-scale=".36" style="flex:1"></div>
+    </div>
+  </div>
+  <div class="concept" style="bottom:16px">Concept artwork · in development</div>
+</section>
+
+<script>
+  // Fill every [data-tv] slot from the template; data-scale sizes the HUD text to the slot.
+  const tpl = document.getElementById('tv');
+  document.querySelectorAll('[data-tv]').forEach(slot => {
+    const tv = tpl.content.firstElementChild.cloneNode(true);
+    tv.querySelector('.screen').classList.add(slot.dataset.art);
+    const w = slot.getBoundingClientRect().width || 600;
+    const screen = tv.querySelector('.screen');
+    screen.style.fontSize = Math.max(7, w / 48) + 'px';
+    tv.querySelector('.clock').style.fontSize = (w / 18) + 'px';
+    tv.querySelector('.title b').style.fontSize = (w / 30) + 'px';
+    tv.querySelector('.title span').style.fontSize = (w / 52) + 'px';
+    tv.querySelector('.names').style.fontSize = (w / 70) + 'px';
+    if (w < 300) { tv.querySelector('.names').remove(); tv.querySelector('.title').remove(); }
+    slot.appendChild(tv);
+  });
+</script>
+</body>
+</html>

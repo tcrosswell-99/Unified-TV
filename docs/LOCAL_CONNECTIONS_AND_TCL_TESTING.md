@@ -14,7 +14,7 @@ Install official [Android SDK Platform Tools](https://developer.android.com/tool
 2. Open Developer options. Record whether **Network debugging**, **ADB debugging**, or **Wireless debugging** is actually offered and any port/address displayed.
 3. If a manufacturer-supported network debugging method exists, use only its on-screen port and the owner's private TV address. There must be no LAN scan or speculative open-port sweep.
 4. If only USB debugging is supported, use a verified USB route. If neither is supported, test the app by a separately approved USB/offline APK installer rather than altering firmware.
-5. The script [Test-UnifiedTV.ps1](../scripts/windows/Test-UnifiedTV.ps1) in the experimental PR is a helper for a user-authorised ADB connection; its pairing switch applies only where the TV supports that pairing flow. First run **InspectOnly**, then authorise installation explicitly.
+5. A Windows PowerShell helper for a user-authorised ADB connection was drafted in the unmerged experimental [pull request #5](https://github.com/tcrosswell-99/Unified-TV/pull/5). **It is not in this repository yet**, so no command here depends on it. Until it is reviewed and merged, use the official Platform Tools `adb` directly, read the model and version first, and authorise any installation explicitly. Its pairing option would apply only where the TV supports that pairing flow.
 
 ## 3. First real-TV tests
 

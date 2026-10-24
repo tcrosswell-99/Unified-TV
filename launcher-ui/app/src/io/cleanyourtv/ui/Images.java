@@ -5,7 +5,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.util.LruCache;
+import android.view.View;
 import android.widget.ImageView;
 
 import java.io.File;
@@ -48,9 +51,15 @@ final class Images {
         POOL.execute(Images::prune);
     }
 
-    /** Shows the image in the view once it arrives; a view reused for another image in the meantime is left alone. */
+    /**
+     * Shows the image in the view once it arrives; a view reused for another image in the meantime is left alone. A
+     * request no view waits for any more (the view took another picture, let go of it, or left the screen) is dropped
+     * before it's fetched, so a long scroll or a page change doesn't leave a queue of pictures nobody will see.
+     */
     static void load(ImageView view, String url) {
         if (dir == null) init(view.getContext());
+        Object was = view.getTag();
+        if (was instanceof String && !was.equals(url)) cancel(view);
         view.setTag(url);
         if (url == null || url.isEmpty()) {
             view.setImageDrawable(null);
@@ -62,9 +71,11 @@ final class Images {
             return;
         }
         view.setImageDrawable(null);
+        view.removeOnAttachStateChangeListener(DETACH);
+        view.addOnAttachStateChangeListener(DETACH);
         synchronized (WAITING) {
             List<ImageView> views = WAITING.get(url);
-            if (views != null) {   // already on its way: this view gets it too
+            if (views != null) {   // already on its way (or queued): this view gets it too
                 views.add(view);
                 return;
             }
@@ -73,16 +84,78 @@ final class Images {
             WAITING.put(url, views);
         }
         POOL.execute(() -> {
+            synchronized (WAITING) {   // its turn came: is anyone still waiting for it?
+                List<ImageView> still = WAITING.get(url);
+                if (still == null || still.isEmpty()) {
+                    WAITING.remove(url);
+                    return;
+                }
+            }
             Bitmap b = fetch(url);
             if (b != null) CACHE.put(url, b);
             List<ImageView> views;
             synchronized (WAITING) { views = WAITING.remove(url); }
-            if (b == null || views == null) return;
+            if (b == null || views == null || views.isEmpty()) return;
             MAIN.post(() -> {
                 for (ImageView v : views) if (url.equals(v.getTag())) v.setImageBitmap(b);
             });
         });
     }
+
+    /**
+     * What a view shows once it let go of its picture (far off screen, or the app covered): nothing, like null, but
+     * marked so it's asked for again (TvUi.restoreImages, the scroll's sweep). It keeps the picture's size, so letting
+     * go doesn't make the screen lay itself out again.
+     */
+    static final class Released extends ColorDrawable {
+        private final int w, h;
+
+        Released(Drawable was) {
+            super(0);
+            w = was == null ? -1 : was.getIntrinsicWidth();
+            h = was == null ? -1 : was.getIntrinsicHeight();
+        }
+
+        @Override public int getIntrinsicWidth() { return w; }
+        @Override public int getIntrinsicHeight() { return h; }
+    }
+
+    /** Lets go of the view's picture (the cache and the disk keep it) and of its place in the queue; the URL stays. */
+    static void release(ImageView v) {
+        if (!(v.getTag() instanceof String) || v.getDrawable() instanceof Released) return;
+        cancel(v);
+        v.setImageDrawable(new Released(v.getDrawable()));
+    }
+
+    static boolean released(ImageView v) {
+        return v.getDrawable() instanceof Released;
+    }
+
+    /** Takes the view off the queue for its current URL; true if it was waiting. */
+    private static boolean cancel(ImageView v) {
+        Object url = v.getTag();
+        if (!(url instanceof String)) return false;
+        synchronized (WAITING) {
+            List<ImageView> views = WAITING.get(url);
+            if (views == null) return false;
+            boolean was = false;
+            while (views.remove(v)) was = true;
+            return was;
+        }
+    }
+
+    /** A view that leaves the window stops waiting; put back while still wanted, it asks again. */
+    private static final View.OnAttachStateChangeListener DETACH = new View.OnAttachStateChangeListener() {
+        @Override public void onViewAttachedToWindow(View v) {
+            ImageView img = (ImageView) v;
+            if (released(img) && img.getTag() instanceof String) load(img, (String) img.getTag());
+        }
+
+        @Override public void onViewDetachedFromWindow(View v) {
+            ImageView img = (ImageView) v;
+            if (cancel(img)) img.setImageDrawable(new Released(null));
+        }
+    };
 
     /** From the disk cache when fresh, otherwise downloaded and saved. */
     static Bitmap fetch(String url) {

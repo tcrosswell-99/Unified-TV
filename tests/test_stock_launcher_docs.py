@@ -16,6 +16,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
 README = ROOT / "README.cleanyourtv.md"
 SH = ROOT / "launcher" / "build-and-install.sh"
 PS1 = ROOT / "launcher" / "build-and-install.ps1"

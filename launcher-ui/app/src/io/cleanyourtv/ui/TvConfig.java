@@ -102,6 +102,7 @@ final class TvConfig {
                     String logo = t == null ? "" : t.optString("logo"), color = t == null ? "" : t.optString("color");
                     boolean logoOk = logo.isEmpty() || logo.startsWith("https://") || allowedName(logo);
                     if (t != null && validPackage(pkg) && logoOk && (color.isEmpty() || color.matches("#[0-9A-Fa-f]{6}"))) {
+                        CustomTiles.forgetFailure(c, pkg, logo);   // a config pushed again retries a logo that failed
                         Prefs.setTile(pkg, logo, color);
                     }
                 }

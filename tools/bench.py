@@ -314,6 +314,11 @@ def accessibility_services(tv, package):
     return [part.strip() for part in out.split(":") if part.strip().startswith(package + "/")]
 
 
+# A component as Android writes one into enabled_accessibility_services. The setting goes through
+# the TV's shell, where a `$Inner` class name would be expanded and anything else could add syntax.
+COMPONENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*/[A-Za-z0-9_.$]+")
+
+
 def _norm_component(component):
     """`pkg/pkg.Classe` and `pkg/.Classe` are the same component; normalise so it is not added twice."""
     if "/" not in component:
@@ -351,7 +356,16 @@ def restore_accessibility(tv, package, services):
             merged.append(service)
             added = True
     if added:
-        tv.shell("settings put secure enabled_accessibility_services " + ":".join(merged))
+        value = ":".join(merged)
+        # Every part is checked, not just the ones added here: the whole list is written back, and
+        # dropping a part this cannot quote would switch off another app's service.
+        odd = [part for part in merged if not COMPONENT_RE.fullmatch(part)]
+        if odd:
+            print(f"Not restoring the accessibility services: the setting holds {odd!r}, which is not "
+                  f"a component. Put it back by hand in Settings > Accessibility: {value}")
+            return
+        # Single quotes: no component can hold one, and the TV's shell then expands nothing inside.
+        tv.shell(f"settings put secure enabled_accessibility_services '{value}'")
         tv.shell("settings put secure accessibility_enabled 1")
 
 
@@ -574,8 +588,9 @@ def main():
     pss = pss_of(tv, package)
 
     result = {
+        # No TV address: results get shared and compared, and the LAN address says nothing about
+        # the launcher. The folder is in .gitignore all the same, since the fingerprint names the set.
         "launcher": component, "version": version, "package": package,
-        "host": args.host,
         "environment": {
             "android_release": tv.shell("getprop ro.build.version.release").strip(),
             "sdk": tv.shell("getprop ro.build.version.sdk").strip(),

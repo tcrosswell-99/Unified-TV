@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Environment;
 import android.util.Log;
 
@@ -626,11 +627,9 @@ final class Config {
                 JSONObject s = sessions.optJSONObject(j);
                 if (s == null) continue;
                 String name = s.optString("name", "").trim();
-                try {
-                    if (!name.isEmpty()) parsed.add(new RaceWeekend.Session(name, java.time.Instant.parse(s.optString("start", ""))));
-                } catch (java.time.format.DateTimeParseException ignored) {
-                    // a session without a readable start time cannot be counted down
-                }
+                // a session without a readable start time, or one outside 2000-2100, cannot be counted down
+                java.time.Instant start = RaceWeekend.sessionStart(s.optString("start", ""));
+                if (!name.isEmpty() && start != null) parsed.add(new RaceWeekend.Session(name, start));
             }
             if (!parsed.isEmpty()) races.add(new RaceWeekend.Race(r.optInt("round", 0),
                     r.optString("name", "Grand Prix").trim(), r.optString("place", "").trim(), parsed));
@@ -678,21 +677,34 @@ final class Config {
         }
     }
 
-    /** Reads and parses the overlay; any problem means "no overlay", never a crash on the home screen. */
     /**
      * The overlay, or before external storage is mounted, the copy kept from the last time it was read. Home can
      * start before the card is mounted (seen at every boot on a Xiaomi MiTV-MTEQ0), and without the copy it comes
-     * up with the built-in dock order. A missing file on mounted storage still means no overlay.
+     * up with the built-in dock order. A missing file on mounted storage still means no overlay. On Android 10 a
+     * file the theme tools did not write is ignored and the copy stays in use (ThemeTrust). Any problem means
+     * "no overlay", never a crash on the home screen.
      */
     private static JSONObject readOverlay(Context ctx, File file, boolean mounted) {
         File copy = new File(ctx.getFilesDir(), FILE_NAME);
         if (!mounted) return read(copy);
-        JSONObject json = read(file);
+        byte[] bytes = bytes(file);
+        JSONObject json = parse(file, bytes);
+        byte[] kept = bytes(copy);
+        String keptText = kept == null ? null : new String(kept, StandardCharsets.UTF_8);
+        if (bytes != null && !ThemeTrust.trusted(Build.VERSION.SDK_INT, ThemeTrust.sha256(bytes),
+                recorded(ctx), json == null ? null : json.toString(), keptText)) {
+            Log.w(TAG, "ignoring " + file + ": not written through ThemeProvider (tools/theme.sh)");
+            return parse(copy, kept);
+        }
         if (json == null) {
             copy.delete();
-        } else {
+            return null;
+        }
+        // Only when it changed: Config.load runs on every resume and service bind, and flash wears.
+        String text = json.toString();
+        if (!text.equals(keptText)) {
             try (FileOutputStream out = new FileOutputStream(copy)) {
-                out.write(json.toString().getBytes(StandardCharsets.UTF_8));
+                out.write(text.getBytes(StandardCharsets.UTF_8));
             } catch (IOException e) {
                 Log.w(TAG, "could not keep a copy of " + file + ": " + e.getMessage());
             }
@@ -700,7 +712,18 @@ final class Config {
         return json;
     }
 
+    /** The SHA-256 ThemeProvider recorded for the config.json it last wrote; null when there is none. */
+    private static String recorded(Context ctx) {
+        byte[] b = bytes(new File(ctx.getFilesDir(), ThemeTrust.RECORD_NAME));
+        return b == null ? null : new String(b, StandardCharsets.US_ASCII).trim();
+    }
+
     private static JSONObject read(File file) {
+        return parse(file, bytes(file));
+    }
+
+    /** The file's bytes; null when it is missing, unreadable or larger than 64 KB. */
+    static byte[] bytes(File file) {
         if (file == null || !file.isFile()) return null;
         if (file.length() > 64 * 1024) {
             Log.w(TAG, "ignoring " + file + ": larger than 64 KB");
@@ -710,7 +733,17 @@ final class Config {
             byte[] buf = new byte[(int) file.length()];
             int n = 0, r;
             while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) n += r;
-            String text = new String(buf, 0, n, StandardCharsets.UTF_8);
+            return n == buf.length ? buf : Arrays.copyOf(buf, n);
+        } catch (Exception e) {
+            Log.w(TAG, "ignoring " + file + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static JSONObject parse(File file, byte[] bytes) {
+        if (bytes == null) return null;
+        try {
+            String text = new String(bytes, StandardCharsets.UTF_8);
             if (text.startsWith("\uFEFF")) text = text.substring(1);   // Windows editors add a BOM
             return new JSONObject(text);
         } catch (Exception e) {

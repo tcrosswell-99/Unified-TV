@@ -20,8 +20,8 @@ public class ConfigProvider extends ContentProvider {
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!mode.contains("w") || !Config.PUSHED.equals(uri.getLastPathSegment())) throw new FileNotFoundException(uri.toString());
-        File dir = getContext().getExternalFilesDir(null);
-        if (dir == null || (!dir.isDirectory() && !dir.mkdirs())) throw new FileNotFoundException("no files folder");
+        // Private storage: on Android 8 to 10 apps with storage permission can read the external files folder.
+        File dir = getContext().getFilesDir();
         try {
             return ParcelFileDescriptor.open(new File(dir, Config.PUSHED),
                     ParcelFileDescriptor.MODE_WRITE_ONLY | ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE,

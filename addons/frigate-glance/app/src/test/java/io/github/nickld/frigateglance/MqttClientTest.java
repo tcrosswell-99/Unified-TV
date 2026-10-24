@@ -167,4 +167,23 @@ public class MqttClientTest {
         Recorder r = runAgainst(concat(CONNACK_OK, SUBACK, broken), new ByteArrayOutputStream(), "mqtt://broker");
         assertNotNull(r.cause);
     }
+
+    @Test
+    public void oversizedPacketIsSkippedWithoutBufferingIt() {
+        byte[] huge = new byte[MqttClient.MAX_PACKET_BYTES + 1];
+        byte[] after = "{\"type\":\"new\"}".getBytes(StandardCharsets.UTF_8);
+        Recorder r = runAgainst(concat(CONNACK_OK, SUBACK, publish("frigate/reviews", huge),
+                publish("frigate/reviews", after)), new ByteArrayOutputStream(), "mqtt://broker");
+        assertEquals(List.of("frigate/reviews"), r.topics);
+        assertArrayEquals(after, r.payloads.get(0));
+        assertNotNull(r.cause);                         // the stream then ends, as usual
+    }
+
+    @Test
+    public void claimedLengthBeyondTheStreamEndsTheSession() {
+        byte[] lie = {0x30, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, 0x7F};   // 268 MB announced, nothing sent
+        Recorder r = runAgainst(concat(CONNACK_OK, SUBACK, lie), new ByteArrayOutputStream(), "mqtt://broker");
+        assertTrue(r.topics.isEmpty());
+        assertNotNull(r.cause);
+    }
 }

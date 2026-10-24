@@ -1,16 +1,18 @@
-name: My TV
-description: A TV that is not in examples/ yet, or a list that needs a change
+name: TV or streamer test report
+description: Share how the inherited launcher or the optional, reversible cleanup behaved on a specific TV or streamer
 title: "[TV] Brand Model (Android version)"
 labels: [tv-list]
 body:
   - type: markdown
     attributes:
       value: |
-        Lists people have tested live in [`examples/`](../tree/main/examples). If you already have a working list, a pull request is even better: see [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md).
+        Thank you for testing. Unified TV never asks anyone to run a blanket debloat: cleanup is optional, needs your consent and a saved recovery record first (see [Installation and recovery](../blob/main/docs/INSTALLATION_AND_RECOVERY.md)). Lists tested by others live in [`examples/`](../tree/main/examples); a pull request is welcome, see [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md).
+
+        Do not include IP addresses, account details, tokens, serial numbers, Ring images or family photographs.
   - type: input
     id: model
     attributes:
-      label: TV model
+      label: TV or streamer model
       description: "`tools/tv.py --probe` prints the model, device codename, Android version and build."
       placeholder: Sony BRAVIA KD-55X8509C (SVP-DTV15)
     validations:
@@ -28,16 +30,17 @@ body:
       label: How far did you get?
       options:
         - Could not connect over ADB
-        - Debloat worked, launcher did not
+        - Launcher only (no cleanup)
+        - Optional cleanup worked, launcher did not
         - Both worked, here is my list
-        - Something broke after the debloat
+        - Something broke, and restore did or did not bring it back
     validations:
       required: true
   - type: textarea
     id: details
     attributes:
       label: What happened
-      description: What you ran, what the TV did, what you expected. Paste the packages you disabled if you have them.
+      description: What you ran, what the TV did, what you expected, and whether restore worked. Paste the packages you disabled if you have them.
       render: shell
     validations:
       required: true

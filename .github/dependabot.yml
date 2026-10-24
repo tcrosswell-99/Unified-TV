@@ -1,0 +1,12 @@
+# Weekly update PRs for the CI actions and the Python tool pins. Android/Gradle dependencies are
+# reviewed by hand: the launcher has a 512 KB APK budget and add-ons are built per directory.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: weekly

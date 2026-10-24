@@ -1,4 +1,4 @@
-> **CleanYourTV UI:** this is [CleanYourTV](https://github.com/Gathin23/cleanyourtv)'s README, copied on every sync. This fork's is [README.md](README.md) ([Português](README.pt-BR.md)).
+> **Unified TV note:** this is the original [CleanYourTV](https://github.com/Gathin23/cleanyourtv) README, kept for reference and credit, and checked by this repository's documentation tests. It describes the inherited tools and launcher, not Unified TV, whose front page is [README.md](README.md). The CleanYourTV UI README is archived at [docs/upstream/CLEANYOURTV_UI_README.md](docs/upstream/CLEANYOURTV_UI_README.md) ([Português](README.pt-BR.md)). Before cleaning a household TV, read [docs/INSTALLATION_AND_RECOVERY.md](docs/INSTALLATION_AND_RECOVERY.md).
 
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads. Strip the bloatware from any Android TV or Google TV over Wi-Fi and replace the ad-filled home screen with a clean launcher that looks like an Apple TV. No root, no cable, nothing uninstalled, and a one-line restore." width="800"></a>
@@ -421,7 +421,7 @@ tools/theme.sh themes/aurora                                 # push a theme; --r
 | [`tools/check.py`](tools/check.py) | Compares the TV with the list that was applied, for what a firmware update undid; `--fix` puts it back. |
 | [`tools/adb-closed.py`](tools/adb-closed.py) | Checks that the TV's network ADB port is closed once debugging is off: exits 0 when nothing answers, 1 while it is still open, 2 when the check itself could not run. No `nc` needed. |
 | [`tools/privacy.py`](tools/privacy.py) | Audits the TV for voice, ACR and telemetry candidates and prints the evidence for each; `--write` turns the findings into a list `disable.sh` and `restore.sh` already understand. |
-| [`tools/theme.sh`](tools/theme.sh) | Push a folder from [`themes/`](themes/) to the launcher and restart Home. |
+| [`tools/theme.sh`](tools/theme.sh) | Push a folder from [`themes/`](themes/) to the launcher and restart Home. On Android 10 this is the only way a theme is applied: a `config.json` copied in by hand is ignored. |
 | [`tools/manage.py`](tools/manage.py) | List every add-on, theme and switch with its screenshot, see what is on the TV, and install, update or remove one by running its creator's own script. |
 | [`tools/bench.py`](tools/bench.py) | Measures the launcher that answers HOME: key latency, how far the focus moved, janky frames, cold start, return to Home, and the idle CPU and PSS it costs. Changes nothing on the TV and writes the raw per-key numbers to JSON; no extra install. |
 | [`tools/trace.py`](tools/trace.py), [`trace_report.py`](tools/trace_report.py) | Records Perfetto traces of the launcher (return to Home, cold start, D-pad) and reports where its time goes, per run and before against after. Optional: needs [`requirements-perf.txt`](tools/requirements-perf.txt). [Guide](tools/trace.md). |
@@ -512,7 +512,7 @@ The **TV** needs Android 8.0 (API 26) or newer: `minSdk` is a compile-time floor
 |---|---|
 | **Configure** | Dock order, hidden apps, Live TV app, 4 to 7 tiles per row, reduced motion. All in [`config.xml`](launcher/app/src/main/res/values/config.xml) |
 | **Settings on the TV** | Hold OK on Settings for launcher settings. Optional `launcher_settings_button` makes a normal click open them directly; TV settings remain on the settings page and their app tile. |
-| **Themes** | Background, wallpaper and layout from a `config.json` pushed over Wi-Fi, no rebuild. eight ship in [`themes/`](themes/), the built-in `default/` included |
+| **Themes** | Background, wallpaper and layout from a `config.json` pushed over Wi-Fi with `tools/theme.sh`, no rebuild. eight ship in [`themes/`](themes/), the built-in `default/` included. On Android 10 only a theme written by the theme tools is applied |
 | **25 languages** | Follows the TV's language, with a fully mirrored right-to-left layout for Hebrew |
 | **App library** | Optional: browse every installed app and add or remove Home shortcuts. See [the app library guide](docs/app-library.md) |
 | **Tile menu** | Optional (`tile_menu`): hold OK on a tile for Move, Remove from Home and App info. Off, holding OK opens App info |
@@ -527,6 +527,11 @@ The **TV** needs Android 8.0 (API 26) or newer: `minSdk` is a compile-time floor
 It needs JDK 17 and Android SDK platform 34. On macOS: `brew install openjdk@17 android-commandlinetools`
 and `sdkmanager "platforms;android-34" "build-tools;34.0.0"`. On Linux the install script finds
 `~/Android/Sdk` and the `java` on your PATH.
+
+*Unified TV note:* release builds can be signed with your own key. Set all four of `UNIFIEDTV_KEYSTORE`,
+`UNIFIEDTV_KEYSTORE_PASSWORD`, `UNIFIEDTV_KEY_ALIAS` and `UNIFIEDTV_KEY_PASSWORD`, as Gradle properties or
+environment variables; with any of them missing, the release is signed with the debug key as before. Never commit the
+keystore. Android refuses an update signed with a different key, so switching keys means uninstalling the old build first.
 
 </details>
 
@@ -646,6 +651,8 @@ TV_HOST=192.168.1.50 tools/restore.sh examples/<your tv>/debloat.txt com.google.
 |---|---|
 | **A record comes first** | Before `tools/disable.sh` changes anything it writes down what the TV looked like, in `~/.cleanyourtv/`. |
 | **Restore replays it** | A package you had disabled yourself stays disabled, and Home goes back to the component that owned it. |
+| **Only on the same TV** | The record holds the TV's own id, so a record taken on another TV is refused, and a TV that changed address still finds its own. |
+| **No record, no guessing** | Without a record, restore stops instead of enabling the whole list, unless you set `RESTORE_WITHOUT_RECORD=1`. |
 | **The launcher stays installed** | Remove it from the TV's Settings → Apps if you want it gone. |
 | **No computer?** | If the TV is unreachable, its own Settings → Apps page can re-enable packages too. |
 
@@ -654,7 +661,10 @@ TV_HOST=192.168.1.50 tools/restore.sh examples/<your tv>/debloat.txt com.google.
 
 Before `tools/disable.sh` changes anything it writes down what the TV looked like: for every package
 in the list whether it was enabled, already disabled or not installed, which component owned Home,
-and the three animation scales. That record lives in `~/.cleanyourtv/`, one file per TV and list, and
+and the three animation scales. That record lives in `~/.cleanyourtv/`, one file per TV and list, filed
+under the address and port the TV was reached at and holding the TV's own id (`ro.serialno`, or `android_id`
+where the serial is a placeholder). A record taken on another TV is refused, both when saving and when
+restoring; a record taken on this TV at another address is still found. And
 a second run of the same list keeps the first record instead of saving the cleaned-up state over it.
 If you added packages to the list since, that run adds them to the record before disabling them.
 
@@ -665,8 +675,10 @@ The `stock launcher` argument is only a fallback: with a record, the launcher th
 is the one that gets it back, and the argument is used only when nothing answered HOME at the time
 or this project's launcher owned it. The stock launcher is enabled again either way, unless it was
 already disabled when the record was taken.
-Without a record (an older run, or a record you deleted) the script says so and falls back to
-enabling the whole list and resetting the scales to `1.0`, which is what it used to do.
+Without a record (an older run, or a record you deleted) the script says so and stops: it no longer
+falls back on its own to enabling the whole list, which would also switch on packages that were off
+before the cleanup. Set `RESTORE_WITHOUT_RECORD=1` to enable the whole list and reset the scales to
+`1.0` anyway.
 
 It leaves the new launcher installed (remove it from the TV's Settings → Apps if you want it gone)
 and does not know about packages you disabled outside the list. To switch back later, run the

@@ -473,7 +473,10 @@ public class DetailActivity extends Activity {
         String name = title == null ? "" : title.name;
         new Thread(() -> {
             String url = DeepLinks.find(this, kind, id, name).get(pkg);
-            main.post(() -> { if (!DeepLinks.open(this, pkg, url)) RemoteKeys.run(this, pkg); });
+            main.post(() -> {
+                if (gone()) return;   // Back while the link was looked up: don't open the app after all
+                if (!DeepLinks.open(this, pkg, url)) RemoteKeys.run(this, pkg);
+            });
         }).start();
     }
 
@@ -491,11 +494,16 @@ public class DetailActivity extends Activity {
         new Thread(() -> {
             try {
                 task.run();
-                main.post(this::labels);
+                main.post(() -> { if (!gone()) labels(); });
             } catch (Exception e) {
-                main.post(() -> Toast.makeText(this, failure + e.getMessage(), Toast.LENGTH_LONG).show());
+                main.post(() -> { if (!gone()) Toast.makeText(this, failure + e.getMessage(), Toast.LENGTH_LONG).show(); });
             }
         }).start();
+    }
+
+    /** Closed or closing: a dialog shown now would throw (BadTokenException) and take the process down. */
+    private boolean gone() {
+        return isFinishing() || isDestroyed();
     }
 
     private interface Task { void run() throws Exception; }
@@ -547,14 +555,15 @@ public class DetailActivity extends Activity {
         new Thread(() -> {
             try {
                 List<String[]> lists = Tmdb.lists(this);
-                main.post(() -> pickList(lists));
+                main.post(() -> { if (!gone()) pickList(lists); });
             } catch (Exception e) {
-                main.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
+                main.post(() -> { if (!gone()) Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); });
             }
         }).start();
     }
 
     private void pickList(List<String[]> lists) {
+        if (gone()) return;
         String[] items = new String[lists.size() + 1];
         for (int i = 0; i < lists.size(); i++) items[i] = lists.get(i)[1] + "  (" + lists.get(i)[2] + ")";
         items[lists.size()] = "+  " + Ui.tr("Nova lista…", "New list…");
@@ -565,7 +574,7 @@ public class DetailActivity extends Activity {
                         String list = lists.get(which)[0], name = lists.get(which)[1];
                         background(Ui.tr("Não deu para adicionar: ", "Couldn't add: "), () -> {
                             Tmdb.addToList(this, list, id);
-                            main.post(() -> Toast.makeText(this, Ui.tr("Adicionado a ", "Added to ") + name, Toast.LENGTH_SHORT).show());
+                            main.post(() -> { if (!gone()) Toast.makeText(this, Ui.tr("Adicionado a ", "Added to ") + name, Toast.LENGTH_SHORT).show(); });
                         });
                         return;
                     }
@@ -578,7 +587,7 @@ public class DetailActivity extends Activity {
                             .setPositiveButton(Ui.tr("Criar", "Create"), (d2, w2) -> background(Ui.tr("Não deu para criar: ", "Couldn't create: "), () -> {
                                 String list = Tmdb.createList(this, field.getText().toString().trim());
                                 Tmdb.addToList(this, list, id);
-                                main.post(() -> Toast.makeText(this, Ui.tr("Lista criada", "List created"), Toast.LENGTH_SHORT).show());
+                                main.post(() -> { if (!gone()) Toast.makeText(this, Ui.tr("Lista criada", "List created"), Toast.LENGTH_SHORT).show(); });
                             }))
                             .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
                             .show();

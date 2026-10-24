@@ -12,6 +12,8 @@ shots/
 work/
 # Perfetto traces from tools/trace.py: large, and they hold the TV's process list
 traces/
+# tools/bench.py results: they hold the TV's build fingerprint and model
+bench-results/
 .DS_Store
 
 # Generated install bundles and JVM crash reports stay out of contributions.

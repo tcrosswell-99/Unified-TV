@@ -46,6 +46,10 @@ public class WatchService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!Prefs.enabled(this)) {                // switched off: no watcher, and no restart by the system
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (intent != null && intent.getBooleanExtra(EXTRA_PLAY, false)) play();
         return START_STICKY;
     }

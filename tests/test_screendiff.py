@@ -24,6 +24,11 @@ spec.loader.exec_module(screendiff)
 HAVE_PIL = importlib.util.find_spec("PIL") is not None
 
 
+def pixels(im):
+    """Every pixel, in order. getdata is deprecated from Pillow 13; older Pillow has only getdata."""
+    return list(im.get_flattened_data() if hasattr(im, "get_flattened_data") else im.getdata())
+
+
 class BoxTest(unittest.TestCase):
     def test_a_box_is_four_ordered_numbers(self):
         self.assertEqual(screendiff.box("90,40,900,220"), (90, 40, 900, 220))
@@ -84,7 +89,7 @@ class CompareTest(unittest.TestCase):
                 self.assertEqual(code, 0)
                 self.assertIn("identical", text)
                 with self.Image.open(out) as diff:
-                    self.assertEqual(set(diff.convert("RGB").getdata()), {(0, 0, 0)})
+                    self.assertEqual(set(pixels(diff.convert("RGB"))), {(0, 0, 0)})
 
     def test_diff_pixels_match_the_report_in_every_channel_and_at_the_threshold(self):
         before = self.Image.new("RGB", (9, 4), "black")
@@ -101,9 +106,9 @@ class CompareTest(unittest.TestCase):
         self.assertIn("3 pixels differ by more than 8, inside 4,1,7,2", text)
         with self.Image.open(out) as exported:
             diff = exported.convert("RGB")
-        self.assertEqual(set(diff.getdata()), {(0, 0, 0), (255, 255, 255)})
+        self.assertEqual(set(pixels(diff)), {(0, 0, 0), (255, 255, 255)})
         self.assertEqual(diff.getbbox(), (4, 1, 7, 2))
-        self.assertEqual(sum(pixel != (0, 0, 0) for pixel in diff.getdata()), 3)
+        self.assertEqual(sum(pixel != (0, 0, 0) for pixel in pixels(diff)), 3)
         for point in ((4, 1), (5, 1), (6, 1)):
             self.assertEqual(diff.getpixel(point), (255, 255, 255))
 
@@ -137,7 +142,7 @@ class CompareTest(unittest.TestCase):
         original = self.Image.open(a).convert("RGB").crop((0, 0, 60, 20))
         for left in (0, 230):
             blurred = pair.crop((left, 60, left + 60, 80))
-            self.assertNotEqual(list(blurred.getdata()), list(original.getdata()))
+            self.assertNotEqual(pixels(blurred), pixels(original))
 
 
 if __name__ == "__main__":

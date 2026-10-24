@@ -35,8 +35,9 @@ further by camera and object.
 | Start at boot (`RECEIVE_BOOT_COMPLETED`) | To reconnect after a reboot. On TCL sets `install.sh` also allows the `APP_AUTO_START` app-op, without which TCL's firmware blocks it. |
 
 Two components only the ADB shell can use (they need `WRITE_SECURE_SETTINGS`, as the launcher's
-ThemeProvider): `ConfigProvider` takes `config.json` on firmware that locks the shell out of `Android/data`,
-and `TestCardReceiver` shows a test card over whatever is playing.
+ThemeProvider): `ConfigProvider` takes `config.json` into the add-on's private storage, so the passwords never
+sit in shared storage (Android 8 and 9, which lack `content write`, fall back to a copy in `Android/data` that
+the add-on deletes as soon as it reads it), and `TestCardReceiver` shows a test card over whatever is playing.
 
 ## Setup
 
@@ -63,7 +64,7 @@ and `TestCardReceiver` shows a test card over whatever is playing.
 | Key | Default | Meaning |
 |---|---|---|
 | `mqtt` | required | `mqtt://user:password@host:1883`; percent-encode `@ : /` in the user or password |
-| `frigateUrl` | required | `https://host:8971` (authenticated port) or `http://host:5000` |
+| `frigateUrl` | required | `https://host:8971` (authenticated port, recommended) or `http://host:5000` (unauthenticated; plain HTTP is allowed so it works on the home network, but anyone on the LAN can read it) |
 | `frigateUser`, `frigatePassword` | empty | Frigate login; the certificate is trusted on first contact and pinned. Frigate makes a new self-signed one whenever its container is recreated (an update) unless `/etc/letsencrypt` is a volume; Overview then shows **New certificate** with both fingerprints, and OK on the Frigate row trusts it |
 | `topicPrefix` | `frigate` | Frigate's MQTT topic prefix |
 | `cameras` | `{}` (all) | camera name to the name shown on the card; listed cameras only |

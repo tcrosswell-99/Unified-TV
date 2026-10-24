@@ -97,6 +97,7 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     public void onDestroy() {
         stopWaitingForUnlock();
+        handler.removeCallbacksAndMessages(null);   // a pending redirectHomeKey open
         if (gamepads != null) gamepads.stop();
         if (consumeVolumeKeys) VolumeKeys.stop();
         super.onDestroy();
@@ -176,7 +177,11 @@ public class HomeKeyService extends AccessibilityService {
                     .addCategory(Intent.CATEGORY_HOME)
                     .setPackage(getPackageName())
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-            startActivity(home);
+            try {
+                startActivity(home);
+            } catch (ActivityNotFoundException | SecurityException ignored) {
+                // Thrown from onKeyEvent it would kill the process and can leave this service turned off.
+            }
         }
         return true;
     }
@@ -240,8 +245,11 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void openHome() {
-        startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+        try {
+            startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+        } catch (ActivityNotFoundException | SecurityException ignored) {
+        }
     }
 
     @Override
