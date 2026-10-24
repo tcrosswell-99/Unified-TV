@@ -1,6 +1,6 @@
 # Preview 0.5: on-TV checks
 
-Preview 0.5 is code-checked and unit-tested only. These are the checks that need the TCL (Android TV 11), the NAS and Home Assistant. Record each result in [FEATURE_STATUS.md](FEATURE_STATUS.md) with the build, date and outcome. Say **Not tested** for anything skipped.
+Preview 0.5 is code-checked and unit-tested only. These are the checks that need the TCL (Android TV 11), the NAS and Home Assistant. Record each result in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv) with the build, TV model, firmware and outcome, and summarise it in [FEATURE_STATUS.md](FEATURE_STATUS.md). Say **Not tested** for anything skipped.
 
 Use a fresh install of the 0.5 test build, without clearing the 0.4 data, so the existing saved connections are kept. Run each check twice: once with NordVPN off, once with NordVPN on.
 
@@ -10,16 +10,52 @@ Use a fresh install of the 0.5 test build, without clearing the 0.4 data, so the
    - **Pass:** with one media server on the network, it goes straight to its folders, with no search screen and no list.
    - **Pass:** with several, a list of their names appears.
    - **Pass:** no address is shown or asked for.
-2. Open each of the three collections and add it. Save. Leave and come back.
-   - **Pass:** the saved collections open straight away.
-3. Open a folder with more than 24 entries that mixes music or photos with videos.
+   - Press Back from the server's top folder. **Pass:** the search screen appears and stays (it does not jump straight back into the folders).
+2. Switch the NAS media service off and search again.
+   - **Pass:** "No media server found" with **Search again**. Record whether this matches what the NAS was doing.
+3. Open each of the three collections and add it. Save. Leave and come back.
+   - **Pass:** the saved collections open straight away, and only those three are listed.
+   - **Pass:** Back from inside a collection returns to the list of three, never to the server's other folders.
+4. Open a folder with more than 24 entries that mixes music or photos with videos.
    - **Pass:** **Show more** appears until the last video, and every video is reachable.
-4. Check the cards.
+5. Check the cards.
    - **Pass:** titles with server artwork show their own poster and year.
    - **Pass:** titles without artwork show a plain card, never another title's picture.
-5. With NordVPN on: repeat step 1.
-   - **Pass:** the server is still found.
-   - **If it isn't:** record whether NordVPN's "allow devices on your home network" setting was on.
+   - **Pass:** no card shows a file ending such as `.mkv` or `.mp4`, and file-style names (`The.Film.2019`) read as words.
+6. Open a sub-folder, then press Back.
+   - **Pass:** focus lands on the folder you just left.
+7. Press Back while a folder still says **Loading…**.
+   - **Pass:** the previous screen appears at once, and nothing from the abandoned folder appears later.
+8. Unplug the NAS's network cable (or stop its media service) and open a collection.
+   - **Pass:** within 25 seconds a plain message says the server isn't answering, with **Try again**. Reconnect, press **Try again**. **Pass:** the folder opens.
+9. Restart the NAS. If its address changes (check the router), open a collection.
+   - **Pass:** the collection opens without setting anything up again. If it says the folder is no longer on the server, record that, because the NAS gave its folders new IDs.
+10. Switch to the Child profile and open Your Films & TV.
+    - **Pass:** shared folders are refused, with a message about a restricted account.
+11. With NordVPN on: repeat steps 1 and 8.
+    - **Pass:** the server is still found and plays.
+    - **If it isn't:** record whether NordVPN's "allow devices on your home network" setting was on.
+
+Titles and posters here come from the media server itself, not a checked film database. This is a connectivity and playback preview, not the finished poster catalogue.
+
+## Playing a film from the NAS
+
+Use one short 1080p film (MP4), one MKV with several soundtracks and subtitles, and one 4K HEVC file if you have one. Record each file's container, picture and sound format.
+
+1. Choose a film. **Pass:** the picture starts. Note roughly how long it took.
+2. Press OK. **Pass:** it pauses and the controls appear. Press OK again. **Pass:** it continues. Repeat with the remote's Play/Pause key if it has one.
+3. Press Right once, then Left once. **Pass:** about 10 seconds forward, then back.
+4. Hold Right for five seconds. **Pass:** it moves steadily faster, without freezing, and stops when you let go.
+5. Press Down (or Menu). **Pass:** a list of the film's soundtracks and subtitles appears; choosing one changes it. A film with only one soundtrack and no subtitles says so instead.
+6. Press Back. **Pass:** the same library folder appears, with focus on the film you played.
+7. Choose the same film again. **Pass:** it offers **Resume from … (on this TV)** and **Start from the beginning**. It never says Continue Watching. Resume. **Pass:** it starts near where you left.
+8. While it plays, press the remote's Home key, then return to Unified TV. **Pass:** the film restarts from the same place, or a message offers **Try again**.
+9. While it plays, put the TV in standby for a minute, then wake it. **Pass:** as step 8, with no endless spinner.
+10. While it plays, unplug the NAS's network cable. **Pass:** within about 30 seconds a plain message appears with **Try again** and **Back to your films**. Reconnect and press **Try again**. **Pass:** it continues from about the same place.
+11. Play a file the TV can't handle (for example a 4K HEVC 10-bit file on a TV without that decoder, or an unusual sound format). **Pass:** a plain message names picture or sound as the problem. It never shows a black screen with sound, or silence, as if it were working.
+12. Watch a film to the end. **Pass:** it returns to the library, and choosing it again starts from the beginning.
+
+The player keeps a short, private record of the last playback (time to first picture, formats offered, errors) for the evidence report. It holds no titles, file names or addresses, and nothing is written to the TV's log.
 
 ## Home Assistant
 
@@ -71,3 +107,70 @@ These checks cover only what the status *says*. They are not a protection test. 
   - **Pass:** no background search runs, and focus on Home stays instant.
 - Start it with nothing set up.
   - **Pass:** Home stays responsive while the search runs, and nothing appears on screen because of it.
+
+## Home: scenes and focus (P05-02)
+
+1. Move slowly along the dock.
+   - **Pass:** after each move the background settles briefly, then dissolves into that app's own scene. No flash of an unrelated picture.
+2. Hold Right to move quickly along the dock.
+   - **Pass:** focus keeps up with the remote; the background waits until you stop, then changes once.
+3. Leave Home on screen for a minute.
+   - **Pass:** the dock rests lower and quieter; the first press brings it back without being lost.
+4. Turn on reduced graphics and repeat 1 and 2.
+   - **Pass:** the same journey, with simpler scenes and no slower focus.
+
+## Films & TV from Home (P05-02, spec 4.6)
+
+1. With the NAS set up, press Down on Home.
+   - **Pass:** a row of posters from your chosen collections rises; each poster is its own title's artwork.
+2. Move along the posters.
+   - **Pass:** the background becomes that title's own poster, softened. A title with no artwork shows a plain dark scene, never another title's picture.
+3. OK on a film; OK on a series or folder.
+   - **Pass:** the film plays; the series opens on its episodes.
+4. Up and Back.
+   - **Pass:** both return to the dock with the same app in focus.
+5. With no NAS set up, press Down.
+   - **Pass:** a single "Set up" card offers to set up your films, and opens setup.
+
+## Apps and your Home dock (P05-03)
+
+1. Open **Apps** from the controls menu.
+   - **Pass:** every installed app plus Live TV, Xbox and TV Plus shortcuts, five to a row, focus visible.
+2. Hold OK on an app that isn't on Home and choose **Add to Home**.
+   - **Pass:** it appears at the end of the dock and is still there after restarting the TV.
+3. On Home, hold OK on an app: **Move**, then **Remove from Home**, then **Cancel**.
+   - **Pass:** Move reorders; Remove takes it off and it is still in Apps; Cancel changes nothing.
+4. Switch room profile.
+   - **Pass:** each room keeps its own dock.
+5. Open Live TV from Apps.
+   - **Pass:** the same Live TV protection check applies as from Home.
+
+## Unified TV as Home (spec 29, RC and HRC rows)
+
+1. Install the 0.5 build, then press Home.
+   - **Pass:** the TV's own Home appears. Installing changed nothing.
+2. **Settings → TV & performance → Make Unified TV the Home screen.**
+   - **Pass:** Android itself asks which Home to use. Note on this firmware whether it is a role request, a Home settings page or the Home chooser.
+3. Choose the TV's own Home instead.
+   - **Pass:** it says nothing changed, and the Home button still opens the TV's own interface.
+4. Repeat 2 and choose Unified TV. Then press Home from Netflix, from playback, after standby and after a reboot.
+   - **Pass:** each time, Unified TV's main screen appears with the same app in focus.
+5. Press Back repeatedly on the main screen.
+   - **Pass:** it stays on Unified TV.
+
+## Open original TV interface (spec 30, OI rows)
+
+1. **Settings → TV & performance → Open original TV interface → Open original interface for now.**
+   - **Pass:** the TV's own interface opens, or Unified TV says plainly that this TV doesn't allow it. Home still returns to Unified TV.
+2. **Make original interface the default** and confirm twice.
+   - **Pass:** Home now goes to the TV's own interface, and Unified TV can be chosen again from step 2 above.
+
+## Installing and updating (P05-01)
+
+1. Run `python3 preview/tools/install_preview.py --check <APK>` against the TV with the 0.4 preview installed.
+   - **Pass:** it reports the certificates and versions and installs nothing.
+2. Install over 0.4 with the tool.
+   - **Pass:** saved connections are still there afterwards; the record says data was kept and Home was unchanged.
+3. Try an APK signed with a different key.
+   - **Pass:** the tool refuses and changes nothing on the TV.
+

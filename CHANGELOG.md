@@ -10,10 +10,24 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ## [0.5.0] - 2026-10-24
 
-Android Preview **0.5** (`0.5-preview`, versionCode 5). The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only (54 preview tests, 9 protection-check tests). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).
+Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience". Home now changes its whole scene with what is in focus and your films rise into view on Down. Unified TV can become the TV's real Home if an adult chooses it, and can always hand Home back. The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only. Release notes: [PREVIEW_0_5_RELEASE.md](docs/PREVIEW_0_5_RELEASE.md). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).
 
 ### Added
 
+- **One Home journey** (spec 4.4 to 4.6):
+  - **The scene follows focus:** moving to an app or a title settles for a moment, then dissolves into that app's own branded scene or that title's own poster, softened and darkened. Never another title's image. Scenes are drawn once and cached small, so the TCL only draws two pictures during a dissolve.
+  - **The dock** rests low and quiet, and rises when you move.
+  - **Films & TV rises from Home:** press Down and a row of posters from your chosen collections appears, without leaving Home. OK plays a film or opens a series; Up or Back returns.
+- **Unified TV as the TV's Home, only if you choose it** (spec 29):
+  - Installing changes nothing: the Home entry ships switched off, and CI fails any build where that isn't true (`preview/tools/home_check.py`).
+  - **Settings → TV & performance → Make Unified TV the Home screen** switches it on and lets Android itself ask. If Unified TV isn't chosen, it is switched straight off again.
+  - As Home, the Home button returns to the main screen; Back at the main screen never leaves it.
+- **Open original TV interface** (spec 30): a small adult-only row offers the manufacturer's interface for now, or as the default again after a second confirmation.
+- **Apps, and a Home you can change** (P05-03): a grid of every installed app plus Unified TV's shortcuts. Hold OK to open, add to or remove from Home, or see app information. Each room keeps its own dock.
+- **Updates that keep your settings:** the preview can be signed with your own durable key through four `UNIFIEDTV_PREVIEW_*` settings. Without them it is signed exactly as before.
+- **Safe install tool** (`preview/tools/install_preview.py`): compares the signing certificate and version with the preview on the TV, refuses a mismatch or downgrade, never uninstalls or clears data, and checks the TV's Home is unchanged. Not yet run on a TV.
+- **Release labels:** tagged previews say hardware-unverified, publish the certificate SHA-256, and say "test-signed" when no durable key was used.
+- **Evidence register** ([ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv)) for the P05, RC, HRC (TCL), OI and VPN-01 checks, validated by a unit test.
 - **Live TV protection, separate from VPN appearance** ([VPN_PROTECTION.md](docs/VPN_PROTECTION.md)):
   - **The protection:** Android's always-on NordVPN with *Block connections without VPN* stops traffic whenever NordVPN drops. Only Unified TV is exempt, so it can still reach the home network.
   - **The check:** `preview/tools/vpn_check.py` proves it on each TV at network level. It reads the Live TV app's own connections during playback and through a NordVPN disconnect, and writes a record with no addresses in it. The settings change asks first, saves a backup and can be rolled back.
@@ -34,6 +48,8 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5). The NAS, Home Assistant 
 - **Searches use the home network under a VPN:** they go over the home Wi-Fi or Ethernet even while NordVPN is on, where NordVPN allows it.
 - **The NAS search tries harder:** if the usual network-wide search gets no reply, the same request is sent to each address on the home network.
 - **Plain language on screen:** setup and status screens show server names, not IP addresses, ports or network terms.
+- **Every app opens the same way,** so the Live TV protection check applies whether Live TV is opened from Home or Apps.
+- **Quick Connect on an unencrypted home server** now asks for an explicit Continue first, instead of assuming it is trusted (spec 27.4).
 
 ### Fixed
 
