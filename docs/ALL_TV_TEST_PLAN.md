@@ -1,6 +1,8 @@
 # All-TV functional test plan
 
-This is a test plan and implementation inventory, **not a claim of full test readiness or passing hardware tests**. Record pass/fail independently for Sony, TCL and the Frame's external Android device. Record native Frame tests separately. Use the exact same APK/checksum when comparing.
+**Current native plan:** [Complete specification v2.0 draft](PRODUCT_SPEC.md) selects native Android for Sony/TCL and a native Tizen Web Application for Frame, with embedded Media3/AVPlay and no VLC playback. No external Frame streamer is required. Native Tizen remains unfinished. [TCL hardware evidence](TCL_TEST_2026_10_24.md) records the limited Android smoke pass and remaining gates. Earlier external-streamer and VLC milestones below are superseded by this plan.
+
+This is a test plan and implementation inventory, **not a claim of full test readiness or passing hardware tests**. Record pass/fail independently for Sony Android, TCL Android and native Frame Tizen. Compare the corresponding APK and WGT revisions; no external device is required. The legacy matrix is retained below for traceability and is superseded where it describes an external Frame runtime. Use the NT journeys in the complete specification for native Frame acceptance.
 
 | Test | Sony Android | TCL Android 11 | Frame Android streamer | Native Frame |
 | --- | --- | --- | --- | --- |

@@ -282,7 +282,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (out.length() != 0) out.append(',');
                 out.append(item.id);
             }
-            prefs.edit().putString("dock", out.toString()).apply();
+            prefs.edit().putString("dock", out.toString()).putInt("focus", index).apply();
         }
 
         boolean key(KeyEvent e) {

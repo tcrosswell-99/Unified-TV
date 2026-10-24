@@ -1,4 +1,6 @@
 # Unified TV
+
+**Current native plan:** [Complete specification v2.0 draft](docs/PRODUCT_SPEC.md) selects native Android for Sony/TCL and a native Tizen Web Application for Frame, with embedded Media3/AVPlay and no VLC playback. No external Frame streamer is required. Native Tizen remains unfinished. [TCL hardware evidence](docs/TCL_TEST_2026_10_24.md) records the limited Android smoke pass and remaining gates. Earlier external-streamer and VLC milestones below are superseded by this plan.
 ### Different TVs. One familiar experience.
 
 A family-first, independently maintained smart TV launcher project that puts the programmes, films, music and games you love at the centre. The aim is a calm, cinematic home screen that feels consistent across televisions from different manufacturers, while letting each room have its own apps and devices.
@@ -13,7 +15,7 @@ A household can have a Sony in the living room, a TCL elsewhere and a Samsung Fr
 
 - **One clean, editable dock:** favourite streaming apps that family members will be able to pin, remove or reorder with the remote. No adverts or endless content rows. **Planned for Unified TV.**
 - **Content-aware atmosphere:** focus Netflix, BBC or a film in your own library, and the full-screen artwork changes to match that selection. No unrelated wallpaper behind a highlighted tile.
-- **Personal films and television:** browse your own NAS collection through beautiful posters and a simple `View All` library. VLC can handle playback behind the scenes, without being another home-screen tile.
+- **Personal films and television:** browse your own NAS collection through beautiful posters and a simple `View All` library. Embedded Media3 on Android and AVPlay on Tizen are the selected playback engines; codec and household acceptance remain open.
 - **Room-specific shortcuts:** an Xbox tile only on the television connected to the console; Samsung TV Plus only where it is installed. The layout stays familiar.
 - **Less to learn:** designed for children, visitors and family members who just want to watch something.
 
@@ -25,7 +27,7 @@ The visual direction draws on the *principles* of contemporary tvOS motion and m
 | --- | --- | --- |
 | Premium home screen | One translucent dock, contextual full-screen artwork, immediate remote focus and day/night refinement | **Planned redesign** |
 | Favourite apps | SmartTube, Netflix, Disney+, BBC iPlayer, Live TV and Music; configurable per household | **Planned configuration** |
-| Personal NAS library | Poster artwork, films, series, search and `View All`; VLC playback hidden from users | **Planned integration** |
+| Personal NAS library | Poster artwork, films, series, search and `View All`; embedded native playback | **Planned integration** |
 | Ring doorbell | Optional automatic live camera takeover when pressed **or a person is detected**, even from artwork mode | **Research and real-TV tests required** |
 | Alexa reminders | Optional discreet text toast over playback, where a supported event and overlay are available | **Research and testing required** |
 | Voice assistant | Optional ChatGPT voice to search local content, open apps and answer questions, with British English voice preference | **Planned; API, microphone and permissions testing required** |

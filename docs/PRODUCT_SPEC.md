@@ -3,11 +3,11 @@
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 1.9 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
+**Version:** 2.0 draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
-> The television should make it effortless to find and enjoy programmes, films, music and games. The person watching should not need to understand VLC, the NAS, Jellyfin, Home Assistant, VPN connections or which operating system is running.
+> The television should make it effortless to find and enjoy programmes, films, music and games. The person watching should not need to understand playback engines, the NAS, Jellyfin, Home Assistant, VPN connections or which operating system is running.
 
 **Design baseline for the fork:** The quiet, full-screen, one-dock visual direction in the household's CleanFrame-style reference image is the approved starting point. A selected item must change the *whole* backdrop to imagery genuinely related to that app or NAS title. The detailed motion, glass, typography, progressive-reveal, accessibility and performance rules in Section 4 are mandatory acceptance criteria. Third-party references guide principles; our application must use original, appropriately licensed assets and its own implementation.
 
@@ -24,7 +24,7 @@ Build a premium, remote-first, Apple TV-inspired home experience for three house
 3. **Ring is mandatory:** a doorbell press **or person detection** automatically interrupts active wallpaper / ambient / Frame Art Mode and opens the live camera without pressing the remote; restore the previous state afterwards.
 4. **Live TV is VPN-protected:** ReamSmartz must not send traffic without a verified NordVPN connection. This applies to all ways of launching Live TV, including the Spurs card and voice commands.
 5. **Artwork is artwork:** on Samsung Frame Art Mode there is **no clock, VPN badge, widget, app row or permanent UI**. A triggered Ring camera is the deliberate exception.
-6. **Hide the plumbing:** VLC is **not** a home app tile. Jellyfin / Synology / Home Assistant are not consumer-facing names in normal browsing.
+6. **Hide the plumbing:** use embedded Media3/ExoPlayer on Android and Samsung AVPlay on Tizen. VLC is excluded from the application and playback path. Jellyfin / Synology / Home Assistant are not consumer-facing names in normal browsing.
 7. **Optional performance cleanup on all TVs:** present one consistent, opt-in **TV Performance & Cleanup** entry for Sony, TCL and Samsung Frame. It must detect the underlying platform and show only operations proven safe and supported on that model/firmware. Android and Tizen have different permissions; a universal interface does **not** imply universal access to system packages. Never compromise DRM, remote, Wi-Fi, HDMI, Bluetooth, sound, Art Mode, updates, casting, accessibility or recovery.
 8. **Alexa reminders:** while actively watching video, a due Alexa reminder should appear as a small, temporary toast above the picture, with its reminder text where the source exposes it. It must not pause playback, hijack focus or compete with a Ring event. Device/OS overlay restrictions are an explicit release gate.
 9. **Preserve Samsung TV Plus:** Samsung Frame keeps its existing native Samsung TV Plus service, with a Frame-only branded tile. This is a separate source from ReamSmartz and is not subject to the ReamSmartz NordVPN gate. The optional Samsung cleanup must protect TV Plus and all required dependencies.
@@ -32,9 +32,16 @@ Build a premium, remote-first, Apple TV-inspired home experience for three house
 
 ### Reconciliation of the shorter v1.7 architecture proposal
 
-The short v1.7 proposal contains useful technical suggestions, but **this full v1.8 document supersedes it without deleting previously agreed requirements**. Adopt local on-TV Connections and a safe Windows-to-TCL Stage 0.5. Evaluate optional AirPin LITE, split tunnelling, hybrid voice commands and Media3 as engineering alternatives rather than declaring them working.
+The short v1.7 proposal contains useful technical suggestions, but **this full v2.0 document supersedes it without deleting previously agreed requirements**. Adopt local on-TV Connections and a safe Windows-to-TCL Stage 0.5. Evaluate optional AirPin LITE, split tunnelling, hybrid voice commands and Media3 as engineering alternatives rather than declaring them working.
 
 Keep six shared entertainment tiles as an **editable default**, not an immutable allowlist. Keep Samsung's native Art Mode and Samsung TV Plus through hardware-specific Tizen/Android handoffs, the existing optional reversible cleanup, Alexa reminder toasts and both Ring triggers. Do not claim guaranteed sub-500ms 4K NAS playback, undocumented NordVPN control Intents or a VPN kill switch based only on a connection icon. See [v1.7 architecture review](ARCHITECTURE_REVIEW_V1_7.md).
+
+
+### Consolidation of the latest native proposal
+
+Version 2.0 incorporates the owner's shorter v1.9 proposal and retains the complete design, editable dock, profiles, accessibility, household features and acceptance history below. The chosen delivery is two native codebases: Android for Sony/TCL and a Tizen Web Application for the Frame. The same visual and remote contracts apply, with honest OS capability differences. Sections 24 and 25 define the revised native platform contract and evidence gates. Those sections supersede any residual historical reference to an external Frame streamer or VLC. No external box is required. The four newly supplied Samsung tests use NT identifiers because AT-58 to AT-61 already identify dock editing journeys.
+
+The proposal's automatic boot launch, arbitrary MKV direct play, SmartThings force-closing Netflix, and cross-app Back return are desired outcomes to investigate, not guaranteed Samsung APIs. Keep Ring interruption mandatory as a release goal; an unproven launch/Art Mode route blocks that capability's release rather than being labelled working.
 
 ## 2. Devices and runtime
 
@@ -42,9 +49,9 @@ Keep six shared entertainment tiles as an **editable default**, not an immutable
 |---|---|---|---|
 | TV-SONY | Sony BRAVIA 65-inch OLED, Google TV | Native Android TV launcher | Xbox tile; Xbox on HDMI 3 (eARC connector); OLED-safe ambient mode; **equal-priority performance baseline + optional Android cleanup** |
 | TV-TCL | TCL 55-inch, **Android TV 11 confirmed from TV settings** | Same Android launcher, lightweight rendering profile | Equal-priority performance baseline; installed **AirPin LITE** receiver; optional Android cleanup only after independent tests and owner consent |
-| TV-FRAME | Samsung The Frame, Tizen | **Preferred:** Android TV/Google TV external HDMI device running same launcher; Samsung native Art Mode retained | Automatic Art Mode -> Ring -> Art Mode; Echo Studio audio routing; **retain native Samsung TV Plus**; optional Tizen-native, supported-settings cleanup plus separate Android-streamer cleanup |
+| TV-FRAME | Samsung The Frame, Tizen | Native Tizen Web Application; Samsung Smart Hub remains the system Home | Native AVPlay; model-gated Art Mode and Ring handoff; retain Samsung TV Plus; Echo Studio audio path subject to tests; supported-settings maintenance only |
 
-**GATE-TV-01:** Record exact model, firmware, Android / Tizen version, RAM and available storage of all TVs. Confirm that TCL actually runs Google TV. **GATE-TV-02:** Establish an external Android streaming device for the Frame if required. A native Tizen port is a research track, not a substitute for parity with Android-only apps (especially SmartTube and NordVPN).
+**GATE-TV-01:** Record exact model, firmware, OS version, accessible memory and storage privately. TCL Android TV 11 is confirmed; a Google TV-branded interface is not assumed. **GATE-TV-02:** validate the native Tizen Web Application on the Frame. No external streaming device is required by this product plan. Android-only services remain explicit capability gaps until a legitimate native alternative is approved.
 
 The rendering system uses one shared design and per-TV capability configuration, for example `sony`, `tcl`, `frame`. No separate home-screen design forks. Maintain independent volume, wallpaper, brightness and camera-overlay preferences per display. Shared media listings and app ordering should update across the household without exposing configuration tools to viewers. The performance tool should offer the same entry point and language across devices but use *device capability adapters*; future LG webOS, Fire TV and other brands require separate, tested adapters rather than pretending Android tooling runs on every OS.
 
@@ -76,7 +83,7 @@ External developers and GitHub Actions cannot assume access to the household's p
 
 ### 3.1 Remote interaction contract (P0)
 
-- Directional pad changes focus predictably; **OK** activates; **Back** returns one navigation level; **Home** returns to our launcher wherever Android allows.
+- Directional pad changes focus predictably; **OK** activates; **Back** returns one navigation level; **Home** follows the OS: stock Home in the preview, our launcher only after a separately authorised Android Home change, and Samsung Smart Hub on Tizen.
 - Focus must be obvious even without background images: tile scale, elevation/contrast and accessible outline. Do not use colour alone.
 - On entering Home, restore the last relevant focus position; when dismissing an overlay, restore the underlying screen and playback state.
 - **Hold OK** on a Home tile to access **Move**, **Remove from Home** and optional **App info**; short OK always launches. A parental edit lock may require a PIN. All editing works with the ordinary remote.
@@ -112,7 +119,7 @@ App order and available actions are per-TV; the Sony's Xbox and Frame's Samsung 
 
 **Experience statement:** A personal cinema with the calm of a gallery. **Content first, underlying technology hidden.** The launcher must be a distinctive, original design inspired by the *principles* of the tvOS 26/27 Liquid Glass era, not a pixel-perfect reproduction of Apple's screens or code. Apple introduced the Liquid Glass redesign in tvOS 26; tvOS 27 is the current reference point for its continued refinement. Our primary non-Apple visual reference is the user-supplied image of a quiet coastal backdrop with one translucent dock, a clock and three small top controls. Supporting references are CleanFrame, Vision Stream and the TV Interface motion study. No reference artwork, film still, logo, proprietary typeface, animation file or UI layout is cleared for redistribution merely because it is visible online.
 
-**The visible result must feel:** quiet, cinematic, light in visual weight, instantly responsive, confident at living-room viewing distances, and personal to the household. Fluid motion adds clarity, never delay. The same personality applies on Sony, TCL and the Frame's external Android device. Samsung's *native* Art Mode remains separate and unmodified except for the required Ring takeover.
+**The visible result must feel:** quiet, cinematic, light in visual weight, instantly responsive, confident at living-room viewing distances, and personal to the household. Fluid motion adds clarity, never delay. The same personality applies on Sony, TCL and the native Frame application. Samsung's *native* Art Mode remains separate and unmodified except for the required Ring takeover.
 
 **Design priorities, in order:**
 
@@ -212,7 +219,7 @@ Press **Down** from the dock to reveal **Your Films & TV**. The dock gently retr
 2. The *same film's* wide landscape backdrop becomes the full screen hero. Do not show an app-branded background while a NAS title has focus.
 3. Reveal the title, year and runtime if known; one short synopsis line is enough on Home. Remove unsupported or mismatched metadata.
 4. The rest of the posters recede in contrast, without vanishing or shifting unexpectedly.
-5. **OK** opens the agreed title detail/play path and hands verified playback to VLC underneath; users never browse Synology directories or VLC file lists.
+5. **OK** opens the agreed title detail/play path and starts embedded native playback; users never browse Synology directories or VLC file lists.
 
 **When focusing a series:** use the series' correct landscape backdrop, series title and a truthful next-episode/season label only when the underlying data proves it. Never label something `Continue Watching` without an actual tested watch position. A season or episode selection is explicit within the dedicated catalogue, not an unpredictable focus action.
 
@@ -322,7 +329,7 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 - **Pass:** focus is acknowledged immediately despite background image loading. **Fail:** the remote feels sticky while images load or glass animates.
 - **Pass:** 100 quick remote presses finish on the correct tile with the **correct final background**, without rendering stale art. **Fail:** the image lags behind, freezes or belongs to the previous focus.
 - **Pass:** glass provides separation without hiding the artwork; labels read comfortably from sofa distance. **Fail:** panels and glows overwhelm films and family photos.
-- **Pass:** Sony, TCL and Frame external device look recognisably identical in high/low rendering modes. **Fail:** the TCL looks like a visibly different, inferior launcher.
+- **Pass:** Sony, TCL and native Frame application look recognisably identical in high/low rendering modes. **Fail:** the TCL looks like a visibly different, inferior launcher.
 - **Pass:** Samsung native Art Mode contains only artwork until a Ring trigger. **Fail:** any clock, VPN badge or decorative controls remain onscreen.
 - **Pass:** Ring pre-empts transitions and restores the prior scene. **Fail:** a decorative effect delays or conceals the doorbell video.
 - **Pass:** voice, toasts, Spurs and VPN restrictions appear only when context requires them. **Fail:** they become permanent dashboard widgets.
@@ -330,21 +337,18 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 
 ## 5. Personal films and TV from Synology (P0)
 
-- The user has a Synology DiskStation with local films / TV exposed via UPnP; VLC currently plays them. The custom launcher is the *front end*, not VLC's file browser.
-- Preferred metadata service: Jellyfin on a capable server / Synology, using the NAS library as source. It supplies title matching, posters, backdrops, seasons, episodes and catalogue search. Confirm available Synology hardware/Container Manager first.
-- Home row should favour recently added, unfinished (when proven reliable) and unseen items. Keep it curated, varied and easy to scan.
-- **View All** opens **our own** poster-led library: Films, Series, Search, Genres, Recently Added and series > season > episode navigation, with no Plex-style clutter.
-- OK on an item ultimately **plays using VLC** by a verified playable URI/intent (SMB/UPnP/HTTP hand-off determined in testing). Credentials and file paths are hidden.
-- Do not claim reliable **Continue Watching** unless watch state and seek position are captured from actual playback and linked to the correct title and episode. If VLC cannot expose sufficient events, omit that label rather than inventing progress; a compatible playback bridge can follow later.
-- NAS failure must not block Netflix, BBC or the launcher. Show locally cached posters and a polite library-unavailable message.
+The NAS remains the media source. A Jellyfin-compatible service provides authenticated metadata, posters, backdrops, search, genre filters, seasons and episodes. Direct SMB or UPnP discovery alone does not provide this catalogue. Confirm server availability and capabilities without requiring the viewer to manage folders.
 
-**GATE-NAS-01:** prove direct play of a film, subtitled film and selected TV episode from a custom tile using VLC on Sony and TCL. **GATE-NAS-02:** verify artwork matching and file access when NordVPN is connected. **GATE-NAS-03:** decide whether 'Continue Watching' is honest and reliable.
+- Down reveals a curated Your Films & TV row; View All opens Films, Series, Search, Genres and Recently Added. Continue Watching appears only after progress round-trip has passed.
+- Android uses embedded Media3/ExoPlayer. Tizen uses embedded AVPlay. VLC is excluded; no external player handoff or VLC fallback is part of this version.
+- Prefer direct play. Validate containers, codecs, profiles, bitrate, HDR, audio passthrough, subtitles, network throughput and server capabilities independently. MKV is a container, not a guarantee of playback. Permit an explicitly supported server remux/transcode path when needed; explain unsupported media and never promise instant playback.
+- Measure request-to-first-frame separately for cold and warm playback, buffering, seek and resume on representative 1080p and 4K content. Playback controls must support play/pause, seek, audio/subtitle selection and Back without accidental exit.
+- Report authenticated session start, progress, pause and stop with correct user, item, media source, position and session identity. Persist through server state and reload after restart; local guesses cannot populate Continue Watching. Handle network loss and duplicate stop events safely.
+- Use separate Adult and restricted Child server accounts. Validate identity and permissions; enforce access at the server for browse, search, images and playback. An adult server API key is not a Child account.
+- Android requests use scoped credentials in headers and reject credential-bearing redirects. AVPlay does not establish support for arbitrary media authentication headers. Validate a protected LAN media broker or supported scoped cookie path before enabling private Tizen playback. Never put long-lived server tokens in URLs.
+- Bound artwork/cache memory and cancel obsolete requests. On server loss, Home and installed app shortcuts continue to work; show honest unavailable feedback and cached artwork only where a cache actually exists.
 
-### 5.1 Compare invisible playback engines on real NAS content
-
-Keep the user-facing NAS catalogue separate from playback technology. **VLC remains the known working initial handoff** for the household; trial an embedded Android Media3/ExoPlayer player as an alternative, not an automatic replacement. Confirm 1080p/4K MKV, HEVC/HDR, audio passthrough, subtitle tracks, seek/resume and server support on the actual TCL and Sony. Track real first-frame cold/warm timings and p50/p95 latency, not an untested 500ms guarantee. Report unsupported formats and use the compatible player transparently. Never surface VLC or ExoPlayer as a Home tile.
-
-**GATE-PLAYER-01:** play the same representative files with VLC and Media3, including alternate subtitles/audio, and document which backend works. **GATE-PLAYER-02:** do not show Continue Watching unless actual position sync has been proven.
+**GATE-NAS-01:** play film, subtitled film and episode through each embedded player on its target hardware. **GATE-NAS-02:** verify matching artwork, local access and server authorisation with VPN policy active. **GATE-NAS-03:** prove watch-state round-trip including profile switch and restart. **GATE-PLAYER-01:** publish the measured per-device codec/audio/subtitle matrix. **GATE-PLAYER-02:** block unsupported playback without falling back to VLC.
 
 ## 6. Live TV and NordVPN protection (P0, security-critical)
 
@@ -355,7 +359,7 @@ Keep the user-facing NAS catalogue separate from playback technology. **VLC rema
 - Netflix, Disney+, BBC, native Samsung TV Plus, NAS and other permitted services should retain normal availability where technically possible; account for system-wide VPN lockdown trade-offs.
 - NordVPN local-network discovery must preserve access to Home Assistant and the DiskStation. A country flag is only shown where geolocation verification is trustworthy.
 
-**GATE-VPN-01:** with VPN off, Live TV traffic fails; **GATE-VPN-02:** drop VPN mid-stream, confirm packets do not escape; **GATE-VPN-03:** Sony, TCL and Frame external device pass independently.
+**GATE-VPN-01:** with VPN off, Live TV traffic fails; **GATE-VPN-02:** drop VPN mid-stream, confirm packets do not escape; **GATE-VPN-03:** Sony, TCL and native Frame application pass independently.
 
 ### 6.1 VPN split tunnelling and protection gate
 
@@ -390,7 +394,7 @@ Do not make AirPin a permanent app dock tile. Under **Settings > Connections > A
 **Presentation priority:**
 
 1. **In wallpaper / ambient mode on Sony/TCL:** without user action, interrupt wallpaper and open the **live Ring feed** prominently, then restore exact previous artwork and ambience.
-2. **In Samsung's native Art Mode:** without user action, command the TV into a real live-view state (possibly switch to external Android HDMI player), then restore **native Art Mode** and prior artwork. The Frame shows **no clock or other permanent UI** in Art Mode.
+2. **In Samsung's native Art Mode:** without user action, command the TV into a real live-view state through a model-verified native app launch path, then restore **native Art Mode** and prior artwork. The Frame shows **no clock or other permanent UI** in Art Mode.
 3. **Whilst browsing Home or a library:** immediate camera overlay over current screen.
 4. **Whilst playing another app/music:** try an in-app-independent Android overlay (picture-in-picture); if OS/DRM blocks it, use a documented and tested full-screen interruption fallback. Restore focus and volume afterwards.
 5. Ring alert has precedence over Alexa reminder toasts, ambient timeout, music, ChatGPT responses and standard notifications. Queue an Alexa reminder briefly if Ring interrupts, or discard it after its short relevance window. TV power **off** is separate from ambient: do not wake a fully off TV unless explicitly configured.
@@ -415,7 +419,7 @@ Possible Android building blocks to test before writing new code: `vessosa/ha-vi
 
 - Active Home shows one small, legible **24-hour clock**, default **top-left** to follow the approved calm visual reference (with a user preference for top-right if required); it follows `Europe/London` GMT/BST and never shows seconds. No second clock in the dock or title area.
 - Place the truthful NordVPN state and verified country flag, tiny optional ChatGPT control and discreet Settings/More affordance in a **single small top-right utility group**. Each stays the same location while focus and background art change. The hero image, not the status icons, receives attention.
-- The current time and utilities vanish in artwork/ambient mode. In **Samsung native Art Mode there is no chrome at all** until Ring automatically interrupts it. Do not force a permanent header over Netflix, BBC, music, VLC playback or Xbox.
+- The current time and utilities vanish in artwork/ambient mode. In **Samsung native Art Mode there is no chrome at all** until Ring automatically interrupts it. Do not force a permanent header over Netflix, BBC, music, embedded playback or Xbox.
 - Status chips stay silent during normal browsing. Only a relevant event, such as Live TV activation without a verified VPN, expands into a temporary action sheet.
 
 ## 11. BBC, core apps and Sony Xbox (P0)
@@ -423,7 +427,7 @@ Possible Android building blocks to test before writing new code: `vessosa/ha-vi
 - Six shared consumer app tiles: **SmartTube, Netflix, Disney+, BBC (iPlayer), Live TV (ReamSmartz) and Music**. A missing app should show install/help only in Settings, not a dead tile.
 - `BBC` should clearly identify iPlayer without pretending to be a different provider. Preserve each app's internal UX when launched; this project replaces Home, not Netflix or Disney+.
 - Sony only: beautifully branded **Xbox** tile. OK -> send Home Assistant Xbox wake, wait for ready, switch **Sony HDMI 3 (eARC)**, then hand off to Xbox. Clear timeout/error feedback; don't show on TCL or Frame. Validate wake state and HDMI input name against real entities. Xbox power mode may require Sleep, with standby power trade-off.
-- Samsung Frame only: branded **Samsung TV Plus** tile. Keep Samsung TV Plus installed and functional as a native Tizen service. Selecting the tile should open Samsung TV Plus, preferably using a verified Samsung/Home Assistant native-app launch command; from the external Android launcher this entails switching control and input to Tizen. Do not pretend that an external Android APK can launch a Tizen app directly. If native app deep linking cannot be reliably automated on the specific Frame firmware, expose a clearly defined tested fallback. Record the previous input/launcher state so Back/Home and Ring recovery are as predictable as Samsung permits. Never show this tile on Sony or TCL.
+- Samsung Frame only: branded **Samsung TV Plus** tile. Keep Samsung TV Plus installed and functional as a native Tizen service. Selecting the tile should open Samsung TV Plus, preferably using a verified Samsung/Home Assistant native-app launch command; from the native Tizen application use a discovered and verified application identifier or a tested household controller action. If native app deep linking cannot be reliably automated on the specific Frame firmware, expose a clearly defined tested fallback. Record the previous input/launcher state so Back/Home and Ring recovery are as predictable as Samsung permits. Never show this tile on Sony or TCL.
 - **TV Plus and ReamSmartz are distinct services.** The NordVPN fail-closed rule applies to ReamSmartz/`Live TV`, including Spurs and voice pathways, but not automatically to Samsung TV Plus. A separate Samsung TV Plus connection should be tested for normal playback and audio routing.
 - Be aware that HDMI-CEC, ARC/eARC and input routing vary. Never change sound output without validating the real HDMI setup.
 
@@ -456,38 +460,10 @@ Use Home Assistant Assist or an allowlisted local phrase recogniser for determin
 
 ## 15. Architecture and separation of concerns
 
-```text
-                     Household configuration + content services
-           +-----------------------------------------------+
-           | Synology / optional Jellyfin media catalogue |
-           | Home Assistant Green: Ring, Xbox, Frame mode  |
-           | VPN verification / music / optional voice API |
-           +------------------------+----------------------+
-                                    |
-                 Home APIs / events; secrets stay server-side
-                                    |
-      +-----------------------------+-----------------------------+
-      |                             |                             |
- Sony Google TV              TCL Google TV              Samsung Frame (Tizen)
- Native launcher            Same native launcher       Native Samsung Art Mode
- + Ring overlay             + Ring overlay             + tested HA mode switching
- + Xbox capability          + light graphics           + external Android streamer
-      |                             |                      same launcher + Ring viewer
-      +-----------------------------+-----------------------------+
-                                    |
-                         One UX, device profiles
+Android Sony and TCL use the native Android application with embedded playback and an optional permission-based alert service. Samsung Frame uses the native Tizen Web Application with embedded AVPlay. Both implement the same interaction contract and local configuration model. Home Assistant supplies household events and an external, model-specific Frame launch and Art Mode coordinator. The media server supplies catalogue, artwork and watch state. A protected local media broker is the proposed Tizen streaming authentication boundary, subject to implementation and tests.
 
-    Home Assistant Alexa Devices: reminder time/label
-                         |
-    due-event service -> short text toast -> supported TV viewer
 
-    Optional TV Performance & Cleanup (separate admin workflow)
-       Android adapter: authorised desktop ADB helper
-       Samsung Tizen adapter: supported TV settings/inspection
-       Other platforms: only when a tested adapter is available
-```
-
-- Main Android launcher, camera overlay, reminder-toast receiver and background integration service must have **separate lifecycle**: Ring and Alexa reminders may not depend on Home being foreground. On Samsung native apps, third-party overlays remain unsupported unless a genuine OS-supported mechanism is demonstrated; external Android playback is the primary parity path.
+- Main Android launcher, camera overlay, reminder-toast receiver and background integration service must have **separate lifecycle**: Ring and Alexa reminders may not depend on Home being foreground. On Samsung native apps, third-party overlays remain unsupported unless a genuine OS-supported mechanism is demonstrated; the native Frame app may display alerts only while visible; an external household coordinator must handle launch and Art Mode transitions.
 - Preference/configuration data centrally synced where useful, with last-known-good local copies. A TV that loses HA/network must still open installed apps and show wallpaper.
 - Avoid placing heavyweight metadata indexing and AI requests on the TCL. Cache resized JPEG/WebP artwork; bound caches and cancel obsolete fetches.
 - Use properly licensed fonts, icons, posters and logos, with attribution and no redistribution of third-party paid assets. No copying Apple or streaming app interface source.
@@ -502,7 +478,7 @@ These are **engineering targets to validate**, not measured performance of your 
 | Background correctness | The final item after rapid input has correctly matched art or its own fallback, never stale art from a prior focus |
 | Animation smoothness | Aim for 60 fps with no persistent dropped-frame clusters on the weakest TCL or ageing Sony; reduce effects rather than input responsiveness |
 | Visual parity | Identical information hierarchy and navigation on all TVs; lightweight rendering reduces cost, not quality of layout or content identity |
-| Home usable after warm return | Target under 2 seconds on TCL, Sony and Frame streaming device |
+| Home usable after warm return | Target under 2 seconds on TCL, Sony and native Frame application |
 | Artwork fetch | Never block D-pad focus; placeholder immediately, image replaces asynchronously |
 | Background footprint | Memory budget established using actual TCL RAM; no continuously running recommendation polling or full-resolution bitmap cache |
 | Idle/OLED | Bright UI fades out; varied imagery; screensaver does not leave fixed high-intensity regions for extended periods |
@@ -558,10 +534,10 @@ These are **engineering targets to validate**, not measured performance of your 
 **Device behaviour and platform gate:**
 
 - **Sony and TCL running Android/Google TV:** use a TV-wide overlay service such as the Home Assistant `Notifications for Android TV / Fire TV` integration for text, or our own receiver, once the owner grants notification and **Display over other apps** permissions. Test above Netflix, BBC, SmartTube, VLC and Xbox HDMI as applicable: protected video/DRM or HDMI input modes can block third-party overlays even if normal Android apps work. If an HDMI source is not overlay-capable, record it as unsupported rather than promise every source.
-- **Samsung Frame while using an external Android streamer:** overlays can cover apps **running on that streamer**; they cannot be drawn above native Tizen apps (including **Samsung TV Plus**) or native Art Mode. Samsung's developer documentation states third-party overlays over other Tizen applications are unsupported. For native Samsung playback, the desired notification requires an independently demonstrated Samsung-supported notification channel; otherwise it is a documented parity gap. Switching HDMI solely for a minor reminder is **not** an acceptable surprise interruption.
+- **Samsung Frame native application:** the application can display its own alerts while visible; it cannot draw over other native Tizen apps (including **Samsung TV Plus**) or native Art Mode. Samsung's developer documentation states third-party overlays over other Tizen applications are unsupported. For native Samsung playback, the desired notification requires an independently demonstrated Samsung-supported notification channel; otherwise it is a documented parity gap. Switching HDMI solely for a minor reminder is **not** an acceptable surprise interruption.
 - **Samsung native Art Mode:** no Alexa reminder toasts by default, keeping the artwork pristine. Ring remains the mandatory, automatic Art Mode interruption. In fully powered-off state, Alexa reminders do not wake the screen.
 
-**Acceptance gate:** prove one reminder arriving within a measured interval of its Alexa due time, with exact label, on Sony/TCL and on Samsung *external Android viewing path*. Test creation just before due, edits, cancellation, multiple speakers, standby/wake, notifications during DRM playback, and Ring colliding with a reminder. Report the actual latency and any native Tizen gaps before claiming support across every screen. If reliability is insufficient, keep reminders disabled rather than show stale or misleading alerts.
+**Acceptance gate:** prove one reminder arriving within a measured interval of its Alexa due time, with exact label, on Sony/TCL and inside the visible native Samsung application; record external-app restrictions. Test creation just before due, edits, cancellation, multiple speakers, standby/wake, notifications during DRM playback, and Ring colliding with a reminder. Report the actual latency and any native Tizen gaps before claiming support across every screen. If reliability is insufficient, keep reminders disabled rather than show stale or misleading alerts.
 
 
 Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessible. Use a protected LAN and least-privilege credentials. Disable ADB / wireless debugging once installation and verification are complete. Review any fork's build scripts before executing them on a family television.
@@ -571,8 +547,8 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | ID | From | User action / event | Pass condition |
 |---|---|---|---|
 | AT-01 | Home | Move focus Netflix -> Disney+ -> BBC | Each tile lifts, background changes smoothly, remote remains responsive |
-| AT-02 | NAS row | Highlight film, open details/play | Matching poster/backdrop; film opens in VLC and sound/subtitles work |
-| AT-03 | NAS row | View All -> Series -> season -> episode | Native catalogue flow; correct episode plays in VLC; no folder interface |
+| AT-02 | NAS row | Highlight film, open details/play | Matching poster/backdrop; film opens in the embedded platform player and sound/subtitles work |
+| AT-03 | NAS row | View All -> Series -> season -> episode | Native catalogue flow; correct episode plays in the embedded platform player; no folder interface |
 | AT-04 | TV Home | Select Live TV with VPN off | App does not send unprotected data; useful blocked/connecting state |
 | AT-05 | ReamSmartz playing | Force VPN disconnect | No unprotected stream continues; user sees an explanation |
 | AT-06 | Any TV Home | Spurs matchday | Card on matchday only, correct UK kick off, never scores, opens protected Live TV |
@@ -594,12 +570,12 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-22 | Cleanup already applied | Undo last batch, then Restore all | Original per-user package states restored and TV remains usable without custom launcher |
 | AT-23 | Samsung Frame native Tizen | Open optional TV Performance, review native options | Model/firmware-specific guided cleanup offered; Android commands absent; factory packages not promised removable |
 | AT-24 | Samsung Frame native Tizen | Attempt unsupported SDB/root-based cleanup or firmware changes | Ordinary module refuses it; no factory package removal; Art Mode, audio, recovery and updates preserved |
-| AT-25 | Frame external Android streaming device | Open performance settings and choose target | Native Frame and streamer shown as separate devices; applying one profile never alters the other |
+| AT-25 | Native Frame | Open performance settings | Only supported native Tizen operations are offered; Android package operations are unavailable |
 | AT-26 | Android TV, Alexa reminder due | Create a visible, non-sensitive Alexa reminder and watch Netflix/BBC | Correct text toast overlays video for 6-10 seconds without taking focus or pausing; actual latency recorded |
 | AT-27 | Alexa reminder scheduled then edited/cancelled | Change or cancel before due | No old message appears; revised label/time shown only if confirmed by Alexa data source |
 | AT-28 | Alexa reminders on several devices | Same Alexa reminder appears in multiple sensors | Each opted-in TV sees no more than one toast; privacy and per-TV settings honoured |
 | AT-29 | Alexa reminder and Ring doorbell | Trigger both concurrently | Live Ring feed wins; no reminder obscures it, and no stale reminder appears later |
-| AT-30 | Samsung Frame with external streamer running Netflix/BBC | Alexa reminder due | Toast appears over external Android apps if verified; native Tizen/Art Mode gap reported honestly |
+| AT-30 | Native Frame | Alexa reminder due inside and outside our app | Toast works inside our visible app; no third-party overlay claim or forced viewing interruption for a minor reminder |
 | AT-31 | Native Samsung Art Mode | Alexa reminder due with defaults | Artwork remains unobstructed; Ring remains the only mandatory interruption |
 | AT-32 | Unknown TV platform | Open optional cleanup module | Safe read-only guidance only, no unsupported Android/Tizen commands or misleading promises |
 | AT-33 | Samsung Frame Home | Focus and select Samsung TV Plus tile | Correct branding and themed backdrop; existing native Samsung TV Plus opens with working channels and guide; no TV Plus tile on Sony/TCL |
@@ -612,7 +588,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-40 | App focus | Hold Right rapidly across all tiles and release | Visual focus follows input without delay, and the final settled background belongs to the final focused app; no queued, old artwork appears later |
 | AT-41 | App dock | Press Down then Up | Single Synology row emerges naturally; dock recedes without disappearing; Up restores dock and last app focus without a white flash |
 | AT-42 | NAS shelf | Select View All then navigate Series > season > episode and Back | One consistent poster-led visual language; each Back action restores previous focus and context |
-| AT-43 | Sony, TCL and Frame external device | Compare the same focus states | Shared layout and names are visually recognisable on all three; reduced render profile changes motion cost only |
+| AT-43 | Sony, TCL and native Frame application | Compare the same focus states | Shared layout and names are visually recognisable on all three; reduced render profile changes motion cost only |
 | AT-44 | Home with bright snowy/photo background | Focus tiles and read app labels from living-room seating | Glass/titles maintain accessible readability; no hard-coded dark-on-dark or white-on-white failure |
 | AT-45 | App dock with source image unavailable | Disconnect network or remove an optional hero asset, then focus item | Brand-aware asset or correct neutral fallback appears; no unrelated image, missing-image icon or navigation freeze |
 | AT-46 | Evening transition | Keep the same app selected across day/dusk/night boundary | Only material warmth/lighting changes gently; context, artwork identity, position and focus stay stable |
@@ -634,7 +610,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-62 | TCL Settings > Connections | Enter valid and invalid Home Assistant/Jellyfin settings by remote | Correct authentication/connectivity states, protected local storage and offline fallback |
 | AT-63 | TCL Windows pilot | Build separate preview and connect using supported Android 11 debugging or offline sideload | Stock HOME untouched, launch and edit controls work, clean uninstall |
 | AT-64 | TCL AirPin LITE | After authorised setup, restart and cast from iOS device | Receiver operational status is real; no misleading glyph; resource use measured |
-| AT-65 | TCL/SONY NAS | Play representative 4K/HD file with VLC and embedded Media3 candidate | Audio/subtitles work where supported; first frame measured; fallback documented |
+| AT-65 | TCL/SONY NAS | Play representative 4K/HD file with embedded Media3 and AVPlay on their respective devices | Audio/subtitles work where supported; first frame measured; supported remux/transcode or unavailable outcome documented |
 | AT-66 | TCL/SONY Live TV | Force VPN drop during protected ReamSmartz traffic | Target app cannot leak unprotected packets; otherwise remains blocked |
 | AT-67 | Family Home | Use six starting shortcuts, add an eighth and rearrange | One uncluttered dock, remote-only management, per-TV persistence |
 | AT-68 | Samsung Frame | Return from Ring interruption to native Art Mode and native TV Plus | Existing native services remain accessible; actual model verified |
@@ -648,26 +624,26 @@ Collect cold/warm start, D-pad latency, focus-to-background timing, dropped fram
 
 ## 18. Delivery stages and decision gates
 
-**Stage 0: Hardware audit and safe proof of concept.** Collect model/firmware IDs for **Sony, TCL and Samsung Frame**, record individual performance baselines **before any changes**, identify safe official settings and rollback limits by OS, validate Home Assistant Ring **and Alexa reminder** entities, VPN networking and VLC hand-off. No irreversible changes and no mandatory cleanup.
+**Stage 0: Hardware audit and safe proof of concept.** Collect model/firmware IDs for **Sony, TCL and Samsung Frame**, record individual performance baselines **before any changes**, identify safe official settings and rollback limits by OS, validate Home Assistant Ring **and Alexa reminder** entities, VPN networking and embedded playback. No irreversible changes and no mandatory cleanup.
 
 **Stage 0.5: Safe CI/CD and Windows-to-TCL sideloaded test (P0).** Build a test-signed **standalone** Android preview package, separate from the existing HOME application, in GitHub Actions and verify the APK manifest and signature. Confirm Windows can connect to TCL **Android TV 11** through a *supported, user-enabled* debug route. Google's modern Wireless debugging pairing method is officially specified for **Android TV 13+**, so inspect the TCL Developer options for manufacturer **Network debugging** and its stated port before suggesting any ADB commands. If neither supported network nor USB debugging is available, use an APK USB/manual installation route and test UI without ADB. Run read-only model/build checks before any authorised installation. Verify Home, remote focus, app pin/move, safe return, distinct APK package identity and clean uninstall while stock Google TV Home remains unchanged. Do not scan the LAN, change factory packages or start cleanup. Build **Settings > Connections** and test valid/invalid local endpoints as the next Stage 0.5 deliverable. The actual private IP is never in public GitHub. See [TCL testing plan](LOCAL_CONNECTIONS_AND_TCL_TESTING.md).
 
 **Stage 1: Two critical proofs.** Establish Ring automatic live video over Android wallpaper and **Samsung native Art Mode**, both triggers and return path. Prove VPN fail-closed Live TV. These decide the architecture; repeat Samsung interruption tests while **native Samsung TV Plus is playing**.
 
-**Stage 2: Core launcher and design-system proof on TCL, with Sony benchmark in parallel.** First build the quiet one-dock Home plus the full Section 4 focused-item background behaviour, NAS poster reveal, View All, VLC launch, clock, ambient images and time-of-day mood. Approve Section 4.13 visual hand-off and Section 4.14 design gates before completing other modules. Verify Ring and Alexa text overlay receiver above active playback. Performance profiles and revert paths for **both** Android TVs. A separate **opt-in TV Performance & Cleanup** module follows only after safe, model/firmware-specific tests.
+**Stage 2: Core launcher and design-system proof on TCL, with Sony benchmark in parallel.** First build the quiet one-dock Home plus the full Section 4 focused-item background behaviour, NAS poster reveal, View All, embedded playback, clock, ambient images and time-of-day mood. Approve Section 4.13 visual hand-off and Section 4.14 design gates before completing other modules. Verify Ring and Alexa text overlay receiver above active playback. Performance profiles and revert paths for **both** Android TVs. A separate **opt-in TV Performance & Cleanup** module follows only after safe, model/firmware-specific tests.
 
-**Stage 3: Household rollout.** Sony with Xbox, Frame external device with native art handoff, **Frame-only Samsung TV Plus tile and verified Tizen launch/return path**, Echo Studio audio fix, and per-device settings. Offer the Samsung **supported-settings** tune-up alongside optional, reversible Sony/TCL Android cleanup; test Alexa toasts on the streamer and document native Tizen limitations. Only release after per-TV acceptance matrix passes.
+**Stage 3: Household rollout.** Sony with Xbox, native Frame application with native art handoff, **Frame-only Samsung TV Plus tile and verified Tizen launch/return path**, Echo Studio audio fix, and per-device settings. Offer the Samsung **supported-settings** tune-up alongside optional, reversible Sony/TCL Android cleanup; test Alexa toasts inside the visible native Frame application and document native Tizen limitations. Only release after per-TV acceptance matrix passes.
 
 **Stage 4: Delight features.** Music Now Playing if supported by Amazon, ChatGPT Live with a British voice, refinements to content suggestions and advanced personalisation.
 
 ## 19. Open factual checks, not undecided design preferences
 
-- Exact TCL, Sony and Frame model identifiers, firmware revisions, hardware constraints, recoverability, supported Samsung cleanup settings, **Samsung TV Plus native app launch controls and switch-back behaviour**, and Frame external streaming hardware.
+- Exact TCL, Sony and Frame model identifiers, firmware revisions, hardware constraints, recoverability, supported Samsung cleanup settings, **Samsung TV Plus native app launch controls and switch-back behaviour**, and native Frame launch capabilities.
 - Ring model, Ring subscription and **real person detection entity/event** through Ring or ring-mqtt.
 - Whether the **Alexa Devices** integration is installed and exposes the correct Alexa reminder timestamp/label for this Amazon account and Echo Studio; actual polling delay, Alexa Household impact and tested reminder due behaviour.
 - Whether the Frame's current Home Assistant integration supports reliable Art Mode interruption, source change and exact return after playback.
 - Which Echo Studio generation is present and which Frame audio-routing commands / optical ports are available.
-- NAS DiskStation model, storage paths, Jellyfin support, media codecs, subtitles and a dependable VLC hand-off.
+- NAS DiskStation model, storage paths, Jellyfin support, media codecs, subtitles and dependable embedded playback.
 - NordVPN actual Android TV version, always-on/lockdown support and effects on permitted apps/local LAN.
 - Voice microphone route, GPT-Live developer API version, cost and private service host.
 - Legitimate streaming-device compatibility for SmartTube, Netflix, Disney+, BBC iPlayer, ReamSmartz and Amazon Music.
@@ -729,7 +705,7 @@ No mandatory removal of bloatware, no promise that every manufacturer permits fa
 
 See [decision record](SPEC_RECONCILIATION.md). Preserve every earlier feature and release gate. Add Adult/Child media profiles with separate restricted server credentials, adult-PIN protected editing and adult return. Never imply launcher profiles switch streaming-app accounts. Server restrictions must govern catalogue and playback, not just hide posters.
 
-Embedded Media3 direct playback and real position reporting are now a preview implementation track. Retain the VLC comparison until codec/subtitle/seek/hardware evidence supports a final choice. Continue Watching requires proven server round-trip. Native Wi-Fi/Bluetooth/audio/OLED/CEC controls remain authoritative.
+Embedded Media3 direct playback and real position reporting are now a preview implementation track. Native Media3 and AVPlay are the selected engines; VLC is excluded. Codec, subtitle, seek and hardware acceptance remain mandatory. Continue Watching requires proven server round-trip. Native Wi-Fi/Bluetooth/audio/OLED/CEC controls remain authoritative.
 
 - AT-71: a Child user cannot browse or play an Adult-only server item by changing screens, search, or player requests; use its own restricted server token.
 - AT-72: PIN protects adult return and editing; external app/OS limitations are clearly explained. Test PIN recovery and repeated failures before release.
@@ -738,3 +714,115 @@ Embedded Media3 direct playback and real position reporting are now a preview im
 - AT-75: native TV settings still control sound, picture, Wi-Fi, Bluetooth and CEC; no cleanup or hardware override occurs automatically.
 
 v1.9 (24 October 2026) adds these requirements and reconciles the new shorter proposal without deleting app personalisation, native Samsung features or VPN/Ring release gates. Preview implementation status is tracked separately in [0.2 notes](PREVIEW_0_2.md).
+
+
+## 24. Native Samsung architecture and platform boundaries
+
+### 24.1 Native application and lifecycle
+
+Deliver an installable Tizen Web Application package built with supported tooling, signed with valid author and distributor certificates for the target device. Tizen Studio is a development and installation tool, not the application hosting service. Keep certificate private keys, passwords and device identifiers outside the public repository and published build logs. Same-author update continuity is a release requirement. An unsigned WGT or browser demo is a development artefact, not a tested TV installation.
+
+The app runs full screen but cannot replace Samsung Smart Hub. Physical Home opens Samsung Home. Back navigates within our app and returns from details/player to the prior screen; follow Samsung exit behaviour at our root, and do not intercept long Return. Back from another company's app cannot be promised to reopen Unified TV. Provide an ordinary installed-app launch route and a model-tested shortcut where available.
+
+Automatic startup remains model-dependent. Evaluate available Autorun Last App behaviour separately for standby wake, cold power-on and reboot, and record whether developer-installed packages participate. If unsupported, show the actual supported launch route; do not claim autostart passes. No developer tooling, ADB or SDB session may be a permanent runtime dependency.
+
+Tizen can suspend JavaScript when the app is hidden. Save navigation, playback state and current profile before hiding; stop/release playback as required, close obsolete requests, and revalidate credentials, events, network and media position when visible again. A WebSocket inside a hidden app is not a reliable Ring delivery service. Register only supported extra remote keys and keep all screens usable with a basic directional pad, OK and Back.
+
+### 24.2 Service availability and shared appearance
+
+Use identical hierarchy, tile sizing, safe areas, artwork identity, typography, focus behaviour, motion intent and accessible alternatives across the two implementations. Shared design tokens and fixtures should drive screenshot comparison. The lightweight profile reduces rendering work without replacing the product's layout. Native system dialogs may differ; recognise these differences rather than claiming pixel-identical OS screens.
+
+Preserve SmartTube, Netflix, Disney+, BBC, Live TV and Music as the curated shared default intent, plus Xbox only on Sony and Samsung TV Plus only on Frame. Resolve installed app IDs at runtime and allow owner-approved mappings. Android-only apps do not become native Tizen apps through a launcher tile. SmartTube and ReamSmartz remain unavailable on Frame unless a supported client or explicitly approved substitute exists. Do not silently substitute YouTube, promise access to Amazon Music's full catalogue or expose a non-working shortcut as playable. App absence produces a clear message, and ordinary removable/pinnable dock behaviour remains available.
+
+### 24.3 Ring event coordinator and recovery
+
+An external household coordinator in Home Assistant must receive authorised doorbell and person events, identify target rooms, reject stale/duplicate events, capture source and Art Mode state, request a model-supported launch, and wait for acknowledgement that the camera's first frame is visible. Android's overlay service remains a separate implementation. Foreground camera connections alone do not prove background interruption.
+
+Use the Ring integration's currently exposed event model; normalise legacy binary sensors and current event entities through an adapter. Doorbell press and person classification are separate acceptance cases; generic motion must not be relabelled person detection. Live view and a last-recorded clip are separate sources. Label Connecting, Live, unavailable and stale honestly; do not label a recorded clip live. Avoid camera URLs and household images in logs.
+
+SmartThings capabilities vary by device. The consumer SmartThings app's Art Mode controls do not prove a universal cloud command for closing Netflix, launching a developer app or restoring artwork. Evaluate Home Assistant's Samsung integration and a model-specific local Samsung or Art Mode adapter; use SmartThings only for commands actually exposed and tested. Do not force-stop DRM applications through undocumented APIs. App launch acknowledgement and camera first-frame acknowledgement are different steps.
+
+On dismiss or timeout, restore only the captured state that the platform permits. Art Mode should regain its prior artwork without chrome. An interrupted third-party stream may require the viewer to resume manually; preserve navigation/source where supported and report the limitation. Repeated Ring events must not build an infinite queue. A fully off TV stays off unless an explicit wake policy is later enabled. If a launch or restoration command fails, show a truthful status in the household controller and retain a safe remote recovery path. Ring has priority over reminders, voice and transitions; reminders never force the Frame out of Netflix or Art Mode.
+
+### 24.4 Embedded playback and private authentication
+
+AVPlay owns the supported playback surface. Keep its lifecycle explicit: open, prepare, first frame, playing, paused, buffering, error, stopped and closed. Release the previous player before opening another item. Test aspect ratio, subtitles, audio selection, seek precision, resume, end-of-item and repeated Back on the Frame. The Android Media3 implementation must meet the same viewer outcomes.
+
+The proposed private LAN media broker authenticates the TV using a scoped revocable session, resolves only authorised server items and attaches the correct server credentials upstream. Restrict origins and paths, enforce profile permissions, validate range requests, rewrite or reject unsafe HLS segment/redirect destinations, and expire sessions. AVPlay authentication may use a documented scoped cookie if validated on the target firmware. A generic AVPlay DRM-header option is not evidence of arbitrary non-DRM HTTP header support. Never embed an administrator token in a stream URL, JavaScript bundle or image source. This broker is a design proposal pending implementation and security tests, not an existing working service.
+
+Use platform Key Manager secure storage for native Tizen credentials; fail closed if it is unavailable. Do not fall back to plaintext localStorage. Non-secret UI preferences can use local storage. Browser simulation may keep credentials only in memory and must identify that mode. Encrypt Android credentials using Keystore-backed storage, exclude them from backup/transfer and support Forget. Private connections stay configurable locally by the owner.
+
+### 24.5 VPN and platform controls
+
+Android Live TV remains blocked until verified NordVPN routing and tunnel-drop prevention apply to the actual playback app, including deep links, matchday actions and voice. System VPN indicators alone are insufficient. LAN access to media and Home Assistant must still work. OS-level VPN protection and bypass paths require independent testing.
+
+Tizen does not inherit Android split tunnelling. A compatible native client and network policy are prerequisites. A proposed router or VLAN route must include fail-closed behaviour, correct DNS and IPv6 handling, and proof that other TV services and local integrations still work. Routing the whole TV is not equivalent to routing one app. If app availability or routing cannot be verified, Frame Live TV remains explicitly unavailable. Samsung TV Plus is separate and stays accessible without the ReamSmartz gate.
+
+Sony input selection and Xbox wake are separate operations. Use a supported Xbox or Home Assistant integration for console wake and a model-verified Sony input control for HDMI 3. Preserve eARC/audio behaviour. Correct the receiver name to AirPin LITE on TCL; its installation does not prove boot startup or active AirPlay receiving. Echo Studio output depends on the real connection topology and supported codecs; preserve native audio controls and avoid promising universal Bluetooth, eARC or multiroom parity.
+
+### 24.6 Voice and secondary household features
+
+Keep remote control sufficient for every essential journey. Initial bounded voice commands may use an available local/system recogniser with a keyboard alternative. Never route an unrecognised command to a general home-control service that can bypass Live TV restrictions. Optional OpenAI live voice requires a server-held API key with short-lived client credentials or a server relay, visible microphone state, explicit activation and cancellation; select and test an appropriate UK voice rather than promising an exact accent. No long-lived API key belongs in either app.
+
+Retain Amazon Music-inspired album artwork, the quiet matchday-only Spurs card without scores, room preferences, personal gallery, day/dusk/night mood, accessibility and optional safe performance advice. These features remain requirements even when their service adapters are unfinished. Personal gallery and native Samsung Art Mode are distinct modes; native artwork must contain no permanent interface. OS profiles, external streaming accounts and parental restrictions remain outside a launcher-only PIN's control. Explain these boundaries in owner settings without cluttering viewing screens.
+
+## 25. Acceptance evidence and release plan
+
+### 25.1 Native Samsung acceptance additions
+
+The submitted Samsung AT-58 to AT-61 are mapped to NT-01 to NT-04 below, preserving the existing dock tests with those AT numbers. Each test records app revision, model, OS/firmware, setup, actual observations and evidence. A desktop simulation result never becomes a hardware pass.
+
+| ID | Journey | Pass condition and failure boundary |
+|---|---|---|
+| NT-01 | Frame startup | Test standby, cold boot and reboot independently. App reaches foreground automatically only where supported; otherwise mark autostart unsupported or blocked and document manual launch. |
+| NT-02 | Frame NAS playback | Representative supported files play in AVPlay with audio, subtitles, seek and resume. Record first-frame and buffering; unsupported codecs have a clear outcome. No blanket MKV or no-transcode promise. |
+| NT-03 | Ring during native Netflix | Real doorbell and person events separately reach the coordinator; app launch and camera first frame are acknowledged without remote action; restoration and any resume limitation recorded. Failure blocks this release claim. |
+| NT-04 | Samsung TV Plus | Discover verified native application, launch it, retain channel guide, recover our app using a documented supported route; preserve native installation and dependencies. |
+| NT-05 | Home and Back | Physical Home opens Samsung Smart Hub; Back inside our app returns predictably; long Return retains OS exit behaviour. |
+| NT-06 | Hidden lifecycle | Switch apps and resume repeatedly; no claim that suspended JavaScript delivered background events; restore focus and revalidate network and media state. |
+| NT-07 | Private playback | Reject wrong-profile items, unsafe redirects, expired sessions and non-consented HTTP; no server tokens in URLs, logs or localStorage. |
+| NT-08 | Frame protection | Ring returns active Art Mode to the prior artwork; reminders do not interrupt it; a fully off television stays off. |
+| NT-09 | Service absence | Missing Android-only services show honest availability; no fake SmartTube/ReamSmartz native launch or silent replacement. |
+| NT-10 | Live TV isolation | No traffic escapes during VPN loss or DNS/IPv6 bypass; per-app versus whole-TV routing is stated; otherwise keep the tile unavailable. |
+| NT-11 | Signed install and update | Valid signed WGT installs on authorised target; same-author update retains configuration; rollback preserves stock Smart Hub and TV Plus. |
+| NT-12 | Visual and remote parity | Compare shared mockup states, 100 rapid directional inputs, edit/save/cancel, accessibility and artwork identity across native codebases. |
+
+### 25.2 Test levels and current evidence
+
+Use four separate evidence levels: automated policy/unit tests; desktop/emulator integration; physical TV interaction; and household service end-to-end tests. Each capability lists its actual highest completed level and remaining gates. No all-TV-ready label is permitted while one required target or mandatory Ring/VPN path is unproven.
+
+On 24 October 2026, the standalone CI preview was installed on the authorised Android TV 11 TCL with stock Home retained. Its home screen, controls, unconfigured library response, protected Live TV refusal, hold-OK edit menu, move cancellation, saved layout across restart and stock Home recovery were exercised. Hardware testing identified weak Settings focus visibility and focus restoration after reorder; fixes and subsequent results belong in the dated TCL report. A 100-directional-event smoke check is not an input-latency benchmark, and observed process memory is not a proven budget. No configured Jellyfin playback, Ring, VPN tunnel, Alexa, gallery-source or voice service acceptance is implied.
+
+The Android preview has a passing earlier GitHub Actions build and separate current local checks. Native Tizen code is work in progress, with no signed household WGT, AVPlay hardware pass, autostart proof or Frame Ring/Art Mode handoff yet. Sony hardware remains untested in this phase. Requirements are not implementation claims.
+
+### 25.3 Delivery sequence and definition of done
+
+1. Finish the safe Android preview and real TCL remote checks, preserving the factory launcher. Record startup/input/memory baselines and fix regressions. Keep local device addresses and raw diagnostics private.
+2. Complete native Tizen shell, local secure settings, installed-app discovery, remote focus, dock editing, catalogue and embedded-player lifecycle with automated and simulation tests. Share design tokens and journey fixtures; never present browser fallback playback as AVPlay proof.
+3. Implement and test the protected media route, server-restricted profiles and real watch-state round-trip on both runtimes. Add bounded offline caches and accurate readiness screens.
+4. Prove external Frame event coordination, native app launch and Art Mode recovery; prove Android alert overlays separately, including DRM/input limitations. Keep all unsupported gaps explicit.
+5. Prove VPN isolation and failure behaviour before enabling protected Live TV. Validate music, fixtures, AirPlay, audio and optional voice according to actual service permissions.
+6. Produce reproducible APK and WGT builds with dependency/licence review, secret scanning, stable signing and release artefact hashes. GitHub Actions tests and packages Android; native Tizen packaging and signing need their own supported toolchain and protected owner credentials.
+7. Release only against the complete AT and NT matrix with per-TV evidence, remaining limitations, install/update/recovery instructions and owner-controlled configuration. Claim tested support only for models and firmware actually exercised. Other TVs remain potential adapter targets, not blanket compatibility claims.
+
+### 25.4 Official technical sources for these revisions
+
+Research reviewed 24 October 2026. Vendor documentation defines API and lifecycle boundaries; household behaviour still requires tests. The media broker and external Ring coordinator are proposed engineering designs inferred from those boundaries.
+
+- Samsung multitasking https://developer.samsung.com/smarttv/develop/guides/fundamentals/multitasking.html
+- Samsung termination and Return https://developer.samsung.com/smarttv/develop/guides/fundamentals/terminating-applications.html
+- Samsung remote input https://developer.samsung.com/smarttv/develop/guides/user-interaction/remote-control.html
+- Tizen Application API https://developer.samsung.com/smarttv/develop/api-references/tizen-web-device-api-references/application-api.html
+- Samsung AVPlay https://developer.samsung.com/smarttv/develop/api-references/samsung-product-api-references/avplay-api.html
+- Tizen Key Manager https://developer.samsung.com/smarttv/develop/api-references/tizen-web-device-api-references/keymanager-api.html
+- Samsung web engines https://developer.samsung.com/smarttv/develop/specifications/web-engine-specifications.html
+- Samsung signing https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/creating-certificates.html
+- Samsung consumer Art Mode https://www.samsung.com/us/support/answer/ANS10005239/
+- Home Assistant Samsung https://www.home-assistant.io/integrations/samsungtv
+- SmartThings capabilities https://developer.smartthings.com/docs/devices/capabilities/
+- Home Assistant Xbox https://www.home-assistant.io/integrations/xbox/
+- Home Assistant Ring https://www.home-assistant.io/integrations/ring/
+- Media3 formats https://developer.android.com/media/media3/exoplayer/supported-formats
+- OpenAI voice security https://developers.openai.com/api/docs/guides/voice-webrtc
+
+Version 2.0 preserves the detailed earlier design and acceptance requirements while replacing the external Frame runtime and VLC playback decisions. Unimplemented features remain requirements and do not become working capabilities through this document.

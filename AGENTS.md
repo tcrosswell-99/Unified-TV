@@ -17,8 +17,8 @@ For separately owner-authorised cleanup only, consult the inherited `PROMPT.md`;
 ## Implementation requirements
 
 1. Never claim Ring interrupts **native Samsung Art Mode**, or that Amazon Music or GPT voice streaming works, without real-device tests.
-2. Platform separation is deliberate: Android launcher on Sony/TCL and compatible external streamers; Samsung native Tizen behaviour needs its own verified bridge.
-3. Do not create a VLC tile. The NAS is a poster-first library; VLC is its underlying playback mechanism.
+2. Platform separation is deliberate: native Android on Sony/TCL and native Tizen Web Application on Samsung Frame; native Samsung launch and Art Mode behaviour needs a verified household coordinator.
+3. VLC is excluded. The NAS is a poster-first library using embedded Media3 on Android and AVPlay on Tizen, with supported private authentication.
 4. Always use contextual artwork for a highlighted app, film or programme. Never display an unrelated background and call it content aware.
 5. Focus latency and device recovery outrank visual effects. Reduced graphics must retain UX parity on TCL and ageing Sony.
 6. All household integrations are optional; never hardcode IPs, tokens, personal paths, Ring/child/family images, or preferences into public source.

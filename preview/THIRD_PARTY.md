@@ -7,3 +7,5 @@ AndroidX Media3 ExoPlayer, HLS and UI 1.5.1: Android Open Source Project, Apache
 No third-party film stills, reference screenshots, proprietary fonts or brand assets are bundled. App icons come from installed packages at runtime. JUnit and org.json are test-only dependencies. This is an experimental debug-signed preview, not a production release.
 
 OkHttp 4.12.0: Square, Apache-2.0, https://github.com/square/okhttp . It carries the authenticated HA WebSocket only, with redirects disabled and platform TLS. No HTTP logging interceptor is included. Robolectric is a test-only dependency (Apache-2.0).
+
+The Settings focus states and dock focus persistence fixes are original project code. The isolated deviceCheck variant introduces no new dependency or bundled asset.

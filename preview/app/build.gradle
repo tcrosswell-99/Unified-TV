@@ -5,7 +5,11 @@ android {
     defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 2; versionName '0.2-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     sourceSets { main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }; test { java.srcDirs = ['test'] } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.debug }
+        // Local hardware checks coexist with CI previews signed by another debug key.
+        deviceCheck { initWith debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
+    }
     lint { abortOnError true; disable 'MissingTranslation' }
     testOptions { unitTests.includeAndroidResources = true }
 }

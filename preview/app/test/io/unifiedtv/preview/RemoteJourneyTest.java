@@ -39,6 +39,9 @@ public class RemoteJourneyTest {
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         String saved=activity.getSharedPreferences("unified-tv-preview",0).getString("dock","");assertTrue(saved.startsWith("netflix,smartutube,"));
         controller.recreate();assertEquals(saved,controller.get().getSharedPreferences("unified-tv-preview",0).getString("dock",""));
+        View recreated=((ViewGroup)controller.get().findViewById(android.R.id.content)).getChildAt(0);
+        java.lang.reflect.Field index=recreated.getClass().getDeclaredField("index");index.setAccessible(true);
+        assertEquals("The moved shortcut must retain focus after restart",1,index.getInt(recreated));
     }
     @Test public void hundredRapidPressesCannotLaunchAnything()throws Exception{
         for(int i=0;i<100;i++)press(i%2==0?KeyEvent.KEYCODE_DPAD_RIGHT:KeyEvent.KEYCODE_DPAD_LEFT);
