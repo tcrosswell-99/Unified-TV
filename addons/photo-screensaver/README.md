@@ -64,7 +64,8 @@ running it again. Files go through the shell as base64, about 200 KB/s, so keep 
 1080p at 8 Mbit/s is about 60 MB, roughly five minutes to send. The screensaver the TV had before the
 first run is remembered for `--off`; `build-and-install.sh --uninstall` does `--off` and removes the app.
 
-`IDLE_MINUTES` sets `screen_off_timeout`, after which the TV starts its screensaver. You can also pick
+`IDLE_MINUTES` sets `screen_off_timeout`, after which the TV starts its screensaver. The value it had before
+the first change is remembered too, and `--off` puts it back. You can also pick
 Photos yourself in the TV's screensaver settings.
 
 ## Memory

@@ -60,7 +60,8 @@ dots stay hard blocks. The hiss is generated white noise in one static `AudioTra
 - **Foreground service** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`): `WatchService` keeps one
   receiver for `SCREEN_ON` registered, which Android delivers only to receivers registered at run time, never
   from the manifest. It does nothing else: no polling, no timer, no wake lock. Its notification sits in a
-  minimum-importance channel.
+  minimum-importance channel. Switching **Effect on wake** off stops it, and it is not started at boot while
+  the effect is off; switching it on starts it again.
 - **Start at boot** (`RECEIVE_BOOT_COMPLETED`): to start the watcher again after a reboot, and to play the
   effect once then. On TCL sets the install script also allows the `APP_AUTO_START` app-op.
 - **Display over other apps** (`SYSTEM_ALERT_WINDOW`), granted by the install script with `appops`: Android 10

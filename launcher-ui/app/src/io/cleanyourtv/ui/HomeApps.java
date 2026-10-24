@@ -114,6 +114,15 @@ final class HomeApps {
             "com.tcl.exhibit"));                    // TCL: T-Exhibition
 
     private static final Map<String, Bitmap> TILES = new HashMap<>();   // key → ready card
+
+    /**
+     * Drops the ready cards (about 330 KB each), for App.onTrimMemory when the system is short of memory and the
+     * process is in the background. A live home screen keeps the cards it shows (they're rebuilt off the main thread
+     * by its next reload); what goes is what no screen holds, e.g. after Android closed the home screen itself.
+     */
+    static synchronized void trimTiles() {
+        TILES.clear();
+    }
     private static final Map<String, Bitmap> LOGOS = new HashMap<>();   // key → colored logo with no background
 
     /**

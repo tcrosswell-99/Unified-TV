@@ -22,7 +22,8 @@ public final class LibraryActivity extends Screen {
     private final ArrayDeque<String> history=new ArrayDeque<>();
     private String currentRequest="";
     private void navigate(String path){history.push(currentRequest);shelf=false;load(path);}
-    @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);load("");}
+    @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);
+        try {if("dlna".equals(getSharedPreferences("unified-tv-preview",0).getString("librarySource",""))||!new Vault(this).read(Vault.mediaKey(this)).optBoolean("enabled")){startActivity(new Intent(this,DlnaLibraryActivity.class));finish();return;}}catch(Exception e){page("Your Films & TV");text("Unlock your saved library in Settings.",20);button("Back",this::finish);return;}load("");}
     private String rootQuery(String type,String search){
         return "/Users/"+LocalApi.segment(config.optString("user"))+"/Items?Recursive=true&IncludeItemTypes="+type+
             "&Fields=Overview,UserData&EnableImageTypes=Primary,Backdrop&Limit="+(shelf?"12":"24")+

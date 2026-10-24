@@ -1,6 +1,6 @@
 # Upstream CleanYourTV UI README (archived snapshot)
 
-The content below was the parent repository's top-level README at the moment the independent Unified TV documentation was introduced (24 October 2026). It is retained for **credit, feature provenance and historical context**; relative links have been rebased to this archive location.
+The content below was the parent repository's top-level README at the moment the independent Unified TV documentation was introduced (24 October 2026). It is retained for **credit, feature provenance and historical context**; its relative links have been adjusted so they open from this archive folder. Statements about the parent fork (for example, the daily `sync-upstream.yml` merge) describe CleanYourTV UI, not Unified TV: in this fork that workflow only prints manual-review guidance. The Portuguese translation is [README.pt-BR.md](../../README.pt-BR.md); Unified TV's own front page is [README.md](../../README.md).
 
 Original and updated source: https://github.com/matheus-caldeira/cleanyourtv-ui
 
@@ -108,12 +108,19 @@ TV. The debloat, the supported TVs and how to go back are in [CleanYourTV's READ
    ```
    `config.properties` stays out of git. The key belongs to the app and is still needed with the QR sign-in: signing in
    only tells TMDB who you are, for your list and ratings. `language=auto` follows the TV's language.
+   *(Unified TV note: the example settings default to region `US`, New York weather and `USD`; change them for
+   your household. Never commit `config.properties`.)*
 3. Build and install (JDK 17 and the Android SDK with build-tools 34+ and platform android-34; no Gradle):
    ```bash
    TV_HOST=192.168.1.50 KEY_SERVICE=1 launcher-ui/build-and-install.sh
    ```
    `KEY_SERVICE=1` turns on the remote-button service, once: reinstalls keep it on. `SCREENSAVER=0` keeps the
    current screensaver.
+   *(Unified TV note: `launcher-ui/build.sh` signs with `launcher-ui/cleanyourtv-ui.keystore`, created on the first
+   build. It reads the keystore password from `KEYSTORE_PASSWORD`; unset, it uses the old public default
+   `cleanyourtv-ui`, so keystores made by earlier builds still work. Set your own password before the first build,
+   and back up the keystore and its password: an update must be signed with the same key, otherwise the TV refuses
+   it and you have to uninstall, losing the app's settings.)*
 4. Optional: `TV_HOST=… launcher-ui/config.sh my-config.json` (see `launcher-ui/config.example.json`) and
    `launcher-ui/config.sh --remote examples/<model>/remote.json`.
 

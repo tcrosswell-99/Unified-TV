@@ -1,9 +1,11 @@
+> **Unified TV note (English):** this page is a translation of the original [CleanYourTV guide](README.cleanyourtv.md), kept for reference with its credits. It does not describe Unified TV, an independent fork in early development whose front page is [README.md](README.md) (English). Do not run the inherited cleanup steps on a household TV without the recovery-first process in [docs/INSTALLATION_AND_RECOVERY.md](docs/INSTALLATION_AND_RECOVERY.md).
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="docs/banner.png" alt="CleanYourTV: trả lại cho TV một màn hình chính gọn gàng" width="800"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · Tiếng Việt · <a href="README.ja.md">日本語</a>
+  <a href="README.cleanyourtv.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · Tiếng Việt · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -21,7 +23,7 @@ root, không cần cài lại firmware, không cần cáp USB. Các ứng dụng
 script để khôi phục.
 
 Tài liệu này giới thiệu các tính năng chung và cách dùng. Mỗi dòng TV, mỗi khu vực và mỗi bản firmware có danh sách
-ứng dụng và giới hạn riêng, nên hãy đối chiếu với TV của bạn trước. Khi có thay đổi, [README tiếng Anh](README.md)
+ứng dụng và giới hạn riêng, nên hãy đối chiếu với TV của bạn trước. Khi có thay đổi, [README tiếng Anh](README.cleanyourtv.md)
 là bản chuẩn; ghi chú cho từng dòng TV nằm trong [danh sách TV](examples/README.md).
 
 ![Màn hình Google TV gốc so với launcher CleanYourTV](docs/stock-vs-new-side.jpg)
@@ -338,13 +340,13 @@ cập nhật qua kho ứng dụng nếu bạn giữ nó; tuỳ TV và danh sách
 
 Có. Kết nối ADB qua TCP (mặc định cổng 5555) mà công cụ dùng không được mã hoá, và một số firmware còn không đòi cho
 phép. Làm xong hãy tắt USB debugging và gỡ lỗi mạng / ADB, thu hồi quyền gỡ lỗi đã cấp, rồi kiểm tra cổng đã đóng theo
-[các bước trong README tiếng Anh](README.md#questions-people-ask).
+[các bước trong README tiếng Anh](README.cleanyourtv.md#questions-people-ask).
 
 **Có hỗ trợ DNS riêng hay AirPlay không?**
 
 DNS riêng (Private DNS) là tính năng của hệ thống Android trên một số phiên bản, không phải tính năng chặn quảng cáo
 của launcher, và không chặn được mọi quảng cáo trong video. AirPlay không có sẵn trong launcher, phải cài và cấu hình
-riêng. Các lựa chọn thêm xem [câu hỏi thường gặp bản tiếng Anh](README.md#questions-people-ask).
+riêng. Các lựa chọn thêm xem [câu hỏi thường gặp bản tiếng Anh](README.cleanyourtv.md#questions-people-ask).
 
 **Có file APK cài sẵn không?**
 
@@ -362,7 +364,7 @@ xem trực tiếp trong các thư mục tương ứng để đỡ phải sửa n
 ## Liên hệ và báo lỗi bảo mật
 
 Câu hỏi khi dùng TV có thể trao đổi trên [GitHub Discussions](https://github.com/Gathin23/cleanyourtv/discussions).
-Liên hệ báo chí và hợp tác xem [phần liên hệ tiếng Anh](README.md#contact). Lỗ hổng bảo mật xin báo riêng qua
+Liên hệ báo chí và hợp tác xem [phần liên hệ tiếng Anh](README.cleanyourtv.md#contact). Lỗ hổng bảo mật xin báo riêng qua
 [trang Security](https://github.com/Gathin23/cleanyourtv/security) của repo, xem [`SECURITY.md`](SECURITY.md).
 
 ## Giấy phép

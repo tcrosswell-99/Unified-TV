@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parent.parent
 LAYOUT = ROOT / "launcher/app/src/main/res/layout/activity_launcher_settings.xml"
 ACTIVITY = ROOT / "launcher/app/src/main/java/com/gathin/tvhome/LauncherSettingsActivity.java"
 STRINGS = ROOT / "launcher/app/src/main/res/values/strings.xml"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
 README = ROOT / "README.cleanyourtv.md"
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"

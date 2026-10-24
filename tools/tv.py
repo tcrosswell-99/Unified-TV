@@ -66,11 +66,11 @@ if not os.path.exists(KEY) and os.path.exists(ADB_KEY) and os.path.exists(ADB_KE
     KEY = ADB_KEY
 
 
-def restrict(path):
-    """Keep a private key to this account. Reported, never fatal: the key still works either way.
-    Windows has no POSIX mode bits and ignores this."""
+def restrict(path, mode=0o600):
+    """Keep a private key (or its folder) to this account. Reported, never fatal: the key still works
+    either way. Windows has no POSIX mode bits and ignores this."""
     try:
-        os.chmod(path, 0o600)
+        os.chmod(path, mode)
     except OSError as e:
         print(f"warning: could not restrict permissions on {path}: {e}", file=sys.stderr)
 
@@ -79,11 +79,17 @@ def get_signer():
     # This key is an ADB credential: anyone who can read it gets a shell on every TV that has
     # accepted it, with no "Allow USB debugging?" prompt. adb_shell's keygen writes it with a plain
     # open(), so it lands at 0666 & ~umask, which is 0644 under the usual umask: readable by every
-    # other account on the machine. Google's own adb keeps ~/.android/adbkey at 0600, so match that,
-    # on every run, so a key written by an earlier version of this script is repaired too.
+    # other account on the machine. Google's own adb keeps ~/.android/adbkey at 0600, so match that.
+    # The umask makes the file private from the moment it exists, not only once it is chmodded; the
+    # chmods run on every run, so a key or folder left open by an earlier version is repaired too.
     os.makedirs(KEYDIR, mode=0o700, exist_ok=True)
+    restrict(KEYDIR, 0o700)   # tools/adbkey/ is this project's own folder, never ~/.android
     if not os.path.exists(KEY):
-        keygen(KEY)
+        previous = os.umask(0o077)
+        try:
+            keygen(KEY)
+        finally:
+            os.umask(previous)
     if KEY != ADB_KEY:   # the stock key belongs to the user's own adb; don't touch its permissions
         restrict(KEY)
     with open(KEY) as f:

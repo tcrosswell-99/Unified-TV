@@ -85,11 +85,13 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        main.removeCallbacksAndMessages(null);
         net.shutdownNow();
         super.onDestroy();
     }
 
     private void load() {
+        if (isFinishing() || isDestroyed()) return;   // a delayed reload after onDestroy shut net down
         Config c = config;
         net.execute(() -> {
             HaClient.Reply r = new HaClient(c.url, c.token).get("/api/states");
@@ -116,11 +118,12 @@ public class MainActivity extends Activity {
     }
 
     private void send(Ha.Call call) {
-        if (call == null) return;
+        if (call == null || isFinishing() || isDestroyed()) return;
         Config c = config;
         net.execute(() -> {
             HaClient.Reply r = new HaClient(c.url, c.token).post(call.path, call.body);
             main.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 if (!r.ok()) status.setText(Ha.problem(r.code));
                 main.postDelayed(this::load, 600);
             });

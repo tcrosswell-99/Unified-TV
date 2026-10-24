@@ -1,5 +1,8 @@
 # Unified TV roadmap
 
+**Current Android candidate: Preview 0.4.** Two-column Settings, automatic local media-server discovery, encrypted selected folders, embedded DLNA playback trial, five authorised gallery examples and four VPN states. See [feature status](FEATURE_STATUS.md), [complete v2.2 specification](PRODUCT_SPEC.md) and [AI handover](AI_HANDOVER.md). Local Android checks passed; new TCL/Frame hardware acceptance remains outstanding. The latest Apps request allows owner pin/unpin, but that menu is not implemented in this build. It supersedes older fixed-membership requirement text below.
+
+
 **Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
 
 **Current native plan:** [Complete specification v2.0 draft](PRODUCT_SPEC.md) selects native Android for Sony/TCL and a native Tizen Web Application for Frame, with embedded Media3/AVPlay and no VLC playback. No external Frame streamer is required. Native Tizen remains unfinished. [TCL hardware evidence](TCL_TEST_2026_10_24.md) records the limited Android smoke pass and remaining gates. Earlier external-streamer and VLC milestones below are superseded by this plan.
@@ -42,6 +45,7 @@
 - Include a remote-only installed Apps library, pin/unpin Home shortcuts and hold OK to Move with persistence per TV, sensible dock overflow and optional child edit protection.
 - Render the same layout with high/balanced/lightweight graphics profiles. Benchmark TCL and ageing Sony.
 - Add opt-in shared/room-specific app ordering, BBC shortcut, Sony Xbox action and Samsung TV Plus bridge.
+- **Harmonised house:** one shared app order that every TV in the household follows by default, with per-room extras (console, Samsung TV Plus) and a simple way to copy one TV's layout to another. Measure that a family member can find the same app with the same presses on every TV.
 - Build NAS poster strip and `View All` browse, then prove direct VLC playback. Do not claim continue-watching without actual playback progress tracking.
 - Add personal artwork gallery with a completely uncluttered native Frame Art Mode.
 
@@ -49,12 +53,15 @@
 
 ## 3. Optional household modules
 
+- **Home view:** optional Home Assistant glance strip and alerts with the strict priority order in [Home view](HOME_VIEW.md): doorbell (Ring), reminders (Alexa), then deliveries and arrivals, sport and everything else. Connected on the TV under Settings > Connections; nothing on screen when disconnected.
 - Ring and Alexa reminders via trusted Home Assistant events, with clear overlay priority.
 - Tottenham matchday widget without scores, hidden on other days.
 - NordVPN truthful status and strict Live TV launch restrictions.
 - Permission-based TV Performance & Cleanup. Android disables must be reversible; native Tizen changes only where independently supported.
 - Spotify-like/Amazon Music album view as permitted by the service's playback API and devices; do not promise full Amazon catalogue integration yet.
 - Optional ChatGPT live voice with UK voice, microphone indicator, scoped device actions and server-side credentials.
+
+- Further optional ideas are catalogued, not scheduled, in [Feature ideas](IDEAS.md).
 
 **Completion:** each module has a disable switch, explicit test matrix, documented privacy and failure state.
 

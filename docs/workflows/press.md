@@ -6,7 +6,7 @@
    headline's own language. The link must open and show the article: no syndicated copies, no auto-generated
    listings, nothing that cannot be checked.
 2. Update the counts in all four places `tests/test_press_counts.py` checks: the `docs/PRESS.md` intro line,
-   its index line, the README card's alt text ("and N more: N articles from N countries") and `MORE` in
+   its index line, the card's alt text in `README.cleanyourtv.md` (the inherited front page) ("and N more: N articles from N countries") and `MORE` in
    `tools/readme_featured.py`. Redrawing `docs/featured.png` and `docs/card.jpg` needs Pillow, which the
    performance requirements install:
    `tools/venv/bin/pip install -r tools/requirements-perf.txt`, then

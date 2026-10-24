@@ -32,7 +32,7 @@ final class Tmdb {
     static final String API = "https://api.themoviedb.org/3";
     static final String POSTER = "https://image.tmdb.org/t/p/w342", BACKDROP = "https://image.tmdb.org/t/p/w1280",
             LOGO = "https://image.tmdb.org/t/p/w92", PROFILE = "https://image.tmdb.org/t/p/w185";
-    static final String REGION = Config.TMDB_REGION.trim().isEmpty() ? "BR" : Config.TMDB_REGION.trim().toUpperCase(Locale.ROOT);
+    static final String REGION = Config.TMDB_REGION.trim().isEmpty() ? "US" : Config.TMDB_REGION.trim().toUpperCase(Locale.ROOT);
     /** In memory: the answers of the last half hour, a few dozen; on disk (DISK_MAX): for as long as ttl() says. */
     private static final long TTL = 30 * 60_000L, DISK_MAX = 24L * 1024 * 1024;
 

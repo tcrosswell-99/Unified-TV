@@ -33,21 +33,60 @@ Keep feature branches focused. Before opening a PR, state what was verified and 
 
 Avoid running inherited install/debloat prompts or ADB scripts on a real television unless the user explicitly requests that specific procedure and recovery is established. The repository's inherited workflows must be reviewed before being adopted as Unified TV automation.
 
-## Validation and inherited references
+## Build, test and CI (inherited tooling)
 
-Run `python3 -m unittest discover -s tests -v` for repository tools/docs. CI uses `CLEANYOURTV_STRICT` for push checks. In `launcher/`, the inherited check is `./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease`. Its APK limit is 524,288 B (512 KB), and its minSdk is 26. That size rule applies only to the inherited lightweight launcher, not the separate media preview.
+This section describes the inherited CleanYourTV and CleanYourTV UI tooling as it stands today, so agents run the same checks CI does. It is **not** a Unified TV installation procedure, and it does not replace any rule above.
 
-Preview checks use the same wrapper with the preview project: unit tests, lint and APK assembly. Keep the non-HOME identity and secret-storage protections. Document every untested integration.
+### If you were asked to clean up a real TV
 
-Inherited tooling references: `tools/disable.sh`, `examples/README.md`, `.github/maintainer/MAINTAINER.md`. They do not authorise cleanup or automated moderation.
+[PROMPT.md](PROMPT.md) is the inherited upstream CleanYourTV prompt, **not** a Unified TV procedure. Under rule 9, first follow [docs/INSTALLATION_AND_RECOVERY.md](docs/INSTALLATION_AND_RECOVERY.md): read the model, firmware and package states, get explicit consent for each change, record backups and verify rollback. Only then, and only for the specific procedure the person asked for:
 
-Optional workflow references (use only when applicable and authorised):
-- [addon](docs/workflows/addon.md)
-- [docs-notes](docs/workflows/docs-notes.md)
-- [launcher-switch](docs/workflows/launcher-switch.md)
-- [perf-ab](docs/workflows/perf-ab.md)
-- [press](docs/workflows/press.md)
-- [showcase](docs/workflows/showcase.md)
-- [theme](docs/workflows/theme.md)
-- [translation](docs/workflows/translation.md)
-- [tv-list](docs/workflows/tv-list.md)
+- Use the existing tools instead of writing new ones. `tools/disable.sh` (twin `tools/disable.ps1`) writes a recovery record through `tools/recovery.py` before the first change, and `tools/restore.sh` (twin `tools/restore.ps1`) replays it.
+- Disable, never uninstall: no `pm uninstall`, no root, nothing flashed. Never disable Android core packages or start a factory/test package.
+- Keep the Home guard: the stock launcher is disabled only after another Home is installed and confirmed.
+- Close ADB afterwards and confirm with `tools/adb-closed.py`.
+- Backups (`backup/`), screenshots (`shots/`), notes (`work/`) and ADB keys (`tools/adbkey/`) are gitignored and must never be committed.
+
+### Repo map
+
+| Path | What it is |
+| --- | --- |
+| `README.md` | Unified TV's front page. People and agents should also read this file, [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). |
+| `README.cleanyourtv.md` | The inherited CleanYourTV front page: TV table, Tools table, launcher settings, themes and press card. Many doc tests read it. `README.ja.md`, `README.vi.md` and `README.zh-CN.md` translate it; `README.pt-BR.md` translates `docs/upstream/CLEANYOURTV_UI_README.md`. |
+| `PROMPT.md` | Inherited upstream agent prompt for cleaning a TV. Read its banner first. |
+| `examples/` | One folder per tested TV model (`debloat.txt`, sometimes notes and a `config.json`), indexed in `examples/README.md`. Upstream evidence, not Unified TV support claims. |
+| `launcher/` | Inherited reference launcher `com.gathin.tvhome`: plain Java, `minSdk` 26, no `INTERNET` permission. |
+| `launcher-ui/` | Inherited CleanYourTV UI app `io.cleanyourtv.ui`, built without Gradle by `launcher-ui/build.sh`. |
+| `preview/` | The separate Unified TV Android Preview `io.unifiedtv.preview` (no HOME intent; the factory Home stays in place). Read [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/AI_HANDOVER.md](docs/AI_HANDOVER.md) before changing it. |
+| `addons/` | Optional module-card apps, each its own Gradle project, never built into the launcher. |
+| `themes/`, `tools/`, `tests/` | Theme folders (keys in `themes/README.md`); the ADB client `tools/tv.py` and scripts; the Python `unittest` suite. |
+| `docs/` | Unified TV design docs (`docs/PRODUCT_SPEC.md`, `docs/HOME_VIEW.md`, `docs/IDEAS.md`), `docs/TROUBLESHOOTING.md`, `docs/devices/` and the inherited [workflows](#workflows-inherited). |
+| `.github/workflows/` | `ci.yml` (tests, launcher build and APK size gate, standalone preview APK, launcher-ui build), `android-preview-release.yml` (prerelease from an `android-preview-v*` tag), `addons.yml`, `maintainer-bot.yml`, `sync-upstream.yml` (manual-review guidance only). |
+| `.github/maintainer/MAINTAINER.md` | Inherited upstream review policy, kept for reference. Review it before adopting it for Unified TV. |
+
+### Checks CI runs
+
+| Check | Command or rule |
+| --- | --- |
+| Python suite | `python3 -m venv tools/venv`, `tools/venv/bin/pip install -r tools/requirements.txt`, then `python3 -m unittest discover -s tests -v`. On pushes to `main`, CI sets `CLEANYOURTV_STRICT=1`, which also checks the TV-model count in `README.cleanyourtv.md`. |
+| Launcher | JDK 17, Android SDK platform 34, build-tools 34.0.0. In `launcher/`: `./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease`. Lint stays at zero errors. Optional release signing: set all four of `UNIFIEDTV_KEYSTORE`, `UNIFIEDTV_KEYSTORE_PASSWORD`, `UNIFIEDTV_KEY_ALIAS` and `UNIFIEDTV_KEY_PASSWORD` (Gradle properties or environment variables); otherwise the debug key signs it. Never commit a keystore. |
+| APK size gate | `launcher/app/build/outputs/apk/release/app-release.apk` must be under 524,288 B (512 KB). Do not change the gate or lower `minSdk` (26) in a feature PR. The size rule applies only to the inherited lightweight launcher, not the separate media preview. |
+| Android Preview | JDK 17, Android SDK platform 35, build-tools 35.0.0. `bash preview/build.sh` runs unit tests, lint and the APK build, verifies the signature and checks there is no HOME intent. Keep the non-HOME identity and secret-storage protections, and document every untested integration. |
+| Launcher UI | In `launcher-ui/`: `bash build.sh` with the example settings (no TMDB key, throwaway signing key) must produce a non-empty `CleanYourTV-UI.apk`. |
+| Add-ons | `addons.yml` builds only the add-ons a change touches: `./gradlew --no-daemon testReleaseUnitTest assembleRelease` when the add-on has unit tests, otherwise `assembleRelease`. |
+
+Never commit an APK or other binary, a secret, an IP address, a serial number or an ADB key. A real-device claim needs the model, firmware and result; say **Not tested** otherwise.
+
+### Workflows (inherited)
+
+Step-by-step recipes inherited from CleanYourTV, kept in `docs/workflows/`. Check each against the Unified TV rules above before following it.
+
+- [`tv-list.md`](docs/workflows/tv-list.md): add or update a tested TV's debloat list and its table rows.
+- [`launcher-switch.md`](docs/workflows/launcher-switch.md): add an off-by-default switch to `launcher/`, within the size gate.
+- [`translation.md`](docs/workflows/translation.md): add a launcher language or fill missing strings.
+- [`theme.md`](docs/workflows/theme.md): add a theme from existing keys, with a screenshot from a real TV.
+- [`addon.md`](docs/workflows/addon.md): add a module-card app that never touches `launcher/`.
+- [`showcase.md`](docs/workflows/showcase.md): list a project that lives in its own repository.
+- [`press.md`](docs/workflows/press.md): add an article and update the press counts.
+- [`docs-notes.md`](docs/workflows/docs-notes.md): add a troubleshooting entry or a `PROMPT.md` fix, keeping pinned facts.
+- [`perf-ab.md`](docs/workflows/perf-ab.md): check a launcher change for performance regressions with `tools/bench.py`.

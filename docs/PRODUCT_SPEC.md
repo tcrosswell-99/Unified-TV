@@ -1,17 +1,57 @@
 <!-- Unified TV: public reference specification. No account credentials, local addresses, family photographs or private configuration belong in this repository. -->
 
-**Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
 > **Status: design requirements, not shipping claims.** This specification describes a reference household and a reusable system. Hardware abilities and third-party integrations require real-device validation. No local network credentials are published here.
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 2.1 draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
+**Version:** 2.2 consolidated draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
 > The television should make it effortless to find and enjoy programmes, films, music and games. The person watching should not need to understand playback engines, the NAS, Jellyfin, Home Assistant, VPN connections or which operating system is running.
 
 **Design baseline for the fork:** The quiet, full-screen, one-dock visual direction in the household's CleanFrame-style reference image is the approved starting point. A selected item must change the *whole* backdrop to imagery genuinely related to that app or NAS title. The detailed motion, glass, typography, progressive-reveal, accessibility and performance rules in Section 4 are mandatory acceptance criteria. Third-party references guide principles; our application must use original, appropriately licensed assets and its own implementation.
+
+## 0. Latest owner decisions and document precedence
+
+This is the complete consolidated product requirement, including the detailed earlier visual, functional and acceptance sections below. It describes the target product, not a statement that every feature is built. Read `FEATURE_STATUS.md` for implemented behaviour and evidence, and `AI_HANDOVER.md` for continuation instructions. Where older proposal/reconciliation/history text conflicts, this section and the current numbered requirement take precedence.
+
+### 0.1 Delivery and platform decisions
+
+- Native Android TV application for TCL and Sony; separate native Tizen Web Application for Samsung Frame. Do not make an external streamer a prerequisite for Frame.
+- Keep the factory Home application, native Samsung Smart Hub, Samsung TV Plus and native Art Mode intact. The preview remains separately installable and does not register as Android HOME.
+- Tizen startup, cross-app foreground launch, native Art Mode interruption, DRM overlays and Back behaviour are device test gates. Neither developer access nor a SmartThings API name proves these work. A cold boot and standby resume are separate tests.
+- Feature parity means the same experience where supported, with truthful platform-specific availability. Do not fabricate SmartTube, VPN or native app support on Tizen.
+- Install supported official apps where authorised and available. The owner's later request permits an independently installed VLC as an auxiliary tool, but Unified TV playback must remain embedded Media3/AVPlay. Do not require or invoke VLC as the library player.
+- Work in versioned branches/releases; preserve previous releases, test evidence and rollback instructions. Never overwrite another agent's work, force-push, reset shared files, or merge unrelated work merely to publish a preview.
+
+### 0.2 Latest UX decisions
+
+- Keep premium liquid-glass material: feathered cached blur, light top edge, restrained reflection, lifted focus lens and soft contact shadow. Avoid flat opaque panels and harsh outlines except accessibility settings.
+- Brand ambience retains depth; it must not become a heavy opaque red/blue overlay. Selected media artwork is correctly matched to its actual item.
+- No permanent directional text under the header. Use a discoverable downward chevron for Films & TV.
+- Apps uses compact cards and a remote-friendly grid. Hold OK opens Open, Move, Add/Remove from Home, App information. Curated defaults are retained at first setup; owner edits are allowed by this latest request.
+- Settings uses six left-hand categories and one changing right-hand panel: Connections, Profiles, Notifications, Appearance, TV & performance, Privacy & security. Right/OK enters controls; Left returns to categories; Back returns predictably without losing focus.
+- Empty library/gallery screens introduce the benefit and offer useful setup. Sources are shown only where supported.
+- VPN state has Connected, Disconnected, Checking and Unknown with a clear icon. Connected refers only to detected tunnel connectivity until provider, routing and drop protection have separately passed. No automatic Live TV unlock on a status icon.
+
+### 0.3 Latest library and music scope
+
+- On first library entry with no configured source, automatically discover local UPnP/DLNA MediaServers. The primary path is a named server list and selection; no typed address is required for DLNA.
+- Save only explicitly selected folder roots. The reference household scope is exactly `/video/Kids`, `/video/Movie`, `/video/TV Show`; ignore every other folder and local music. These logical collection names are authorised product requirements, not hardcoded server defaults. Discover object IDs locally and store them encrypted; do not assume DLNA object IDs equal filesystem paths.
+- The default must not browse all server media once a source is saved. A child profile may not use unauthenticated DLNA to bypass account restrictions. Keep server-verified restricted accounts as the separate child pathway.
+- DLNA folder listing and direct play are an initial connectivity implementation. The agreed poster-first catalogue, title detail, series hierarchy, search and Continue Watching remain requirements. DLNA itself does not establish Jellyfin progress synchronisation or reliable metadata.
+- A NAS administration page is not a media API. Discover the actual ContentDirectory service. Do not change firmware, index unrelated folders, install a heavyweight server without checking compatibility, or claim that any MKV must play without conversion.
+- First-version Music uses Amazon Music only. Install/open its official TV application where available. Local music indexing is out of scope for this version.
+- Custom minimalist Now Playing, account playlists and searches remain desired. Implement them only with supported, authorised service access. Normal consumer sign-in is not proof of access to Amazon's closed-beta APIs. Use the official app as the truthful interim destination.
+
+### 0.4 Images, private setup and acceptance
+
+- The owner supplied five AI-generated JPGs and expressly authorised their inclusion as example gallery images in the repository. Preserve their originals, aspect ratio and existing borders; do not treat these as private family photos. Other private household photos/camera feeds remain excluded.
+- Gallery rotates selected images, has timing and remote controls, no permanent UI, reduced-motion behaviour and sensible fitting. Local/USB/document-provider/network sources appear only when supported.
+- Household hostnames, addresses, tokens, accounts, device IDs and signing secrets belong only in private local setup and encrypted device storage. Never publish them in Git, APK defaults, Actions logs, screenshots or handovers. Use symbolic placeholders in commands and keep the actual local inventory outside the repository.
+- Testing must state exact build and level: policy/unit, simulated Android, local build/lint, PC network observation, and physical TV acceptance. These levels are not interchangeable.
+- Take revised screenshots only from the tested revised APK and label their version. Existing 0.3 screenshots must never be presented as 0.4 evidence.
 
 ## 1. Product scope and non-negotiables
 
@@ -101,11 +141,9 @@ External developers and GitHub Actions cannot assume access to the household's p
 - Alexa text overlays during native TV Plus playback are not promised without an independently tested Samsung-supported mechanism; this limitation must be visible in compatibility documentation.
 - The cleanup module must mark Samsung TV Plus and dependencies as **protected** and exclude them from disable/remove proposals.
 
-### 3.3 Approved dock and rearrangement only
+### 3.3 Curated defaults and owner-managed Home
 
-The shared six choices are a fixed allowlist. Sony adds Xbox; the Frame design adds Samsung TV Plus. There is no arbitrary installed-app picker and no Add to Home, Remove from Home or pinning action. Existing layouts migrate by discarding unapproved entries, preserving approved relative order and restoring missing approved choices. Hold OK opens Move and Cancel only. Left/Right moves, OK saves and Back restores the original order. Adult PIN protection remains. Availability does not alter membership: a missing application gives a clear unavailable response rather than a substitute.
-
-The latest direct owner instruction replaces the earlier editable-shortlist decision. AT-56 now tests rejecting arbitrary saved packages and restoring the full approved set. AT-59 now tests that the context menu cannot remove a tile. AT-61 now tests the six/seven-item layout, child edit lock and reduced motion. Historical change-log entries describe older decisions; they do not authorise pinning in the current product.
+The latest owner request restores an Apps screen with Open, Move, Add to Home / Remove from Home, and App information. This supersedes v2.1's fixed-membership decision. Keep the six curated defaults on a fresh installation; permit deliberate owner edits and preserve those edits. Adding/removing a shortcut does not install/uninstall its application. Reordering is remote-only, with OK to save and Back to cancel. Apply the same protected Live TV gate in Home, Apps, voice, search and matchday routes. Child edits require adult authorisation. Platform-only shortcuts must not leak between room profiles. The 0.4 implementation still has the older fixed-membership policy; editable Apps is an outstanding requirement, not a completed feature.
 
 ## 4. Premium interface and interaction system (P0: design release gate)
 
@@ -351,7 +389,7 @@ The NAS remains the media source. A Jellyfin-compatible service provides authent
 - If the tunnel is unverified: do not launch Live TV; offer a clear Connect / Retry action. Do not claim NordVPN can be connected silently until a supported integration is demonstrated.
 - **Fail closed during playback:** no unprotected ReamSmartz traffic when VPN drops, including after standby or reconnect. The initial launch check alone is insufficient. Investigate platform-supported always-on VPN + block-without-VPN, app routing and/or a segregated VPN network; test network paths and any split tunnelling carefully. It is acceptable to show a blocked state rather than permit traffic.
 - Netflix, Disney+, BBC, native Samsung TV Plus, NAS and other permitted services should retain normal availability where technically possible; account for system-wide VPN lockdown trade-offs.
-- NordVPN local-network discovery must preserve access to Home Assistant and the DiskStation. A country flag is only shown where geolocation verification is trustworthy.
+- NordVPN local-network discovery must preserve access to Home Assistant and the media server. A country flag is only shown where geolocation verification is trustworthy.
 
 **GATE-VPN-01:** with VPN off, Live TV traffic fails; **GATE-VPN-02:** drop VPN mid-stream, confirm packets do not escape; **GATE-VPN-03:** Sony, TCL and native Frame application pass independently.
 
@@ -600,7 +638,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-58 | Home edit mode | Reorder then Back; repeat with a Ring alert | Back restores old order, interruption does not half-save and Ring wins |
 | AT-59 | Home edit menu | Try to remove or add a tile | Only Move and Cancel are available; no arbitrary app picker |
 | AT-60 | Sony/TCL/Frame | Use different dock order and Xbox/TV Plus shortcuts | Per-TV capabilities remain correct and Live TV stays VPN protected |
-| AT-61 | Six/seven-item dock | Exercise approved room choices, child lock and reduced motion | Fixed readable single row; no additional app membership |
+| AT-61 | Six/seven-item dock | Exercise approved room choices, child lock and reduced motion | Readable single dock with persisted deliberate owner edits and platform-appropriate shortcuts |
 | AT-62 | TCL Settings > Connections | Enter valid and invalid Home Assistant/Jellyfin settings by remote | Correct authentication/connectivity states, protected local storage and offline fallback |
 | AT-63 | TCL Windows pilot | Build separate preview and connect using supported Android 11 debugging or offline sideload | Stock HOME untouched, launch and edit controls work, clean uninstall |
 | AT-64 | TCL AirPin LITE | After authorised setup, restart and cast from iOS device | Receiver operational status is real; no misleading glyph; resource use measured |
@@ -637,7 +675,7 @@ Collect cold/warm start, D-pad latency, focus-to-background timing, dropped fram
 - Whether the **Alexa Devices** integration is installed and exposes the correct Alexa reminder timestamp/label for this Amazon account and Echo Studio; actual polling delay, Alexa Household impact and tested reminder due behaviour.
 - Whether the Frame's current Home Assistant integration supports reliable Art Mode interruption, source change and exact return after playback.
 - Which Echo Studio generation is present and which Frame audio-routing commands / optical ports are available.
-- NAS DiskStation model, storage paths, Jellyfin support, media codecs, subtitles and dependable embedded playback.
+- NAS model, storage paths, Jellyfin support, media codecs, subtitles and dependable embedded playback.
 - NordVPN actual Android TV version, always-on/lockdown support and effects on permitted apps/local LAN.
 - Voice microphone route, GPT-Live developer API version, cost and private service host.
 - Legitimate streaming-device compatibility for SmartTube, Netflix, Disney+, BBC iPlayer, ReamSmartz and Amazon Music.
@@ -822,4 +860,24 @@ Research reviewed 24 October 2026. Vendor documentation defines API and lifecycl
 Version 2.0 preserves the detailed earlier design and acceptance requirements while replacing the external Frame runtime and VLC playback decisions. Unimplemented features remain requirements and do not become working capabilities through this document.
 
 
-v2.1 records the latest fixed-dock decision, material rendering pass and VPN handoff/status work. Native Tizen and earlier household integration gates remain unfinished.
+v2.1 historically recorded the fixed-dock decision, material rendering pass and VPN handoff/status work. Native Tizen and earlier household integration gates remain unfinished.
+
+
+## 26. v2.2 continuation acceptance additions
+
+| ID | Requirement | Pass evidence |
+|---|---|---|
+| UX-01 | Two-column Settings | Remote navigates every category and control; focus and Back behaviour checked on TCL and simulated Android. |
+| UX-02 | Editable curated Home | Fresh six defaults, Open/Move/pin/unpin/info menu, persistence, cancellation and protected-app checks pass; child authorisation cannot be bypassed. |
+| LIB-01 | Automatic discovery | No saved source leads directly to search; actual NAS appears by name without typed address; timeout/Retry remain usable. |
+| LIB-02 | Exact library scope | The three locally chosen roots are the only viewer collections; wrong/other server roots are never automatically exposed. |
+| LIB-03 | Native DLNA direct play | Representative files play, pause, seek, stop and return correctly on each supported runtime; unsupported codecs fail clearly. |
+| LIB-04 | Progress truth | Jellyfin start/progress/stop reaches the server and resume is verified; DLNA-only playback is never labelled server-synchronised. |
+| GAL-01 | Five example images | All five original images load, rotate, fit and respond to pause/next/previous/Back without private data appearing. |
+| VPN-01 | Four states | Distinct Connected, Disconnected, Checking, Unknown; no state alone unlocks Live TV. |
+| MUS-01 | Official Music route | Correct installed Amazon Music app opens; missing-app route uses the supported store; account search/playlists work in the official app after sign-in. |
+| MUS-02 | Custom Music gate | Authorised API/media control access is proven before claiming custom playlist/search/Now Playing support. |
+| REL-01 | Version retention | GitHub version/tag, APK, hash, notes, limitations and test results retained; no overwrite of previous release or another agent's code. |
+| REL-02 | Updated UX evidence | Fresh screenshots belong to the exact physically tested APK; no substitution of old screenshots. |
+
+Version 2.2 incorporates the latest owner directions for editable Apps, two-column Settings, automatic DLNA, exact media scope, Amazon Music, authorised sample art, privacy and retained GitHub releases. Platform limitations remain explicit and implementation status is kept separately.

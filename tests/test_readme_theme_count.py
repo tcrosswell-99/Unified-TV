@@ -20,6 +20,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 THEMES = ROOT / "themes"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
 FRONT = ROOT / "README.cleanyourtv.md"
 
 # The row is `| **Themes** | ... N ship in [`themes/`](themes/)`. A count written as a word or as
@@ -62,7 +64,7 @@ def theme_folders(root=THEMES):
 class ReadmeThemeCountTest(unittest.TestCase):
     def test_the_count_names_every_theme(self):
         row = themes_row(FRONT.read_text(encoding="utf-8"))
-        self.assertIsNotNone(row, "README.md has no `| **Themes** |` feature row any more")
+        self.assertIsNotNone(row, "README.cleanyourtv.md has no `| **Themes** |` feature row any more")
         claimed = count_in(row)
         self.assertIsNotNone(claimed, f"the Themes row states no count: {row}")
         shipped = theme_folders()

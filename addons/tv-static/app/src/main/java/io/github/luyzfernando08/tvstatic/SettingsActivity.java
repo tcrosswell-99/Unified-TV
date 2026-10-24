@@ -44,7 +44,12 @@ public class SettingsActivity extends Activity {
 
         enabled = row(root);
         enabled.setOnClickListener(v -> {
-            Prefs.setEnabled(this, !Prefs.enabled(this));
+            boolean on = !Prefs.enabled(this);
+            Prefs.setEnabled(this, on);
+            // Off stops the foreground watcher, so nothing stays running (or restarts at boot) for an unused effect.
+            Intent watch = new Intent(this, WatchService.class);
+            if (on) startForegroundService(watch);
+            else stopService(watch);
             refresh();
         });
         style = row(root);

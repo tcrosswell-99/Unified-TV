@@ -16,14 +16,17 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Where the config lives on the TV. A config.json pushed over ADB lands in the app's external files folder
- * (or arrives through ConfigProvider); importPushed() validates it, keeps it in private storage and deletes
- * the pushed copy, so the passwords do not stay in a folder the shell can read. The settings screen's
- * choices are kept as overrides until the next pushed file replaces them.
+ * Where the config lives on the TV. A config.json pushed over ADB arrives through ConfigProvider, staged in
+ * private storage, or on Android 8 and 9 (no `content write`) is copied into the app's external files folder;
+ * importPushed() validates it, keeps it in private storage and deletes the pushed copy at once, so the
+ * passwords do not stay in a folder other apps or the shell can read. The settings screen's choices are kept
+ * as overrides until the next pushed file replaces them.
  */
 public final class ConfigStore {
     static final String TAG = "FrigateGlance";
     private static final String PRIVATE_NAME = "config.json";
+    /** ConfigProvider's staging file, next to the private config. */
+    static final String STAGED_NAME = "pushed-config.json";
     private static final String KEY_OVERRIDES = "overrides";
     private static final String KEY_PIN = "certSha256";
 
@@ -55,9 +58,14 @@ public final class ConfigStore {
 
     /** Imports a pushed config.json, if there is one. True when one was imported. */
     public boolean importPushed() {
+        // The external copy first: it can only be a fallback push, the provider's staged file is the newer.
         File dir = context.getExternalFilesDir(null);
-        File pushed = dir == null ? null : new File(dir, PRIVATE_NAME);
-        if (pushed == null || !pushed.isFile()) return false;
+        boolean external = dir != null && importPushed(new File(dir, PRIVATE_NAME));
+        return importPushed(new File(context.getFilesDir(), STAGED_NAME)) || external;
+    }
+
+    private boolean importPushed(File pushed) {
+        if (!pushed.isFile()) return false;
         try {
             return importJson(read(pushed));
         } catch (IOException e) {

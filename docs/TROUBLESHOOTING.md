@@ -442,6 +442,7 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   `/data/local/tmp` and writes them through the launcher's `ThemeProvider`, which creates them as the
   launcher; `cp` is only the fallback for a launcher installed before that provider existed: run
   `launcher/build-and-install.sh` once, then push the theme again.
+- **A theme copied in by hand does nothing on Android 10.** There the launcher only applies a `config.json` that `tools/theme.sh` or `tools/theme.ps1` wrote through its `ThemeProvider` (`content write`, which only the ADB shell may use); a file put there with a plain `adb push` or `cp` is ignored and the last trusted theme stays, because before Android 11 other apps with the storage permission can write that folder. Push the theme again with the theme tools. Android 8 and 9 (no `content write`) and Android 11+ are unchanged. Not yet verified on a real Android 10 TV.
 - **A theme push prints "is on the TV" and nothing changes**, seen on Android 14: the shell *can* write
   `Android/data` there, so `cp` succeeded - but the file it created belonged to the shell (`ls -ln` shows
   `2000 1078` instead of the launcher's uid) and the launcher logged `W TvHome.Config: ignoring

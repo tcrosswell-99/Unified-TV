@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public final class PlayerActivity extends Screen {
     private ExoPlayer player; private PlayerView view; private JSONObject config; private String id; private boolean started;
-    private int generation;
+    private int generation;private boolean dlna;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Runnable progress=new Runnable(){public void run(){report("/Sessions/Playing/Progress");handler.postDelayed(this,10000);}};
@@ -23,6 +23,7 @@ public final class PlayerActivity extends Screen {
         final int ticket=++generation;
         worker.execute(()->{
             try{
+                if(getIntent().hasExtra("dlnaUrl")){prepareDlna(ticket);return;}
                 config=new Vault(this).read(Vault.mediaKey(this));
                 JSONObject me=LocalApi.get(config,"/Users/Me");
                 MediaAccount.require(me,config.optString("user"),EditLock.child(this));
@@ -43,11 +44,23 @@ public final class PlayerActivity extends Screen {
             }catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;page("Playback unavailable");text("Check the library connection and this profile's permissions.",24);button("Back",this::finish);});}
         });
     }
+    private void prepareDlna(int ticket)throws Exception{
+        if(EditLock.child(this))throw new SecurityException();
+        JSONObject saved=new Vault(this).read("dlna");if(!saved.optBoolean("enabled")||saved.optJSONArray("roots")==null)throw new SecurityException();
+        String stream=getIntent().getStringExtra("dlnaUrl");java.net.URI uri=DlnaClient.local(stream),origin=DlnaClient.local(saved.getString("control"));
+        if(!origin.getHost().equalsIgnoreCase(uri.getHost()))throw new SecurityException();
+        int port=uri.getPort()<0?("https".equals(uri.getScheme())?443:80):uri.getPort();
+        config=new JSONObject().put("enabled",true).put("httpConsent",true).put("base",Endpoint.base(uri.getHost(),""+port,"https".equals(uri.getScheme())));dlna=true;
+        runOnUiThread(()->{if(ticket!=generation||isFinishing()||isDestroyed())return;
+            view=new PlayerView(this);setContentView(view);player=new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(()->new PrivateDataSource(config))).build();view.setPlayer(player);view.setKeepScreenOn(true);view.requestFocus();
+            player.addListener(new Player.Listener(){@Override public void onPlayerError(PlaybackException e){release();page("Playback unavailable");text("This video could not be played. Check the server and file format.",21);button("Back",PlayerActivity.this::finish);}});
+            player.setMediaItem(MediaItem.fromUri(stream));player.prepare();player.play();});
+    }
     private boolean foreground; private boolean getLifecycleActive(){return foreground;}
     @Override protected void onResume(){super.onResume();foreground=true;}
     @Override protected void onPause(){foreground=false;super.onPause();}
     private void report(String path){
-        if(player==null||!started)return;
+        if(dlna||player==null||!started)return;
         long position=player.getCurrentPosition();boolean paused=!player.isPlaying();
         worker.execute(()->{try{LocalApi.post(config,path,new JSONObject().put("ItemId",id).put("PositionTicks",position*10000).put("IsPaused",paused).put("CanSeek",true).put("PlayMethod","DirectStream"));}catch(Exception ignored){/* Do not claim synchronisation succeeded. */}});
     }

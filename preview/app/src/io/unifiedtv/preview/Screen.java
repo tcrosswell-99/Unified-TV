@@ -10,6 +10,7 @@ import android.widget.*;
 /** Native focusable controls provide D-pad, keyboard and TalkBack semantics. */
 class Screen extends Activity {
     LinearLayout column;
+    boolean autoFocusButtons=true;
     int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     void page(String title) {
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackground(MaterialScene.backdrop(this));
@@ -31,7 +32,7 @@ class Screen extends Activity {
         b.setPadding(dp(16),dp(10),dp(16),dp(10));
         b.setOnClickListener(v->action.run());
         LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2); layout.setMargins(0,dp(5),0,dp(5)); column.addView(b,layout);
-        if(column.findFocus()==null)b.requestFocus();
+        if(autoFocusButtons&&column.findFocus()==null)b.requestFocus();
         return b;
     }
     EditText field(String label,String value,boolean secret) {

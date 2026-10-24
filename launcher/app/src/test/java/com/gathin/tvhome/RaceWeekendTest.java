@@ -65,4 +65,22 @@ public class RaceWeekendTest {
         assertNull(RaceWeekend.at(CALENDAR, Instant.parse("2026-10-26T00:00:00Z")));
     }
 
+    @Test
+    public void aSessionStartIsReadInUtc() {
+        assertEquals(Instant.parse("2026-10-23T17:30:00Z"), RaceWeekend.sessionStart("2026-10-23T17:30:00Z"));
+        assertEquals(RaceWeekend.EARLIEST, RaceWeekend.sessionStart("2000-01-01T00:00:00Z"));
+        assertEquals(Instant.parse("2100-12-31T23:59:59Z"), RaceWeekend.sessionStart("2100-12-31T23:59:59Z"));
+    }
+
+    @Test
+    public void aStartTheClockCannotShowIsLeftOut() {
+        // Instant.parse takes these, but formatting them for the panel throws on every resume.
+        assertNull(RaceWeekend.sessionStart("+999999999-12-31T23:59:59Z"));
+        assertNull(RaceWeekend.sessionStart("-999999999-01-01T00:00:00Z"));
+        assertNull(RaceWeekend.sessionStart("1999-12-31T23:59:59Z"));
+        assertNull(RaceWeekend.sessionStart("2101-01-01T00:00:00Z"));
+        assertNull(RaceWeekend.sessionStart("2026-10-23 17:30"));
+        assertNull(RaceWeekend.sessionStart(""));
+    }
+
 }

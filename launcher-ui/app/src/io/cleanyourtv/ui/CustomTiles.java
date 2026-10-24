@@ -52,9 +52,16 @@ final class CustomTiles {
         return new int[] {top, Color.HSVToColor(hsv), 0};
     }
 
+    /** A logo larger than this download is refused (a tile logo is a few hundred KB at most). */
+    private static final int MAX_BYTES = 2 * 1024 * 1024;
+    /** The largest side a logo is kept at. */
+    private static final int FIT = 640;
+
     /**
      * The logo: the cached download, the pushed file, or the app's icon. A URL not cached yet is downloaded only when
      * `download` is true (the shelf's background load); until then this returns null and the shelf keeps the TV art.
+     * A URL that answered but gave no usable picture (too big, not an image, 4xx) leaves a ".none" file beside the
+     * cache, like HomeApps' lifted logos, so it isn't fetched again on every resume; saving the tile again retries it.
      */
     static Bitmap logo(Context c, String pkg, boolean download) {
         String[] t = get(pkg);
@@ -65,45 +72,126 @@ final class CustomTiles {
             if (!TvConfig.allowedName(source)) return null;
             return decode(new File(TvConfig.dir(c), new File(source).getName()));
         }
-        File cached = new File(new File(c.getFilesDir(), "tiles"), Integer.toHexString((pkg + source).hashCode()) + ".png");
+        File cached = cacheFile(c, pkg, source), none = new File(cached.getPath() + ".none");
         if (cached.isFile()) return decode(cached);
-        if (!download) return null;
+        if (!download || none.exists()) return null;
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(source).openConnection();
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(15000);
-            Bitmap b;
-            try (InputStream in = conn.getInputStream()) {
-                b = BitmapFactory.decodeStream(in);
+            byte[] bytes;
+            try {
+                int code = conn.getResponseCode();
+                if (code >= 400 && code < 500) {
+                    AppLog.w("tile logo for " + pkg + ": HTTP " + code);
+                    markNone(none);
+                    return null;
+                }
+                try (InputStream in = conn.getInputStream()) {
+                    bytes = conn.getContentLengthLong() > MAX_BYTES ? null : readCapped(in);
+                }
             } finally {
                 conn.disconnect();
             }
-            if (b == null) return null;
-            b = fit(b);
+            Bitmap b = bytes == null ? null : decode(bytes);
+            if (b == null) {
+                AppLog.w("tile logo for " + pkg + ": not a picture, or over " + (MAX_BYTES >> 20) + " MB");
+                markNone(none);
+                return null;
+            }
             //noinspection ResultOfMethodCallIgnored
             cached.getParentFile().mkdirs();
             try (FileOutputStream out = new FileOutputStream(cached)) {
                 b.compress(Bitmap.CompressFormat.PNG, 100, out);
             }
             return b;
-        } catch (Exception e) {
+        } catch (Exception e) {   // offline or a server error: tried again on the next load
             AppLog.w("tile logo for " + pkg + ": " + e.getMessage());
             return null;
         }
     }
 
+    private static File cacheFile(Context c, String pkg, String source) {
+        return new File(new File(c.getFilesDir(), "tiles"), Integer.toHexString((pkg + source).hashCode()) + ".png");
+    }
+
+    /** Saving the tile again (or a changed config.json) retries a logo that failed before. */
+    static void forgetFailure(Context c, String pkg, String source) {
+        source = source == null ? "" : source.trim();
+        if (!source.startsWith("https://")) return;
+        //noinspection ResultOfMethodCallIgnored
+        new File(cacheFile(c, pkg, source).getPath() + ".none").delete();
+    }
+
+    private static void markNone(File none) {
+        //noinspection ResultOfMethodCallIgnored
+        none.getParentFile().mkdirs();
+        try {
+            //noinspection ResultOfMethodCallIgnored
+            none.createNewFile();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** The body, or null when it's over MAX_BYTES (read no further than that). */
+    private static byte[] readCapped(InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        int n;
+        while ((n = in.read(buf)) > 0) {
+            if (out.size() + n > MAX_BYTES) return null;
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
+    }
+
     private static Bitmap decode(File f) {
         if (!f.isFile()) return null;
         BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+        if (!sample(o)) return null;
+        try {
+            Bitmap b = BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+            return b == null ? null : fit(b);
+        } catch (OutOfMemoryError e) {
+            AppLog.w("tile logo too large: " + f.getName());
+            return null;
+        }
+    }
+
+    private static Bitmap decode(byte[] bytes) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o);
+        if (!sample(o)) return null;
+        try {
+            Bitmap b = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o);
+            return b == null ? null : fit(b);
+        } catch (OutOfMemoryError e) {
+            return null;
+        }
+    }
+
+    /**
+     * After a bounds-only pass: false if it isn't a picture; otherwise sets up the real decode, skipping pixels by
+     * powers of two while the picture stays at least FIT on its longer side (fit() then scales to FIT exactly, as
+     * before), so a huge logo never lands in memory at full size. A logo up to FIT is decoded as it is.
+     */
+    private static boolean sample(BitmapFactory.Options o) {
+        if (o.outWidth <= 0 || o.outHeight <= 0) return false;
+        int largest = Math.max(o.outWidth, o.outHeight), s = 1;
+        while (largest / (s * 2) >= FIT) s *= 2;
+        o.inJustDecodeBounds = false;
+        o.inSampleSize = s;
         o.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        Bitmap b = BitmapFactory.decodeFile(f.getAbsolutePath(), o);
-        return b == null ? null : fit(b);
+        return true;
     }
 
     private static Bitmap fit(Bitmap b) {
         int largest = Math.max(b.getWidth(), b.getHeight());
-        if (largest <= 640) return b;
-        float s = 640f / largest;
+        if (largest <= FIT) return b;
+        float s = (float) FIT / largest;
         return Bitmap.createScaledBitmap(b, Math.round(b.getWidth() * s), Math.round(b.getHeight() * s), true);
     }
 
@@ -149,6 +237,7 @@ final class CustomTiles {
                         Toast.makeText(a, Ui.tr("Cor inválida: use #RRGGBB.", "Invalid color: use #RRGGBB."), Toast.LENGTH_LONG).show();
                         return;
                     }
+                    forgetFailure(a, pkg, url.getText().toString());
                     Prefs.setTile(pkg, url.getText().toString(), hex.isEmpty() ? "#1C1C1E" : hex);
                     if (saved != null) saved.run();
                 })

@@ -1,6 +1,8 @@
 # CleanYourTV UI
 
-[English](README.md) · **Português**
+[English](docs/upstream/CLEANYOURTV_UI_README.md) · **Português**
+
+> **Unified TV note (English):** this page is a translation of the CleanYourTV UI README, archived in English at [docs/upstream/CLEANYOURTV_UI_README.md](docs/upstream/CLEANYOURTV_UI_README.md) and kept for credit and history. It does not describe Unified TV, an independent fork in early development whose front page is [README.md](README.md) (English). In this fork, `README.md` is Unified TV's page and `sync-upstream.yml` only prints manual-review guidance; nothing is merged automatically.
 
 Uma tela inicial para Android TV com cara de Apple TV, em cima do **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)**
 (que tira o lixo de fábrica da TV) e com o visual do **[Free My TV](https://github.com/simbasjungles/free-my-tv)**.

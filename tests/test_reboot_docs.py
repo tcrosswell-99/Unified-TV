@@ -26,6 +26,8 @@ from test_markdown_links import markdown_files  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 TV = ROOT / "tools" / "tv.py"
 TROUBLE = ROOT / "docs" / "TROUBLESHOOTING.md"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
 README = ROOT / "README.cleanyourtv.md"
 
 # `tv.py reboot`, not `tv.py --reboot`: the dashes sit between the path and the word.

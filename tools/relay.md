@@ -17,6 +17,9 @@ tools/venv/bin/python -I tools/tv.py --probe
 - **Options:** `--tv-port` if the TV's ADB port isn't 5555; `--port` for another local port (run one relay
   per TV, each on its own port). The TV's address defaults to `$TV_HOST`.
 - **It prints the `TV_HOST`/`TV_PORT` to use**, and one line each time it can't reach the TV.
+- **Undo records stay per TV.** `tools/disable.sh` files its recovery record under the address *and* port,
+  and stores the TV's serial (or `android_id`), so two TVs on two relays keep separate records, and
+  `tools/restore.sh` refuses a record that another TV wrote.
 - **Stop it with Ctrl-C** when you're done.
 
 ## Safety

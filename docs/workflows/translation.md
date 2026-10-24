@@ -6,7 +6,7 @@
    `launcher/app/src/main/res/values/strings.xml`, skipping the ones marked `translatable="false"`. Keep
    placeholders (`%1$s`, `%d`) and XML escapes intact.
 2. Add the locale to `launcher/app/src/main/res/xml/locales_config.xml`.
-3. Add the language to the Languages list in `README.md`.
+3. Add the language to the Languages list in `README.cleanyourtv.md`, the inherited front page.
 4. To fix a missing string in existing locales, add it to every `values-*` folder you can, in the same order as
    the default `strings.xml`. A missing string falls back to English (`launcher/app/lint.xml`), but a new switch
    needs its strings in every locale.

@@ -1,5 +1,8 @@
 # Unified TV design system
 
+**Current Android candidate: Preview 0.4.** Two-column Settings, automatic local media-server discovery, encrypted selected folders, embedded DLNA playback trial, five authorised gallery examples and four VPN states. See [feature status](FEATURE_STATUS.md), [complete v2.2 specification](PRODUCT_SPEC.md) and [AI handover](AI_HANDOVER.md). Local Android checks passed; new TCL/Frame hardware acceptance remains outstanding. The latest Apps request allows owner pin/unpin, but that menu is not implemented in this build. It supersedes older fixed-membership requirement text below.
+
+
 **Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
 
 **North star:** Content first, underlying technology hidden.
@@ -36,6 +39,7 @@ Remote interaction outranks animation and network imagery on the Sony and low-me
 
 - **Ring live view:** interrupt artwork automatically on doorbell press or detected person, restore prior state afterward; show true loading state, never call a static preview live. Highest priority.
 - **Alexa reminder:** brief text toast over viewing, without stealing playback focus; lower priority than Ring.
+- **Home view:** optional Home Assistant glances and alerts, one at a time in the order set in [Home view](HOME_VIEW.md#alert-priority); nothing appears when disconnected.
 - **VPN:** tiny truthful status/exit country when connected; show a Connect/Retry/Back choice only when opening guarded Live TV without verified VPN.
 - **Tottenham:** fixture card only on matchday, no scores.
 - **ChatGPT:** tiny glyph at rest; short-lived waveform and spoken/visual answer only when activated.

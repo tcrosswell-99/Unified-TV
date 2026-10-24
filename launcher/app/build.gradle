@@ -2,17 +2,37 @@ plugins {
     id 'com.android.application'
 }
 
+// Optional release key, for a build the owner signs with their own keystore: each of these four as a Gradle property
+// (-PUNIFIEDTV_KEYSTORE=... or ~/.gradle/gradle.properties) or an environment variable. Only when all four are set;
+// otherwise releases are signed with the debug key exactly as before, so CI and a plain build need no secrets.
+// UNIFIEDTV_KEYSTORE is an absolute path or one relative to launcher/app; never commit the keystore itself.
+// Android refuses an update signed with another key: switching keys means uninstalling the old build first.
+def releaseKey = ['UNIFIEDTV_KEYSTORE', 'UNIFIEDTV_KEYSTORE_PASSWORD', 'UNIFIEDTV_KEY_ALIAS', 'UNIFIEDTV_KEY_PASSWORD']
+        .collectEntries { name -> [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse('')] }
+def hasReleaseKey = releaseKey.values().every { !it.trim().isEmpty() }
+
 android {
     namespace 'com.gathin.tvhome'
     compileSdk 34
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(releaseKey.UNIFIEDTV_KEYSTORE)
+                storePassword releaseKey.UNIFIEDTV_KEYSTORE_PASSWORD
+                keyAlias releaseKey.UNIFIEDTV_KEY_ALIAS
+                keyPassword releaseKey.UNIFIEDTV_KEY_PASSWORD
+            }
+        }
+    }
 
     defaultConfig {
         // Opt-in identity for firmware with a package-name HOME allowlist; see docs/devices/xiaomi-mitv-aetp0-dofus.md.
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName '2.7'
+        versionCode 9
+        versionName '2.8'
     }
 
     buildTypes {
@@ -21,8 +41,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Sideloaded over ADB, never published: sign with the debug key so it installs over a debug build.
-            signingConfig signingConfigs.debug
+            // Sideloaded over ADB, never published: sign with the debug key so it installs over a debug build,
+            // unless the owner's own key is configured above.
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
         }
     }
 

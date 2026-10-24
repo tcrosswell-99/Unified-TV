@@ -1,0 +1,29 @@
+Unified TV Android Preview 0.4 — Windows sideload instructions
+
+This is an experimental Android TV APK for owner-authorised testing. It cannot run on native Samsung Tizen. Factory Home remains unchanged: no HOME intent is declared and no launcher/package removal is needed.
+
+1. Download the APK and SHA256SUMS.txt from this exact GitHub release. In PowerShell run:
+   Get-FileHash -Algorithm SHA256 -LiteralPath .\UnifiedTV-Preview.apk
+   Compare the result with the published hash.
+
+2. Use the TV's supported Developer options/network debugging route and Google's official Android platform-tools. Confirm the actual TV address and advertised debug port locally. Android TV 11 does not imply support for newer TV wireless-pairing menus. Do not scan or change unrelated devices.
+
+3. From the platform-tools directory, substituting your actual local target:
+   .\adb.exe connect <TV_ADDRESS>:<DEBUG_PORT>
+   .\adb.exe -s <TV_ADDRESS>:<DEBUG_PORT> get-state
+   Accept the computer-authorisation prompt on the TV if shown.
+
+4. Check whether io.unifiedtv.preview is already installed and whether it has configuration. Compare its signing certificate with the new APK using official apksigner tooling. This release uses a CI debug key which can differ from earlier builds.
+   IMPORTANT: If installation reports a signature/update incompatibility, STOP. Do not uninstall, clear data or remove encryption keys from a configured build. Resolve the signing/migration plan first. A separately built deviceCheck identity can coexist but does not share encrypted setup.
+
+5. Only for a new package or a verified matching signature:
+   .\adb.exe -s <TV_ADDRESS>:<DEBUG_PORT> install -r .\UnifiedTV-Preview.apk
+   .\adb.exe -s <TV_ADDRESS>:<DEBUG_PORT> shell am start -n io.unifiedtv.preview/.UnifiedPreviewActivity
+
+6. Test remote focus, Home return, Settings categories, discovery, selected library folders and Gallery. Only choose your intended media folders. NAS/HA details are entered locally and saved encrypted. Save tokens/account details nowhere public.
+
+7. Music opens the official app or store search. Sign in yourself if needed. Live TV stays blocked until VPN routing/drop protection is proven. Do not change factory Home or disable system packages to test this APK.
+
+8. Returning to normal TV: press Home on the physical remote. If removing a test preview later, first arrange preservation of its private configuration and confirm removal is intended. Uninstalling destroys its local data; never use uninstall as an automatic update step.
+
+Take revised screenshots only after verifying the exact installed build. Exclude household addresses, account names, camera feeds and personal media details from public images. No installation or TV verification of this release is claimed by these instructions.

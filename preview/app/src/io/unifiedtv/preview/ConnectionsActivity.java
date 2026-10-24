@@ -20,6 +20,7 @@ public final class ConnectionsActivity extends Screen {
         enabled=new CheckBox(this); enabled.setText("Enable connection"); enabled.setTextColor(-1); enabled.setChecked(old.optBoolean("enabled")); column.addView(enabled);
         String hostname="",p=ha?"8123":"8096"; boolean tls=true;
         try { URI u=URI.create(old.getString("base")); hostname=u.getHost(); p=""+u.getPort(); tls=u.getScheme().equals("https"); } catch(Exception ignored) {}
+        if(old.length()==0&&getIntent().hasExtra("discoveredBase"))try{URI discovered=URI.create(getIntent().getStringExtra("discoveredBase"));hostname=discovered.getHost();p=""+discovered.getPort();tls="https".equals(discovered.getScheme());}catch(Exception ignored){}
         host=field("Hostname or IP (IPv4, IPv6 or local hostname)",hostname,false);
         port=field("Port",p,false); port.setInputType(InputType.TYPE_CLASS_NUMBER);
         https=new CheckBox(this); https.setText("Use HTTPS"); https.setTextColor(-1); https.setChecked(tls); column.addView(https);
