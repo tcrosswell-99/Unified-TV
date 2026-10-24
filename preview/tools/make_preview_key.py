@@ -17,6 +17,7 @@ Usage:
 Exit status: 0 created, 1 refused or failed.
 """
 import base64
+import glob
 import os
 import secrets
 import shutil
@@ -40,6 +41,10 @@ def keytool():
         for root in (os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("LOCALAPPDATA", "")):
             places.append(os.path.join(root, "Android", "Android Studio", "jbr", "bin"))
             places.append(os.path.join(root, "Programs", "Android Studio", "jbr", "bin"))
+        # A JDK installed a moment ago is often not on this window's PATH yet.
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        for vendor in ("Microsoft", "Eclipse Adoptium", "Java", "Zulu", "Amazon Corretto"):
+            places += sorted(glob.glob(os.path.join(program_files, vendor, "*", "bin")), reverse=True)
     else:
         places += ["/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin",
                    os.path.expanduser("~/android-studio/jbr/bin"), "/opt/android-studio/jbr/bin"]
