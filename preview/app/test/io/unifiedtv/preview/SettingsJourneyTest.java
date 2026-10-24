@@ -18,6 +18,6 @@ public class SettingsJourneyTest {
         }
     }
     @Test public void vpnStatesRemainDistinctAndCannotImplyRoutingVerification(){
-        java.util.Set<String> labels=new java.util.HashSet<>();for(VpnGate.State state:VpnGate.State.values())labels.add(VpnGate.statusLabel(state));assertEquals(4,labels.size());assertTrue(VpnGate.explanation(true).contains("still need verification"));
+        java.util.Set<String> labels=new java.util.HashSet<>();for(VpnGate.State state:VpnGate.State.values())labels.add(VpnGate.statusLabel(state));assertEquals(4,labels.size());for(boolean routed:new boolean[]{false,true})assertTrue(VpnGate.explanation(true,routed).contains("Live TV stays locked"));
     }
 }
