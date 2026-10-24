@@ -16,7 +16,7 @@ Keep **all existing licence texts, file headers and required notices** when movi
 
 The following informed research and product design but **have not been copied into the new fork in this foundation change**:
 
-- [CleanFrame](https://github.com/nthnclrk/CleanFrame), Samsung/Tizen inspiration and restrained interface design.
+- **[CleanFrame by Nathan Clark (`nthnclrk`)](https://github.com/nthnclrk/CleanFrame):** original Samsung The Frame/Tizen project that informed our calm, single-dock layout, remote focus interactions and approach to pre-rendered glass. Credit for those design ideas belongs to Nathan Clark. **This is inspiration only:** no CleanFrame source code, graphics, photos, font files or animations have been copied into Unified TV. CleanFrame's source is MIT licensed, copyright (c) 2026 Nathan Clark; if we incorporate code in future, its original copyright and licence notices must accompany that code. CleanFrame is not affiliated with or endorsing Unified TV.
 - [TV Detox](https://github.com/Ansub/tv-detox), optional performance/cleanup techniques (MIT). If code is incorporated later, preserve its copyright 2026 Ansub Khan and MIT notice.
 - [Vision Stream concept](https://dribbble.com/shots/21647921-Vision-Stream-Next-Gen-Smart-TV-App-UI) and [TV Interface motion](https://dribbble.com/shots/5773537-TV-Interface-motion), **visual references only**.
 - Apple tvOS Liquid Glass era design principles, **reference only**. Do not copy Apple's proprietary interface, fonts, animations or icons into release assets.
