@@ -12,7 +12,7 @@ public final class HouseholdActivity extends Screen {
     private void show(){
         page("Household alerts & room actions");JSONObject config;
         try{config=new Vault(this).read("household");}catch(Exception e){config=new JSONObject();}
-        text("Experimental. Requires your Home Assistant connection. Ring and reminder overlays need TV permission and real playback tests. No native Tizen overlay is possible from this APK.",20);
+        text("Experimental. Requires your Home Assistant connection. Alarm, Ring and reminder overlays need TV permission and real playback tests. No native Tizen overlay is possible from this APK.",20);
         EditText room=field("Room profile: tcl, sony or frame",getSharedPreferences("unified-tv-preview",0).getString("room","tcl"),false);
         EditText door=field("Doorbell button binary sensor entity",config.optString("door"),false);
         EditText person=field("Person detection binary sensor entity (not generic motion)",config.optString("person"),false);
@@ -23,6 +23,8 @@ public final class HouseholdActivity extends Screen {
         EditText art=field("Owner script to restore native Frame Art Mode (optional)",config.optString("art"),false);
         EditText ringEnter=field("Frame Ring entry script: capture prior state then change input, never wake an off TV",config.optString("ringEnter"),false);
         EditText ringExit=field("Frame Ring return script: restore the captured mode and input",config.optString("ringExit"),false);
+        // On unless the household turns it off: found from Home Assistant's own smoke and carbon monoxide sensors, nothing to type.
+        CheckBox alarms=new CheckBox(this);alarms.setText("Show smoke and carbon monoxide alarms on this TV, above the doorbell");alarms.setTextColor(-1);alarms.setChecked(config.optBoolean("alarms",true));column.addView(alarms);
         CheckBox reminders=new CheckBox(this);reminders.setText("Allow private reminder events from Home Assistant");reminders.setTextColor(-1);reminders.setChecked(config.optBoolean("reminders"));column.addView(reminders);
         button("Save household setup",()->{
             try{
@@ -34,7 +36,7 @@ public final class HouseholdActivity extends Screen {
                     if(!v.isEmpty()&&!v.matches(domain+"\\.[a-z0-9_]+"))throw new IllegalArgumentException();value.put(names[n],v);
                 }
                 String cal=calendar.getText().toString().trim();if(!cal.isEmpty()&&!cal.matches("calendar\\.[a-z0-9_]+"))throw new IllegalArgumentException();
-                value.put("calendar",cal).put("reminders",reminders.isChecked());new Vault(this).save("household",value);
+                value.put("calendar",cal).put("reminders",reminders.isChecked()).put("alarms",alarms.isChecked());new Vault(this).save("household",value);
                 getSharedPreferences("unified-tv-preview",0).edit().putString("room",profile).apply();note("Saved locally. Restart Home to update room shortcuts.");
             }catch(Exception e){note("Check room and entity names. Setup was not saved.");}
         });

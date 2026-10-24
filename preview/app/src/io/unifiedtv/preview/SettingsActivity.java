@@ -39,7 +39,7 @@ public final class SettingsActivity extends Screen {
         case 2:
             button("Doorbell, reminders & room setup",()->EditLock.ask(this,()->startActivity(new Intent(this,HouseholdActivity.class))));
             button("Stop household alerts",()->{stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");});
-            text("Ring takes priority. Native Samsung and third-party protected-video behaviour require separate device tests.",16);break;
+            text("Smoke and carbon monoxide alarms come first, then the doorbell. They add to your alarms and never replace them. Native Samsung and third-party protected-video behaviour require separate device tests.",16);break;
         case 3:
             toggle("Reduce motion","reduceMotion");toggle("High contrast","highContrast");toggle("Reduce transparency","opaque");toggle("Lightweight rendering","lightweight");
             button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));break;

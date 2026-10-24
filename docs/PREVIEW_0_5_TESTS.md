@@ -174,3 +174,24 @@ These checks cover only what the status *says*. They are not a protection test. 
 3. Try an APK signed with a different key.
    - **Pass:** the tool refuses and changes nothing on the TV.
 
+## Smoke and carbon monoxide alarm (ALERT-01)
+
+Use a test helper in Home Assistant (a template binary sensor with device class smoke, and another with carbon monoxide), never a real alarm. Household alerts must be running, with overlay permission granted.
+
+1. Turn the smoke test sensor on while Home is showing.
+   - **Pass:** the alarm screen takes over within a few seconds, with "Smoke alarm", the sensor's name and "Get everyone out, stay out, and call the fire service." Focus is on "OK, I've seen it".
+2. Repeat during Netflix or NAS playback.
+   - **Pass:** the alarm screen appears over the film, and the film pauses or its sound stops. Write down which.
+3. Trigger the doorbell while the alarm screen is showing.
+   - **Pass:** no camera card; the alarm screen shows "Someone is at the door."
+4. With the doorbell card showing, turn the carbon monoxide sensor on.
+   - **Pass:** the doorbell card goes and the carbon monoxide alarm screen replaces it.
+5. Press "OK, I've seen it", then turn the second sensor on.
+   - **Pass:** the screen goes, then returns for the second sensor.
+6. Turn both sensors off.
+   - **Pass:** the screen goes, and the film's sound can be resumed.
+7. Turn a sensor on, stop Unified TV's alerts, start them again.
+   - **Pass:** the alarm screen reappears on connecting.
+8. Switch alarms off in household setup and repeat step 1.
+   - **Pass:** nothing appears.
+

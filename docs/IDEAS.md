@@ -10,7 +10,7 @@ Household data (addresses, tokens, names, photos, teams, routes) is always confi
 
 | Idea | Status | Data source |
 | --- | --- | --- |
-| Smoke or carbon monoxide alarm takes over the screen with plain instructions | Idea, awaiting owner decision (it would rank above the doorbell, which spec v2.2 makes priority 1) | Home Assistant alarm entities |
+| Smoke or carbon monoxide alarm takes over the screen with plain instructions | **Built in Preview 0.5, not tested on a TV.** Owner decision 24 October 2026: ranks above the doorbell | Home Assistant alarm entities |
 | Doorbell: live picture when someone presses or is detected | Planned (needs real-TV testing) | Ring integration in Home Assistant |
 | Baby monitor picture-in-picture on sound or movement | Idea | A local camera or sound sensor via Home Assistant |
 | Door or garage left open at bedtime | Idea | Door and garage sensors, a bedtime schedule |
