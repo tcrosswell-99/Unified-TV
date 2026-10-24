@@ -22,8 +22,14 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
   - **Titles:** moving along your films settles for a moment, then shows that title's own poster, softened and darkened. Never another title's image.
   - **The dock** rests low and quiet, and rises when you move.
   - **Films & TV rises from Home:** press Down and a row of posters from your chosen collections appears, without leaving Home. OK plays a film or opens a series; Up or Back returns.
+- **Two apps from one codebase** (owner decision, 25 October 2026):
+  - **Unified TV Preview** (`io.unifiedtv.preview`) has no Home entry at all and keeps exactly the identity it had. The copy already on the TV stays installed and is never replaced or uninstalled.
+  - **Unified TV** (`io.unifiedtv.launcher`) is the app that can become Home. It is signed with the owner's own durable key from its first install, so every later version updates it in place and keeps its settings. Key custody and backups: [SIGNING.md](docs/SIGNING.md).
+  - A **review build** (`io.unifiedtv.launcher.devicecheck`) installs beside both for trying a build on a TV; [OWNER_TESTING.md](docs/OWNER_TESTING.md) has the Windows steps.
+- **Specification v3.3** ([SPEC.md](docs/SPEC.md)): a short authoritative specification. The v3.2 contradictions are corrected where they stood in [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) (change list: [SPEC_CHANGES_v3.3.md](docs/SPEC_CHANGES_v3.3.md)), and the earlier versions are archived in `docs/archive/`. [ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv) is the only live status record, with one status vocabulary and one test-level vocabulary.
+- **Wallpaper artwork record** ([ARTWORK.md](docs/design/ARTWORK.md)) and **visual reference audit** ([REFERENCES.md](docs/design/REFERENCES.md)).
 - **Unified TV as the TV's Home, only if you choose it** (spec 29):
-  - Installing changes nothing: the Home entry ships switched off, and CI fails any build where that isn't true (`preview/tools/home_check.py`).
+  - Only the launcher app has a Home entry, and installing it changes nothing: the entry ships switched off. CI fails any build where the preview has a Home entry or the launcher's is switched on (`preview/tools/home_check.py`).
   - **Settings → TV & performance → Make Unified TV the Home screen** switches it on and lets Android itself ask. If Unified TV isn't chosen, it is switched straight off again.
   - As Home, the Home button returns to the main screen; Back at the main screen never leaves it.
 - **Open original TV interface** (spec 30): a small adult-only row offers the manufacturer's interface for now, or as the default again after a second confirmation.

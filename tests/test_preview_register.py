@@ -13,6 +13,8 @@ COLUMNS = ["requirement_id", "feature", "owner_agent", "branch_commit", "build_h
            "test_level", "observed_result", "evidence_path", "status", "severity", "next_action"]
 STATUSES = {"not_started", "implemented_unverified", "automated_pass", "hardware_pass", "hardware_fail", "blocked",
             "unsupported", "deferred_preview_only"}
+# One vocabulary (spec v3.3, docs/SPEC.md section 5): how far a result has actually been tested.
+TEST_LEVELS = {"none", "unit", "simulated", "ci_build", "pc_network", "physical_tcl", "physical_sony", "physical_frame"}
 
 
 def rows():
@@ -35,6 +37,15 @@ class Register(unittest.TestCase):
     def test_status_values_are_allowed(self):
         for r in rows()[1]:
             self.assertIn(r["status"], STATUSES, r["requirement_id"])
+
+    def test_test_levels_are_allowed(self):
+        for r in rows()[1]:
+            self.assertIn(r["test_level"], TEST_LEVELS, r["requirement_id"])
+
+    def test_a_hardware_result_needs_a_physical_test_level(self):
+        for r in rows()[1]:
+            if r["status"] in ("hardware_pass", "hardware_fail"):
+                self.assertTrue(r["test_level"].startswith("physical_"), f"{r['requirement_id']} claims {r['status']} at {r['test_level']}")
 
     def test_requirement_ids_are_unique(self):
         ids = [r["requirement_id"] for r in rows()[1]]

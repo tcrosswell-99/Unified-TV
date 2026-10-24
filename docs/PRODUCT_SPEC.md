@@ -4,7 +4,7 @@
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 2.2 consolidated draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
+**Version:** 3.3 detailed requirements (companion to [docs/SPEC.md](SPEC.md)) | **Date:** 25 October 2026 | **Status:** the full v3.2 detailed specification, corrected in place for v3.3. [SPEC.md](SPEC.md) is the short authoritative specification and wins any disagreement. Requirement status lives only in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv).
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -12,14 +12,121 @@
 
 **Design baseline for the fork:** The quiet, full-screen, one-dock visual direction in the household's CleanFrame-style reference image is the approved starting point. A selected item must change the *whole* backdrop to imagery genuinely related to that app or NAS title. The detailed motion, glass, typography, progressive-reveal, accessibility and performance rules in Section 4 are mandatory acceptance criteria. Third-party references guide principles; our application must use original, appropriately licensed assets and its own implementation.
 
-## 0. Latest owner decisions and document precedence
+## v3.3 authority and owner decisions — read before the numbered sections
 
-This is the complete consolidated product requirement, including the detailed earlier visual, functional and acceptance sections below. It describes the target product, not a statement that every feature is built. Read `FEATURE_STATUS.md` for implemented behaviour and evidence, and `AI_HANDOVER.md` for continuation instructions. Where older proposal/reconciliation/history text conflicts, this section and the current numbered requirement take precedence.
+**Effective baseline:** 25 October 2026 (UK time), with eight owner decisions, OD-01 to OD-08. The short authoritative current specification is [SPEC.md](SPEC.md); this file keeps the detailed functional requirements and traceability behind it. Every numbered section below has been corrected in place for v3.3, so no section needs to be read through an override table; corrections are marked *(changed in v3.3)* and listed in [SPEC_CHANGES_v3.3.md](SPEC_CHANGES_v3.3.md). Requirement status lives only in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv); [FEATURE_STATUS.md](FEATURE_STATUS.md) is its readable summary and [AI_HANDOVER.md](AI_HANDOVER.md) the continuation guide. Hardware tests are run by the owner, who reports the evidence back ([OWNER_TESTING.md](OWNER_TESTING.md)). The v3.2 package (specification, build plan, handover and feature status) is kept in [archive/](archive/README.md) as history only and must not be used as instructions.
+
+### Authority, terminology and conflict resolution
+
+1. **Current human owner instructions** override this file. [SPEC.md](SPEC.md) also overrides this file; if the two disagree, follow SPEC.md and correct this file. Within this file each section states the current rule; do not silently drop older features.
+2. **Product requirement ≠ source implementation ≠ verified physical result.** Record them separately. A simulated test, GitHub build, screenshot mockup, code present, or a feature in the spec does not establish working hardware behaviour.
+3. **P0** means essential to its named release gate, **P1** means desired after the daily-use baseline, and **GATE** means an unresolved feasibility, safety or third-party dependency. Historical P0 labels are target criticality, **not instructions to implement every P0 feature in the next sprint**. The release gate order G0–G6 below (the same list as SPEC.md) is authoritative for sequencing.
+4. **Device specificity:** owner's TCL Android TV 11, Sony 65-inch BRAVIA OLED Google TV and Samsung 2021 Frame QE50LS03AAUXXU firmware T-NKM2DEUC-2310.0 are separate acceptance targets. Capture missing TCL/Sony exact model, firmware and remote identifiers; do not guess key mappings. Samsung Tizen is not Android.
+5. **Privacy:** keep IPs, credentials, device serials, certificates, photographs and local household configuration out of public source, CI logs, distributable APK/WGT and evidence screenshots. Sanitised fixture data and non-private design references are allowed subject to rights.
+6. **No destructive shortcuts:** never disable the stock launcher, factory packages, Smart Hub, Samsung Art Mode, HDMI/CEC, volume, accessibility or security controls. No unattended ADB changes, unsupported native Home writes, service-menu edits or firmware modification. Preserve and prove recovery first.
+
+### Explicit resolution of inherited contradictions
+
+| Topic | Current rule (v3.3) | Where the older text was corrected |
+|---|---|---|
+| Android HOME vs standalone preview | **Two separately installed apps built from one codebase as Gradle product flavours** *(changed in v3.3)*. `preview` = `io.unifiedtv.preview`: **no HOME entry at all**, identity unchanged, stays installed and is never uninstalled. `launcher` = `io.unifiedtv.launcher`: declares a HOME activity-alias that **ships disabled** and is enabled only when the owner chooses **Make Unified TV the Home screen** in Settings; Android's own Home selection then decides. If the owner does not choose it, the alias stays withdrawn. The **Open original TV interface** escape hatch lives in the launcher. The launcher is signed with the owner's durable key from its first release (OD-08). Both apps must be independently launchable and recoverable. | Sections 0.1, 3.1, 28.1, 29.2, 29.3 and 29.6 now all state this rule. |
+| TCL daily-use priority vs Preview 0.5 | **G1:** reproduce the remote escape, prove safe factory Home recovery, and test an owner-selected default launcher on the actual TCL. **G2:** Animated Home and Wallpaper, the owner-selected next work package. **G3:** Preview 0.5's NAS browse/playback journey. These are distinct evidence gates; neither may be called passed from source alone. | Sections 0.3a, 27.1 and the release gate list now give this order. |
+| Samsung Home key | A standard Tizen Web App cannot be assumed to own reserved Home. CleanFrame documents an **unsupported, firmware-specific research lead on a different Frame**. The owner's 2021 Frame remains **unverified**. The owner authorises preparation of a separate, risk-reviewed proposal for a controlled test, **not execution**. No native write or Home reassignment may occur without a later, separate explicit authorisation after independent recovery evidence. Failure is a recorded product gap, not a hidden pass. | Older categorical 'never possible' and later implied 'solved for Samsung' are both too strong. |
+| Native Art Mode vs Wallpaper | Samsung **native Art Mode must be preserved**; Unified Wallpaper is an optional app-foreground experience and must not pretend to replace system Art Mode. | Earlier generic ambient/Art language. |
+| Background imagery | During **active dock navigation**, Section 32 code-rendered dynamic radial mesh and glass take priority. In **idle Wallpaper**, Section 33 curated artwork or authorised photos with optional depth clock take priority. Selected NAS title art belongs in its content browsing/detail context. | Earlier universal photographic Home-background proposals. |
+| NAS catalogue | DLNA can discover/browse/play selected roots, but does **not** by itself deliver rich metadata, server-synchronised progress or child-safe access. Use an authenticated catalogue adapter where supported, otherwise label limitations. | Earlier requirements that imply DLNA discovery is complete catalogue delivery. |
+| Music | First usable route is the **official supported Amazon Music app**; custom catalogue/search/Now Playing remains gated on authorised APIs. | Historical custom player as immediately buildable. |
+| Remote buttons | Test the **actual three physical remotes**; OS-reserved keys and manufacturer shortcuts may remain outside application control. 'Always return' means **tested owner-selectable Home behaviour where supported**, not key interception inside other apps. | Generic remote assumptions. |
+| Security | Live TV stays fail-closed until NordVPN routing/drop protection are physically proven; Smoke/CO emergency alerts supersede Ring overlays; child access and alert delivery require their own security and privacy gates. | Any UI status that appears to imply security verification. |
+
+### Owner decisions — confirmed 25 October 2026 (binding for Claude)
+
+| ID | Confirmed choice | Required implementation interpretation |
+|---|---|---|
+| OD-01 | **TCL: Unified TV becomes default Home once recovery is tested.** | Build and verify the separate launcher app `io.unifiedtv.launcher` (its HOME activity-alias ships disabled), prove an independent return to the factory launcher and the discreet **Open original TV interface** escape, then the owner chooses **Make Unified TV the Home screen** and Android's own Home selection decides. This is **approval of the desired end state**, not permission to alter the TV remotely or without recovery evidence. The preview `io.unifiedtv.preview` stays a separate ordinary app with no HOME entry *(changed in v3.3)*. |
+| OD-02 | **After TCL Home, build Animated Home and Wallpaper first.** | Reorder delivery: TCL Home/remote reliability → six animated radial meshes and glass → curated Artwork Wallpaper and clock → automatic depth clock on suitable photos → NAS viewing journey. Keep media architecture research in parallel only if it does not slow or destabilise this sequence. Existing NAS work must not be removed. |
+| OD-03 | **Default Wallpaper source: Curated artwork.** | First-run/default appearance is Artwork (when Wallpaper is enabled), not personal Synology photos. The artwork is free and **explicitly licensed for this use**, bundled offline (nothing is downloaded in real time to display it), with a sources/licence/attribution record in [ARTWORK.md](design/ARTWORK.md) *(changed in v3.3)*. Use the configured idle trigger. Never package reference/mockup imagery as licensed production art. Synology/My Photos is a separate later task whose access method (DLNA folders versus the Synology Photos API) must be designed first. |
+| OD-04 | **Depth-effect clock: automatic on suitable photos.** | Default depth setting is `Auto`. Foreground occlusion is used only for selected artwork that ships with a **prepared foreground mask** made offline; there is **no real-time segmentation on the TCL** *(changed in v3.3)*. Every other image shows the standard clock (or no clock if chosen). Never fake occlusion. Respect reduced motion, OLED and privacy controls. |
+| OD-05 | **Samsung: prepare a separate proposal for a controlled CleanFrame-style test.** | Produce a written compatibility, hazards, read-only checks, independent recovery, test steps, rollback and explicit go/no-go approval proposal for the owner's 2021 Frame. **Do not execute undocumented helper calls, native configuration writes or reassign Home under this instruction.** Continue supported Tizen work separately. |
+| OD-06 | **TCL/Sony remote identification: Claude helps later.** | Do not block initial safe source audit or visual work waiting for remote photos/model numbers. At the physical-device gate, guide the owner through TV About screens and remote photos/part-number capture; use observed key logs to establish the exact mapping. Do not invent mappings or mark remote tests passed before identification. |
+| OD-07 | **Smoke and carbon monoxide alarms outrank Ring.** | Smoke and CO are equal and highest (`EMERGENCY_SMOKE_CO`), above `RING_DOORBELL_PERSON`, `HOUSEHOLD_IMPORTANT`, `REMINDER_INFO` and `DECORATIVE`. Supplementary display only, never a certified alarm. Details below. |
+| OD-08 | **Durable app signing and in-place updates.** | The owner creates a durable key on their own computer; the separate launcher app uses it from its first release; the existing preview stays as it is. Details below. |
+
+**Unanswered diagnostic detail (not a reason to halt safe development):** the exact TCL button that previously escaped to the manufacturer's UI is not yet known. Capture it with the owner during G1 testing and add it as a named regression case; independently test Home and Back in the meantime.
+
+**Authority:** these eight owner decisions, all confirmed on 25 October 2026 (UK time), override prior recommendations to build NAS immediately after TCL, make the depth clock opt-in, rank Ring as the highest alert, or limit Samsung work to research-only with no proposal. The safety requirement for *separate explicit approval before executing a Samsung test* remains unchanged.
+
+### OD-07 — Safety alarm notifications outrank Ring (confirmed 25 October 2026)
+
+**Highest priority event class: a verified smoke or carbon monoxide (CO) alarm from any owner-authorised sensor/integration.** This is higher priority than Ring doorbell presses, Ring person detection, reminders, media playback, VPN status notices and all animations. Treat smoke and CO equally as emergency-level alarms; do not delay either behind the other. Every section of this file now states this order *(changed in v3.3)*. **The app is a supplementary display, never a certified life-safety alarm, emergency dispatch service or replacement for working local audible alarms.** Never promise detection, delivery, TV wake or overlay over DRM/system content without physical proof.
+
+**Priority order (highest first):** `EMERGENCY_SMOKE_CO` (smoke and CO equal) → `RING_DOORBELL_PERSON` → `HOUSEHOLD_IMPORTANT` (detector offline/fault warnings, VPN-protection notices, delivery/arrival) → `REMINDER_INFO` → `DECORATIVE`. A new emergency pre-empts any Ring camera/overlay, Wallpaper, media controls, animations or reminder **where the TV OS permits it**. Simultaneous smoke and CO alarms remain individually identifiable, with room/name and event time. Acknowledging one alarm never dismisses another active alarm.
+
+**Ring during an emergency** *(changed in v3.3)*: Ring never covers an active emergency. A Ring press or person event during any active smoke/CO alarm, acknowledged or not, gets **no camera card**; it is queued, keeping only the latest visit and its time. When every alarm has cleared: if the queued visit is **under 45 seconds old**, the camera card is shown; otherwise a small note reads `Doorbell rang at HH:mm during the alarm`. The emergency display is never interrupted, and never dismissed by a timeout. **Reminders arriving during an emergency are dropped.**
+
+**Event source and state model** *(changed in v3.3)*: the source is Home Assistant `binary_sensor` entities whose `device_class` is `smoke` or `carbon_monoxide`, from an explicitly configured, authenticated Home Assistant (or another approved integration). Never use a `sensor.*` CO entity: that is a ppm measurement, not an alarm. Standard states map as: `on` → **alarm**; `off` → **normal** (never shown as "safe" or "all clear"); `unavailable` or `unknown` → **detector offline**, a warning and not an emergency. `test` and `fault` are used only when a specific integration exposes them (usually as separate entities); none are assumed. **Freshness:** show the event time (Home Assistant `last_changed`, as local HH:mm); a lost Home Assistant connection shows **Alarm status unknown** rather than clearing an alarm. Test events are clearly labelled TEST. Record sensor type, room/name, state, source time and receipt time; never log addresses, tokens or sensitive household details. Reconcile duplicate and repeated events without suppressing a new genuine alarm. Never invent smoke/CO monitoring if no compatible sensor is connected.
+
+**Current household situation:** the owner has **no smoke or CO detectors in Home Assistant** at present. The framework is built and tested with **simulated events**: an in-app **Test the alarm screen** action in adult household settings (labelled TEST) plus unit tests. Real detectors are not assumed. Owner test steps use a Home Assistant template binary sensor with `device_class: smoke` as a stand-in (see [OWNER_TESTING.md](OWNER_TESTING.md)).
+
+**Emergency display** *(changed in v3.3)*: an unmistakable, high-contrast, large-type full-screen emergency state (as supported). Smoke and CO alarms appear as **separate entries**, each showing its type, room/name and event time (local HH:mm), for example `SMOKE ALARM — Kitchen — 14:32`. Each alarm is **acknowledged individually**; acknowledgement never changes, mutes, resets or disarms the sensor. Once every active alarm is acknowledged, a **persistent visible banner** stays while any alarm is still active, including when the viewer returns to the app; a **new alarm brings the full screen back**. Detector offline/fault warnings are shown separately as `HOUSEHOLD_IMPORTANT` notices, never styled as an emergency and never as "safe". There is **no "all clear"** claim. Never rely on colour alone; ambient mesh, depth clock and photos never obscure the message. **Audio:** the app may request transient audio focus with `USAGE_ALARM` where the platform supports it; it must not claim it can pause or mute third-party apps, which decide for themselves. Supplementary only; never a certified alarm.
+
+**TV/platform constraints:** if the Unified TV app is hidden, asleep, in Samsung native Art Mode, or a DRM streaming app is active, OS restrictions may prevent the overlay or wake-up. Use only supported, permissioned platform/household event delivery mechanisms; record the actual limitations per TCL, Sony and 2021 Frame. On a fully powered-off TV, do not assume wake is possible or desirable. Native detector sirens remain the primary warning; a separate, independently tested household alert route is recommended. Emergency presentation must be tested against Ring events and all key viewing/standby states on the three physical TVs before any 'reliable emergency alerts' claim.
+
+**Acceptance tests:** `SAFE-01` smoke event during Home; `SAFE-02` CO event during Wallpaper; `SAFE-03` smoke/CO pre-empts the Ring camera, Ring is queued (latest visit kept) and after every alarm clears is shown only if under 45 s old, otherwise as the `Doorbell rang at HH:mm during the alarm` note; reminders arriving during the emergency are dropped; `SAFE-04` concurrent smoke and CO remain distinct; `SAFE-05` offline (`unavailable`/`unknown`), test or fault never claims a genuine alarm or safety, and a lost Home Assistant connection shows `Alarm status unknown`; `SAFE-06` Netflix/other DRM foreground delivery and honest limitation; `SAFE-07` standby, native Samsung Art Mode and off-TV limitations; `SAFE-08` reconnect/duplicate/out-of-order events; `SAFE-09` per-alarm acknowledgement does not reset the underlying sensor and the banner persists while any alarm is active; `SAFE-10` accessibility, privacy and no false 'all clear'. Record source entity, event evidence, TV/firmware, actual overlay behaviour and limitations. No simulated event counts as an end-to-end detector pass.
+
+### OD-08 — Durable app signing and in-place update continuity (confirmed 25 October 2026)
+
+**A stable, owner-controlled signing identity is a prerequisite for installing the upgradeable daily-use build, not a last-minute release task.** The agent must audit current APK/WGT signatures and package IDs first, then propose a secure, durable signing strategy before publishing or replacing an installed app. Never generate a new random debug signing identity on each CI runner and call that an update strategy. Do not silently uninstall an existing installation or erase settings to work around signature mismatch. Keys are created only by the owner on their own computer with `preview/tools/make_preview_key.py`, never in CI or by an agent, and never committed; custody and backup are documented in [SIGNING.md](SIGNING.md) *(changed in v3.3)*.
+
+- **Android TCL and Sony:** establish a protected release keystore/key alias and a stable application ID **per app** (`io.unifiedtv.preview`, `io.unifiedtv.launcher`), with versionCode monotonically increasing, reproducible versionName/build metadata and a signed release APK. An installed package can be updated in place only when the package name matches and the new APK is signed by the same key, or by a key in a valid rotation lineage. **APK Signature Scheme v3 supports key rotation from Android 9 (API 28), so Android 11 is not the obstacle; rotation requires the *old* private key to sign the new lineage** *(changed in v3.3)*. The existing preview was signed by a throwaway CI debug key that no longer exists, so it can never be moved to a new key. Hence the separate `io.unifiedtv.launcher` package, signed with the durable key from its first release, while the preview stays as it is. Never uninstall the preview or erase its settings to work around a signature mismatch.
+- **Samsung Tizen:** create/use the valid Samsung/Tizen **author and distributor certificates** for the target Frame and preserve the correct author signing identity for future same-app updates; validate the target's device/profile constraints with Tizen tooling. Android APK signing keys cannot sign a WGT; Tizen author/distributor certificates are separate. Record the package/application ID and certificate continuity. A development certificate that installs today is not automatically a production distribution credential.
+- **Secrets and custody:** keep keystore/certificate private keys, passwords, recovery material and device identifiers **outside Git, docs, screenshots and build logs**; use owner-controlled secure storage and protected CI secrets only after explicit owner approval. Do not print, paste, upload or commit secrets. Document secure offline backup and loss recovery. Never claim a lost signing key can always be recovered; if no compatible update path exists, stop and propose a non-destructive migration.
+- **Verification:** build a signed version N, install it on an authorised test target, persist non-secret settings, install signed N+1 over it, confirm settings/launcher selection/permissions remain appropriate, confirm old app's recovery path and verify hashes/signature metadata. Test separately on TCL, Sony and Frame as their packages differ. A passing build without an actual same-identity update test is `implemented_unverified`, not release-ready.
+
+**Acceptance tests:** `SIGN-01` key custody and no secret leakage; `SIGN-02` Android stable ID/version/signature audit; `SIGN-03` TCL same-signature N→N+1 in-place upgrade preserves settings and Home/recovery; `SIGN-04` Sony signed upgrade with settings and Home; `SIGN-05` Samsung author/distributor signed WGT N→N+1 retains settings and Smart Hub/Art Mode; `SIGN-06` mismatch handling does not uninstall/wipe existing build; `SIGN-07` signed artefact manifest/hash/version and independent rollback/recovery instructions; `SIGN-08` signing key backup/rotation feasibility documented without exposing key material. **Agents never generate signing keys: the owner creates them on their own computer with `preview/tools/make_preview_key.py` (see [SIGNING.md](SIGNING.md)).**
+
+**Implementation precedence:** add `EmergencyAlarmEvent` and priority arbitration to the existing notification domain model and acceptance evidence, without duplicating current Ring coordinator classes. Add `SigningIdentity`/release metadata to build/release documentation (never include private key bytes). G0 must complete signing audit and key-custody plan before release packaging; the emergency-priority policy is P0 for any build that enables Ring or advertises household alerts. G1/G2 visual work may proceed without real sensors, but no alert feature may be labelled finished before `SAFE-*` tests. Existing Wallpaper and Ring acceptance tests must include the emergency-preemption check.
+
+### Implementation architecture contracts (normative)
+
+- **Shared domain model** independent of TV framework: `DeviceCapability`, `Profile`, `DockItem`, `NavigationDestination`, `FocusState`, `WallpaperSettings`, `AmbientPalette`, `MediaSource`, `MediaItem`, `PlaybackState`, `VpnEvidence`, `NotificationEvent` and `AcceptanceEvidence`. Schema shape is a *design contract*; agents must map to existing code rather than creating duplicate parallel models without review.
+- **Capability registry:** `DeviceCapability` records platform, OS/firmware, remote mapping provenance, HOME ownership status, art-mode availability, native app launchability, voice availability, overlays, HDR/codec support, photo segmentation capability, and test-evidence timestamp. Values must be `supported_verified`, `unsupported_verified`, or `unknown`; never infer support from a platform name.
+- **Navigation contract:** deterministic D-pad focus graph; OK/long-OK/Back semantics; Home is routed by OS where applicable. `HomeRoot` never accidentally finishes. External-app return restores safe root or last eligible focus; no stale modal, private profile leakage or surprise launch on wake.
+- **Persistent settings contract:** per-device vs per-profile scope explicitly identified, versioned migrations, rollback defaults, encrypted secrets, no hardcoded household addresses. Persist dock order, appearance, idle interval, wallpaper source, clock style, permitted album IDs, profile selection and non-secret navigation state as appropriate.
+- **Media adapter contract:** discovery, capability/authentication, browse/search, artwork, stream selection, subtitles/audio, progress and error states are separate operations. Each adapter must advertise unsupported features. DLNA ContentDirectory object IDs are not filesystem paths. Authenticated child access must be enforced by the server.
+- **Events:** `RemoteKey`, `FocusChanged`, `ExternalAppLaunched`, `ReturnToHome`, `WallpaperEntered`, `WallpaperExited`, `PlaybackChanged`, `VpnEvidenceChanged`, `EmergencyAlarmEvent`, `RingEvent`, `SystemStandby` and `SystemResume` have explicit owners and cancellation rules. Security-critical events supersede decorative animations. Do not infer that the app can observe OS-reserved events.
+- **Visual state machine:** `ACTIVE_HOME` (Section 32 moving mesh), `CONTENT_BROWSE` (item-matched artwork), `WALLPAPER` (Section 33 photos/art/depth clock). Transitions must be cancellable, focus-safe, accessible and memory-bounded. Reduced motion and low-performance fallback must work on Android 11 and older Tizen. Nothing depends on `RenderEffect`, which TCL Android 11 (API 30) lacks: render with GPU-composited, pre-rendered gradient layers (small pre-rendered light sprites moved and scaled), never continuously repainted full-screen gradients *(changed in v3.3)*.
+- **Error/recovery contract:** offline Home remains usable; media and VPN failures present truthful retry/fallback; an unavailable NAS never blocks Home; no blanket exception swallowing. Distinguish transient failure, permission denied, unsupported platform and not configured.
+- **Cross-platform boundaries:** share design tokens, state semantics, fixture contracts and acceptance cases; do not assume Android UI, background services, package intents or `RenderEffect` exist on Tizen. Keep native adapters isolated.
+
+### Quantified interaction defaults and proof rules
+
+- **Timing rule (one rule for all TVs)** *(changed in v3.3)*: a dock focus change starts the background crossfade **immediately**: **400 ms, ease-in-out**, latest focus wins, retargeting from what is visible and never queueing. **Ambient drift:** 20–40 s paths, centre shift 2–5 % of the screen, scale 1.00–1.06, independent of focus, never restarting on a focus change. **NAS title (content-browse) backdrops** may wait a **135 ms settle** because artwork decodes; the title's tile still answers at once. **Settings:** *Keep the Home background still* stops drift but keeps the 400 ms crossfade; *Reduce motion* makes the crossfade instant and stops drift; *Lightweight rendering* uses still frames and a 200 ms crossfade.
+- First D-pad press waking Wallpaper must **restore controls without also activating a tile**. The depth clock must use a genuine foreground mask or honest fallback; never fake the effect over a face.
+- Design target: responsive D-pad interaction and stable frame pacing on each physical TV. **60 fps is an aspiration**, not an assumed pass. Capture measured focus latency, frame drops, CPU/GPU/memory and crash logs per device/build before setting enforceable hardware-specific thresholds.
+- Hardware tests are **run by the owner** from a Windows PC, because agents cannot reach the TVs; the owner reports the evidence back ([OWNER_TESTING.md](OWNER_TESTING.md)) *(changed in v3.3)*.
+- Every release-critical requirement receives an evidence row with exact device, firmware, remote, package/build/commit, test setup, steps, result, recording/log, failure/rollback and reviewer. **No evidence = unverified**.
+
+### Release gates (not promises of current implementation)
+
+- **G0:** repository, branch and source audit; signing audit and key-custody plan (OD-08); safe package separation (preview versus launcher); known recovery and test inventory.
+- **G1 TCL Home and remote:** the launcher app as owner-selected default Home where supported, problematic remote button reproduced/fixed or accurately classified, reliable Home/Back/third-party return/standby, discreet original-interface access and independently verified rollback.
+- **G2 Animated Home and Wallpaper** *(changed in v3.3)*: six ambient palettes, the 400 ms crossfade and drift rule, calm tvOS-inspired glass, Wallpaper with curated Artwork, clock fallback and the depth clock for prepared-mask artwork, with real-device performance/privacy checks.
+- **G3 NAS/media viewing** *(changed in v3.3)*: editable dock, app launch, authorised DLNA discovery and root selection, embedded playback/pause/seek/back, error recovery and clear empty states.
+- **G4 Sony:** G1–G3-equivalent evidence, OLED safeguards and Xbox HDMI 3/audio handling.
+- **G5 Samsung:** signed Tizen app, actual Smart Remote matrix, native TV Plus/Art Mode preserved, feasible Home return recorded truthfully, original-interface route, playback/performance. **G5P** is the separate CleanFrame-style controlled-test **proposal only**, with no native writes.
+- **G6 household integrations:** VPN fail-closed Live TV, smoke/CO emergency alerts, Ring doorbell/person events and restoration, child safety, music, reminders, voice and optional tuning each pass their independent safety/feasibility gates. Do not label the whole household release complete until agreed required gates pass.
+
+---
+
+## 0. Earlier v2.x owner decisions (corrected for v3.3) and document precedence
+
+This is the complete consolidated product requirement, including the detailed earlier visual, functional and acceptance sections below. It describes the target product, not a statement that every feature is built. Status lives only in `ACCEPTANCE_REGISTER.csv`; `FEATURE_STATUS.md` summarises it and `AI_HANDOVER.md` gives continuation instructions. [SPEC.md](SPEC.md) and the v3.3 authority section above take precedence; every numbered section has been corrected in place to agree with them *(changed in v3.3)*. Sections 32 and 33 are the latest visual-state requirements: Section 32 governs the active app dock; Section 33 governs optional full-screen wallpaper and photo-clock mode. The latter is not a replacement for native Samsung Art Mode. Section 27 defines implementation priority and evidence rules; it does not remove earlier functional or security requirements. Historical records are retained for traceability but are not instructions to implement superseded decisions.
 
 ### 0.1 Delivery and platform decisions
 
 - Native Android TV application for TCL and Sony; separate native Tizen Web Application for Samsung Frame. Do not make an external streamer a prerequisite for Frame.
-- Keep the factory Home application, native Samsung Smart Hub, Samsung TV Plus and native Art Mode intact. The preview remains separately installable and does not register as Android HOME.
+- Keep the factory Home application, native Samsung Smart Hub, Samsung TV Plus and native Art Mode intact. Two separately installed Android apps are built from one codebase *(changed in v3.3)*: the preview `io.unifiedtv.preview` has no HOME entry at all and stays installed; the launcher `io.unifiedtv.launcher` has a HOME activity-alias that ships disabled and is enabled only when the owner chooses **Make Unified TV the Home screen**, after which Android's own Home selection decides.
 - Tizen startup, cross-app foreground launch, native Art Mode interruption, DRM overlays and Back behaviour are device test gates. Neither developer access nor a SmartThings API name proves these work. A cold boot and standby resume are separate tests.
 - Feature parity means the same experience where supported, with truthful platform-specific availability. Do not fabricate SmartTube, VPN or native app support on Tizen.
 - Install supported official apps where authorised and available. The owner's later request permits an independently installed VLC as an auxiliary tool, but Unified TV playback must remain embedded Media3/AVPlay. Do not require or invoke VLC as the library player.
@@ -29,6 +136,7 @@ This is the complete consolidated product requirement, including the detailed ea
 
 - Keep premium liquid-glass material: feathered cached blur, light top edge, restrained reflection, lifted focus lens and soft contact shadow. Avoid flat opaque panels and harsh outlines except accessibility settings.
 - Brand ambience retains depth; it must not become a heavy opaque red/blue overlay. Selected media artwork is correctly matched to its actual item.
+- Active navigation uses the Section 32 moving ambient gradient mesh; optional full-screen Wallpaper mode uses curated artwork or owner-selected photographs and the Section 33 depth-layered clock. Do not place a large photographic clock behind the active app dock. Native Samsung Frame Art Mode remains independent and unchanged.
 - No permanent directional text under the header. Use a discoverable downward chevron for Films & TV.
 - Apps uses compact cards and a remote-friendly grid. Hold OK opens Open, Move, Add/Remove from Home, App information. Curated defaults are retained at first setup; owner edits are allowed by this latest request.
 - Settings uses six left-hand categories and one changing right-hand panel: Connections, Profiles, Notifications, Appearance, TV & performance, Privacy & security. Right/OK enters controls; Left returns to categories; Back returns predictably without losing focus.
@@ -45,12 +153,20 @@ This is the complete consolidated product requirement, including the detailed ea
 - First-version Music uses Amazon Music only. Install/open its official TV application where available. Local music indexing is out of scope for this version.
 - Custom minimalist Now Playing, account playlists and searches remain desired. Implement them only with supported, authorised service access. Normal consumer sign-in is not proof of access to Amazon's closed-beta APIs. Use the official app as the truthful interim destination.
 
+### 0.3a Delivery focus adopted in v2.3
+
+- **Preview 0.5, The Viewing Experience, is gate G3** *(changed in v3.3)*: it follows G1 (TCL Home and remote) and G2 (Animated Home and Wallpaper). Its aim is one complete remote-only journey on the physical TCL: launch Unified TV without disturbing the factory Home; browse a polished Home and editable Apps; discover the authorised NAS; select a title; play, pause, seek and return; recover from a network failure and standby. Capture fresh evidence from the exact installed build. See Section 27 for precise pass criteria.
+- Prioritise **working viewing and reliable recovery over additional feature breadth**. The full Ring, VPN, Tizen, music, voice, accessibility, Art Mode and cross-TV requirements remain in scope, with their existing release gates. Do not misrepresent a Preview 0.5 slice as complete household or cross-platform delivery.
+- Run a **parallel, bounded Samsung feasibility track** for signed install, remote navigation, AVPlay, app foreground behaviour, standby/cold boot and Art Mode/Ring recovery. Record unsupported platform behaviour early instead of assuming an API can force foreground launch.
+- Maintain one shared **capability and evidence register** ([ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv), the only status record) with owner, device/firmware, build/commit, test level, observed result, artefact reference, blocker severity and next action. No simulated test, PC discovery or successful build counts as a physical-TV pass.
+- Separate reusable product logic, household-specific adapters/configuration and per-device capabilities. Keep private inventory and signing keys outside the public repository and artefacts.
+
 ### 0.4 Images, private setup and acceptance
 
 - The owner supplied five AI-generated JPGs and expressly authorised their inclusion as example gallery images in the repository. Preserve their originals, aspect ratio and existing borders; do not treat these as private family photos. Other private household photos/camera feeds remain excluded.
 - Gallery rotates selected images, has timing and remote controls, no permanent UI, reduced-motion behaviour and sensible fitting. Local/USB/document-provider/network sources appear only when supported.
 - Household hostnames, addresses, tokens, accounts, device IDs and signing secrets belong only in private local setup and encrypted device storage. Never publish them in Git, APK defaults, Actions logs, screenshots or handovers. Use symbolic placeholders in commands and keep the actual local inventory outside the repository.
-- Testing must state exact build and level: policy/unit, simulated Android, local build/lint, PC network observation, and physical TV acceptance. These levels are not interchangeable.
+- Testing must state the exact build and `test_level`: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony` or `physical_frame` *(changed in v3.3)*. These levels are not interchangeable; only a `physical_*` level with evidence can support `hardware_pass`.
 - Take revised screenshots only from the tested revised APK and label their version. Existing 0.3 screenshots must never be presented as 0.4 evidence.
 
 ## 1. Product scope and non-negotiables
@@ -63,12 +179,12 @@ Build a premium, remote-first, Apple TV-inspired home experience for three house
 
 1. **Content first:** no advertising, sponsored recommendations, crowded menu panels or technical plumbing in the foreground.
 2. **One consistent interface:** same 16:9 layout, artwork treatment, animations, navigation and shared preferences on Sony, TCL and Samsung.
-3. **Ring is mandatory:** a doorbell press **or person detection** automatically interrupts active wallpaper / ambient / Frame Art Mode and opens the live camera without pressing the remote; restore the previous state afterwards.
+3. **Ring is mandatory:** a doorbell press **or person detection** automatically interrupts active wallpaper / ambient / Frame Art Mode and opens the live camera without pressing the remote; restore the previous state afterwards. Ring is second in alert priority: a smoke/CO emergency always comes first and Ring never covers it *(changed in v3.3)*. Interrupting native Frame Art Mode needs a verified household coordinator and is unproven.
 4. **Live TV is VPN-protected:** ReamSmartz must not send traffic without a verified NordVPN connection. This applies to all ways of launching Live TV, including the Spurs card and voice commands.
-5. **Artwork is artwork:** on Samsung Frame Art Mode there is **no clock, VPN badge, widget, app row or permanent UI**. A triggered Ring camera is the deliberate exception.
+5. **Artwork is artwork:** on Samsung Frame Art Mode there is **no clock, VPN badge, widget, app row or permanent UI**. A smoke/CO emergency or a triggered Ring camera, where the platform allows it, is the deliberate exception.
 6. **Hide the plumbing:** use embedded Media3/ExoPlayer on Android and Samsung AVPlay on Tizen. VLC is excluded from the application and playback path. Jellyfin / Synology / Home Assistant are not consumer-facing names in normal browsing.
 7. **Optional performance cleanup on all TVs:** present one consistent, opt-in **TV Performance & Cleanup** entry for Sony, TCL and Samsung Frame. It must detect the underlying platform and show only operations proven safe and supported on that model/firmware. Android and Tizen have different permissions; a universal interface does **not** imply universal access to system packages. Never compromise DRM, remote, Wi-Fi, HDMI, Bluetooth, sound, Art Mode, updates, casting, accessibility or recovery.
-8. **Alexa reminders:** while actively watching video, a due Alexa reminder should appear as a small, temporary toast above the picture, with its reminder text where the source exposes it. It must not pause playback, hijack focus or compete with a Ring event. Device/OS overlay restrictions are an explicit release gate.
+8. **Alexa reminders:** while actively watching video, a due Alexa reminder should appear as a small, temporary toast above the picture, with its reminder text where the source exposes it. It must not pause playback, hijack focus or compete with a Ring event or an emergency. Device/OS overlay restrictions are an explicit release gate.
 9. **Preserve Samsung TV Plus:** Samsung Frame keeps its existing native Samsung TV Plus service, with a Frame-only branded tile. This is a separate source from ReamSmartz and is not subject to the ReamSmartz NordVPN gate. The optional Samsung cleanup must protect TV Plus and all required dependencies.
 10. **No fabricated capabilities:** distinguish desired behaviour from what each firmware, app and service has been tested to support.
 
@@ -117,7 +233,7 @@ External developers and GitHub Actions cannot assume access to the household's p
 2. **Single glass app dock:** a centred, low-profile translucent strip in the lower portion of Home. The six shared choices are `SmartTube`, `Netflix`, `Disney+`, `BBC` (iPlayer), `Live TV` (ReamSmartz) and `Music` (Amazon Music experience). Sony alone adds `Xbox`; Frame alone adds `Samsung TV Plus`. **No VLC tile.**
 3. **Your Films & TV:** one curated horizontal row of real Synology artwork with **View All**, *revealed by pressing Down* from the dock. It should not crowd the initial resting screen. The row rises naturally while the app dock becomes secondary; Up returns to the dock. The full catalogue is another deliberate action.
 4. **Matchday card:** a small Tottenham Hotspur card appears only on the scheduled UK fixture date and only in a place that does not obscure the contextual hero. No fixture means no gap.
-5. **Transient interaction layer:** Ring live camera, Alexa reminders, VPN launch checks and voice UI arrive only at their respective moments. They do not occupy permanent content slots.
+5. **Transient interaction layer:** smoke/CO emergencies, Ring live camera, Alexa reminders, VPN launch checks and voice UI arrive only at their respective moments. They do not occupy permanent content slots.
 
 **Background contract:** if an app tile or NAS title is visibly selected, its own appropriate artwork or brand-aware fallback controls the full-screen backdrop. The user's scenic/family wallpaper is only for a genuine neutral/no-focus state or artwork mode, never a misleading background behind a highlighted unrelated item. This corrects the previous generic-landscape mockup mismatch. The detailed state machine, durations, visual tokens and acceptance rules are in **Section 4**.
 
@@ -125,7 +241,7 @@ External developers and GitHub Actions cannot assume access to the household's p
 
 ### 3.1 Remote interaction contract (P0)
 
-- Directional pad changes focus predictably; **OK** activates; **Back** returns one navigation level; **Home** follows the OS: stock Home in the preview, our launcher only after a separately authorised Android Home change, and Samsung Smart Hub on Tizen.
+- Directional pad changes focus predictably; **OK** activates; **Back** returns one navigation level; **Home** behaviour depends on the authorised OS integration and is defined by the **remote ownership and system-key contract in Section 28**. The preview app `io.unifiedtv.preview` never registers as Home; only the separate launcher app `io.unifiedtv.launcher` can become the default Home, after the owner chooses it in Settings *(changed in v3.3)*. Samsung Smart Hub/system-reserved keys cannot be overridden by an ordinary Tizen app.
 - Focus must be obvious even without background images: tile scale, elevation/contrast and accessible outline. Do not use colour alone.
 - On entering Home, restore the last relevant focus position; when dismissing an overlay, restore the underlying screen and playback state.
 - **Hold OK** on a Home tile to access **Move**, **Remove from Home** and optional **App info**; short OK always launches. A parental edit lock may require a PIN. All editing works with the ordinary remote.
@@ -198,8 +314,8 @@ A visible highlight always controls the backdrop. **An image unrelated to the hi
 **Sequence when the remote moves onto a new item:**
 
 1. **0-80 ms:** immediately confirm the new focus through lift, brightness and scale. The input must feel acknowledged even on an offline TV.
-2. **After approximately 110-160 ms of stable focus:** commit that item's contextual art and metadata. This short settle interval prevents a blizzard of backgrounds when someone holds an arrow key.
-3. **~320-480 ms:** cross-dissolve from previous hero into the next, with extremely restrained scale/position movement (for example, 1-2% visual drift) and a soft local vignette. Do not slide entire screens horizontally merely to change one tile.
+2. **Background start** *(changed in v3.3)*: for a **dock (app) focus change**, start the background crossfade **immediately**. For a **NAS title in content browse**, the backdrop may wait a **135 ms settle** while its artwork decodes, which also prevents a blizzard of decodes when someone holds an arrow key; the title's tile still answers at once. Metadata follows the same settle.
+3. **400 ms, ease-in-out:** crossfade from the visible background into the next, with a soft local vignette. The latest focus wins: retarget from what is visible, never queue. Ambient drift is separate (Section 32: 20–40 s paths, centre shift 2–5 %, scale 1.00–1.06, independent of focus, never restarting on a focus change). Do not slide entire screens horizontally merely to change one tile.
 4. **After the backdrop is established:** fade in a title or one useful metadata line where applicable. Text must not jump around or force the dock to move.
 5. **On rapid additional input:** cancel superseded metadata requests and skip or shorten intermediate background animations. The final focused item always wins. Never queue transitions behind remote presses.
 
@@ -214,15 +330,16 @@ An active tile has a single, obvious focus state. Merely changing focus **must n
 | Focus feedback begins | within 80 ms | Remote-first visual acknowledgement; existing P0 p95 response target remains <100 ms |
 | Tile elevation and return | 150-210 ms | Ease-out, roughly 1.06-1.09 scale; no large spring bounce |
 | Metadata reveal | 130-180 ms | Short fade after a stable item is established |
-| Contextual background dissolve | 320-480 ms | Image-to-image dissolve with tiny positional drift |
+| Contextual background crossfade | 400 ms, ease-in-out | Dock: starts immediately on focus change; NAS title: may wait a 135 ms settle for artwork decode. Latest focus wins. 200 ms with Lightweight rendering; instant with Reduce motion *(changed in v3.3)* |
 | Expand dock into NAS shelf | 260-380 ms | One connected spatial transition, focus retained |
 | Enter/leave full NAS library | 280-400 ms | Poster/selection continuity; no full-screen white or black flash |
 | Enter/leave artwork mode | 650-1,000 ms | Dock fades away and image becomes unobstructed |
-| Ring appearance | ASAP on verified event | Interrupt immediately; never wait for decorative animation |
+| Smoke/CO emergency | Immediately on alarm | Pre-empts everything, including Ring, where the OS permits |
+| Ring appearance | ASAP on verified event | Interrupt immediately unless an emergency is active; never wait for decorative animation |
 | Alexa reminder toast | 180-240 ms in/out | Does not steal focus or cover subtitles where avoidable |
 | Dismiss overlay / return | 200-350 ms | Restore the exact previously focused object and playback state |
 
-Animations are optional to understanding. Provide reduced-motion and reduced-transparency settings. Never gate input behind a motion sequence. Audio focus ticks are **off by default**; selection confirmation may use a barely audible tick if a household preference enables it.
+Animations are optional to understanding. Provide *Reduce motion* (instant crossfade, no drift), *Keep the Home background still* (no drift, 400 ms crossfade kept), *Lightweight rendering* (still frames, 200 ms crossfade) and reduced-transparency settings. Never gate input behind a motion sequence. Audio focus ticks are **off by default**; selection confirmation may use a barely audible tick if a household preference enables it.
 
 ### 4.5 Contextual hero backgrounds: app-by-app contract
 
@@ -271,7 +388,8 @@ Press **Down** from the dock to reveal **Your Films & TV**. The dock gently retr
 | **Live TV VPN blocked** | One compact, legible action sheet; no app launched. | Live TV hero remains behind a darkened scrim. | Connect/Retry/Back; prevent traffic leaking |
 | **Music Now Playing** | Large album art, track and play/pause/skip; no busy playlists until requested. | Soft tones sampled from correct album art. | Playback controls; Back returns Home |
 | **ChatGPT listening** | Small glass listening panel and clear microphone state. | Keep underlying context legible; no takeover or persistent chat page. | Back closes microphone |
-| **Ring interruption** | Actual live feed, status, clear dismiss; highest priority. | Temporarily takes priority over wallpaper/hero/playing app. | No input required; return to prior state on dismissal |
+| **Smoke/CO emergency** | Separate full-screen entries per alarm (type, room/name, time), individual acknowledgement, then a persistent banner while any alarm is active. | Pre-empts every other state where the OS permits; never dismissed by a timeout. | Acknowledge each alarm; acknowledgement never changes the sensor |
+| **Ring interruption** | Actual live feed, status, clear dismiss; second only to a smoke/CO emergency and never shown over one. | Temporarily takes priority over wallpaper/hero/playing app. | No input required; return to prior state on dismissal |
 | **Alexa reminder** | One small corner toast with text where available. | Current programme continues underneath. | Auto dismiss; never take focus |
 | **Ambient / native Frame Art Mode** | **No permanent controls, clock, dock, status or logos.** | Selected family/scenic/art image only. | Remote reveals Home; Ring automatically interrupts |
 | **Settings and TV cleanup** | Calm, text-forward administrative view, separate from entertainment. | Non-distracting dark material; no full-screen hero competition. | Back returns to exact Home focus |
@@ -295,21 +413,25 @@ Use Europe/London time, current sunrise/sunset if an authorised local provider i
 
 After the selected inactivity timeout *while the launcher is foreground*, withdraw metadata first, then fade the dock and header out, leaving the chosen photograph or artwork edge to edge. No bouncing logos, screensaver clock by default, stock animations or content promotion. Personal family photographs must keep their identity, natural tone and sensible crop; do not apply heavy branded gradients or invent face detail. Crossfades between the chosen 10+ images should feel like a gallery, without gimmicky pan/zoom on every image.
 
-On **Samsung native Art Mode**, there is **never a clock, VPN flag, ChatGPT icon, app dock, Alexa toast by default or permanent status**. This remains true regardless of time of day. A Ring doorbell press **or person detection** must automatically interrupt Art Mode into the real camera stream, then return to native Art Mode and artwork. This is an independently tested *hardware orchestration requirement*, not a promise that Tizen supports arbitrary third-party overlays.
+On **Samsung native Art Mode**, there is **never a clock, VPN flag, ChatGPT icon, app dock, Alexa toast by default or permanent status**. This remains true regardless of time of day. A Ring doorbell press **or person detection** must automatically interrupt Art Mode into the real camera stream (unless a smoke/CO emergency is active), then return to native Art Mode and artwork. This is an independently tested *hardware orchestration requirement*, not a promise that Tizen supports arbitrary third-party overlays.
 
 On Sony OLED, use restrained brightness, changing artwork and OLED-safe inactivity behaviour; never leave a glowing static dock or clock for hours. The quieter gallery state does not run while another video app is actively playing.
 
 ### 4.10 Alerts that belong to the experience rather than hijack it
 
-**Smoke and carbon monoxide: above Ring (owner decision, 24 October 2026).** When a Home Assistant sensor whose own device class is smoke or carbon monoxide turns on, its screen takes over above everything else, including a live doorbell card. It shows the alarm type, the household's own sensor names and one plain instruction, and asks Android to pause other sound so the alarm can be heard. A doorbell press during an alarm becomes a single line on that screen. Reminders are dropped. A household can switch it off; it is on by default once Home Assistant alerts are running. Only an "off" state clears it, because a sensor that goes unavailable may have failed in the fire. It adds to the home's alarms and never replaces them, and it can only reach a TV that is on with alerts running. Not yet tested on a TV.
+**Smoke/CO emergency: priority 1 (`EMERGENCY_SMOKE_CO`)** *(changed in v3.3)*. Smoke and CO are equal. The emergency display (OD-07) pre-empts everything where the OS permits, is never interrupted and is never dismissed by a timeout. Supplementary only; never a certified alarm.
 
-**Ring: immediate priority 1 among everyday alerts, below a smoke or carbon monoxide alarm.** On Home or library browsing, a sizeable live camera card appears without moving underlying focus. On video playback, prefer a safe camera window in an unobtrusive area, with a platform-tested full-screen fallback where protected video or the OS blocks a floating overlay. In Sony/TCL wallpaper or Samsung native Art Mode, interrupt the artwork and show live video automatically. A truthful `Connecting` state is allowed before frames arrive; never label a still as Live. When dismissed, restore the app, soundtrack volume, selection and artwork precisely. Ring visuals should be clear and calm, not a loud flashing notification.
+**Ring: priority 2 (`RING_DOORBELL_PERSON`), second only to emergencies** *(changed in v3.3)*. Ring takes visual priority over household notices, Alexa toasts, voice sessions and background transitions, but never covers an active emergency: during an alarm it is queued as described in OD-07. On Home or library browsing, a sizeable live camera card appears without moving underlying focus. On video playback, prefer a safe camera window in an unobtrusive area, with a platform-tested full-screen fallback where protected video or the OS blocks a floating overlay. In Sony/TCL wallpaper or Samsung native Art Mode, interrupt the artwork and show live video automatically. A truthful `Connecting` state is allowed before frames arrive; never label a still as Live. When dismissed, restore the app, soundtrack volume, selection and artwork precisely. Ring visuals should be clear and calm, not a loud flashing notification.
 
-**Alexa reminder: priority 2, after Ring.** A short, single glass toast at a safe corner, showing the real Alexa reminder text and an optional small Alexa identity cue. No full-screen sheet, forced playback pause or cursor movement. Position adaptively to avoid covering subtitles or playback controls where possible. Group duplicates; let users disable individual reminder categories/TVs. Samsung native viewing has OS limitations; do not silently claim cross-app Tizen overlays work.
+**Household notices: priority 3 (`HOUSEHOLD_IMPORTANT`)** *(changed in v3.3)*. Detector offline/fault warnings, VPN-protection notices and delivery/arrival notices. A detector warning is never styled as an emergency and never as "safe".
 
-**VPN: priority 3 for Live TV activation.** The passive Home badge is only a tiny shield/flag. If the user *activates* Live TV while the verified VPN is off, show a simple Connect/Retry/Cancel sheet against the current Live TV background. Never launch the unprotected source, and do not mask failed verification with a successful green badge.
+**Alexa reminder: priority 4 (`REMINDER_INFO`), below Ring and household notices** *(changed in v3.3)*. A reminder arriving during an emergency is dropped. A short, single glass toast at a safe corner, showing the real Alexa reminder text and an optional small Alexa identity cue. No full-screen sheet, forced playback pause or cursor movement. Position adaptively to avoid covering subtitles or playback controls where possible. Group duplicates; let users disable individual reminder categories/TVs. Samsung native viewing has OS limitations; do not silently claim cross-app Tizen overlays work.
 
-**Voice: priority 4 and opt-in.** The compact ChatGPT glyph expands to a small listening waveform/panel on deliberate activation; colour and movement are understated. Display a brief transcript or answer when useful, close on Back, and automatically remove the panel when finished. No permanent assistant portrait, conversation feed or advert-like suggestion chips on Home.
+**VPN protection on Live TV activation (a `HOUSEHOLD_IMPORTANT` notice).** The passive Home badge is only a tiny shield/flag. If the user *activates* Live TV while the verified VPN is off, show a simple Connect/Retry/Cancel sheet against the current Live TV background. Never launch the unprotected source, and do not mask failed verification with a successful green badge.
+
+**Decorative: priority 5 (`DECORATIVE`).** Ambient drift, Wallpaper transitions and other decoration yield to every alert.
+
+**Voice: user-invoked and opt-in; every alert takes visual priority over a voice session.** The compact ChatGPT glyph expands to a small listening waveform/panel on deliberate activation; colour and movement are understated. Display a brief transcript or answer when useful, close on Back, and automatically remove the panel when finished. No permanent assistant portrait, conversation feed or advert-like suggestion chips on Home.
 
 ### 4.11 Typography, icons, affordances and readable distance
 
@@ -323,8 +445,8 @@ Each service icon uses a recognisable and legally redistributable brand mark if 
 
 - Use one shared design system with **high**, **balanced** and **lightweight** *rendering profiles*, automatically selected after device profiling or manually overridden. They **must not change information hierarchy, service names, navigation or core visuals**.
 - Keep remote focus changes synchronous on the UI thread and artwork loading asynchronous. Cache properly sized hero images; prefetch current and adjacent items and cancel requests on fast input.
-- Prefer static/downsampled backdrop layers, baked blur, cached gradients, GPU-friendly transform/opacity animation and bounded memory. Do not rely on real-time blur over the whole 4K frame, huge animated video walls or background shaders at 60 fps.
-- Use only one full-screen backdrop crossfade at a time. During fast scrolling, skip superseded transitions and show the final correct art after focus settles.
+- For photographic idle/gallery backdrops, prefer downsampled imagery, baked blur and bounded memory. For active Home navigation, Section 32 supersedes any static-only preference: use lightweight, code-defined radial-gradient ambient meshes with GPU-friendly opacity/transform animation. Do not require expensive full-4K per-frame Gaussian blur, animated video walls or unrestricted fragment shaders. Benchmark the actual hardware.
+- Use only one full-screen backdrop crossfade at a time. During fast scrolling, skip superseded transitions and show the final correct art (dock: retargeted immediately; NAS titles: after the 135 ms settle).
 - Keep a placeholder ready *per focused item*. Image failures must not revert to the *previous item's* artwork after focus changes; clear or replace the image identity atomically.
 - Target a visually smooth 60 fps where the hardware sustains it; retain honest measured input response and legibility when animation detail is reduced on TCL or ageing Sony. Do not hide lag behind long motion.
 - Warm returning Home must be fast, even while Jellyfin, Home Assistant, NordVPN or online artwork sources are unavailable. The dock and installed apps appear from local cache; technical integrations catch up quietly.
@@ -342,7 +464,7 @@ The project is not ready for launcher development from only a single static hero
 6. Frame-specific dock with Samsung TV Plus; Sony-specific dock with Xbox; no platform leakage.
 7. Tottenham matchday compact card and the normal day without it.
 8. Samsung full-screen native Art Mode with **absolutely no chrome**, then automatic Ring takeover and return.
-9. Netflix or Live TV playing with a short Alexa reminder toast; same scene with Ring taking precedence.
+9. Netflix or Live TV playing with a short Alexa reminder toast; same scene with Ring taking precedence over the toast, and with a smoke/CO emergency taking precedence over Ring.
 10. Amazon Music-inspired Now Playing, with actual album-derived backdrop where authorised.
 11. ChatGPT icon at rest, active listening panel, short spoken answer and clean dismissal.
 12. Day-to-dusk-to-night treatment of the *same* contextual hero, showing the mood shift without changing the subject.
@@ -366,12 +488,13 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 - **Pass:** Sony, TCL and native Frame application look recognisably identical in high/low rendering modes. **Fail:** the TCL looks like a visibly different, inferior launcher.
 - **Pass:** Samsung native Art Mode contains only artwork until a Ring trigger. **Fail:** any clock, VPN badge or decorative controls remain onscreen.
 - **Pass:** Ring pre-empts transitions and restores the prior scene. **Fail:** a decorative effect delays or conceals the doorbell video.
+- **Pass:** a smoke/CO emergency pre-empts Ring and everything else, and Ring is queued during it. **Fail:** a doorbell card, reminder or effect covers, interrupts or times out the emergency.
 - **Pass:** voice, toasts, Spurs and VPN restrictions appear only when context requires them. **Fail:** they become permanent dashboard widgets.
 - **Pass:** no image, source code, trademark usage, font file or proprietary animation is taken from another product without the necessary rights.
 
 ## 5. Personal films and TV from Synology (P0)
 
-The NAS remains the media source. A Jellyfin-compatible service provides authenticated metadata, posters, backdrops, search, genre filters, seasons and episodes. Direct SMB or UPnP discovery alone does not provide this catalogue. Confirm server availability and capabilities without requiring the viewer to manage folders.
+The NAS remains the media source. **DLNA/UPnP discovery and ContentDirectory are the verified initial connectivity path, not the finished catalogue.** The premium catalogue requires a supported metadata and identity layer, such as a locally available, authorised Jellyfin-compatible service where installed and verified, or a separately tested catalogue adapter. Do not assume Jellyfin is installed, available or equivalent to Synology Media Server. Match title identities carefully, expose uncertain matches for correction and never assign unrelated artwork. Direct SMB or UPnP discovery alone does not provide the required posters, search, series organisation or server-synchronised Continue Watching. Confirm service availability and capabilities without requiring viewers to manage folders after owner setup.
 
 - Down reveals a curated Your Films & TV row; View All opens Films, Series, Search, Genres and Recently Added. Continue Watching appears only after progress round-trip has passed.
 - Android uses embedded Media3/ExoPlayer. Tizen uses embedded AVPlay. VLC is excluded; no external player handoff or VLC fallback is part of this version.
@@ -419,7 +542,7 @@ Do not make AirPin a permanent app dock tile. Under **Settings > Connections > A
 
 **GATE-AIRPLAY-01:** verify startup, discovery from an iPhone, casting and graceful return after restart/sleep, plus CPU/RAM use. If automatic startup is unavailable, report a manual setup fallback rather than a false success icon.
 
-## 8. Ring camera override via Home Assistant Green (P0, absolute release gate)
+## 8. Ring camera override via Home Assistant Green (P0 release gate; second in alert priority)
 
 **Reference deployment:** Home Assistant Green on the same local network as the televisions; configure the address and credentials privately, with Ring configured. Do not assume remote development tools have access to that private URL. Ring cloud access remains necessary even when HA and TV are on the same LAN.
 
@@ -431,7 +554,7 @@ Do not make AirPin a permanent app dock tile. Under **Settings > Connections > A
 2. **In Samsung's native Art Mode:** without user action, command the TV into a real live-view state through a model-verified native app launch path, then restore **native Art Mode** and prior artwork. The Frame shows **no clock or other permanent UI** in Art Mode.
 3. **Whilst browsing Home or a library:** immediate camera overlay over current screen.
 4. **Whilst playing another app/music:** try an in-app-independent Android overlay (picture-in-picture); if OS/DRM blocks it, use a documented and tested full-screen interruption fallback. Restore focus and volume afterwards.
-5. Ring alert has precedence over Alexa reminder toasts, ambient timeout, music, ChatGPT responses and standard notifications. Queue an Alexa reminder briefly if Ring interrupts, or discard it after its short relevance window. TV power **off** is separate from ambient: do not wake a fully off TV unless explicitly configured.
+5. Ring alert has precedence over household notices, Alexa reminder toasts, ambient timeout, music, ChatGPT responses and standard notifications, **but never over an active smoke/CO emergency**: during an alarm the Ring event gets no camera card, only the latest visit is queued, and after every alarm clears it is shown if under 45 s old or replaced by the note `Doorbell rang at HH:mm during the alarm` *(changed in v3.3)*. Queue an Alexa reminder briefly if Ring interrupts, or discard it after its short relevance window. TV power **off** is separate from ambient: do not wake a fully off TV unless explicitly configured.
 
 On event show a locally cached recent still with `Connecting` only if the still is available and correctly labelled; switch to **Live** once actual moving frames arrive. On stream failure show a clear `Camera unavailable` state; never pass a stale still off as live video. Dismiss after configurable period / Back; preserve previous playback. Volume ducking must restore original level.
 
@@ -441,10 +564,10 @@ Possible Android building blocks to test before writing new code: `vessosa/ha-vi
 
 ## 9. Ambient wallpaper and time-of-day mood (P0)
 
-- User curates at least **10** images, combining family holidays, scenic photographs and artwork. Support 10-100 local images where feasible; no assumption that photos must be cloud hosted.
+- The default source is **curated artwork** that is free and explicitly licensed for this use, bundled offline (OD-03) *(changed in v3.3)*. The owner's own photographs (family holidays, scenic photographs) are the later **My Photos** task; when built, support 10-100 local images where feasible, with no assumption that photos must be cloud hosted.
 - Home screen transitions to a gallery presentation after configurable inactivity **on the launcher**, never during active video/music unless the relevant app has its own appropriate idle behaviour.
 - In gallery mode: full-bleed photographs/artwork, gentle dissolve, discreet or no animations, no permanent controls. Group/weight Family, Travel and Art; rotate without immediate repeats. Simple selection and removal from Settings.
-- On **Frame native Art Mode**: **no clock, widgets or permanent UI at all**; photo/art image only. Ring automatic override is the sole compulsory exception; Alexa reminder toasts are **off by default in Art Mode** and would require deliberate opt-in plus proven native platform support.
+- On **Frame native Art Mode**: **no clock, widgets or permanent UI at all**; photo/art image only. Ring automatic override (and a smoke/CO emergency, where the platform permits) are the only compulsory exceptions; Alexa reminder toasts are **off by default in Art Mode** and would require deliberate opt-in plus proven native platform support.
 - On Sony/TCL ambient mode: image only by default; clock optional and off by default to honour gallery appearance. Use appropriate OLED care: dimming, image variation and no permanently static bright badges.
 - Time-of-day influences *active interface* lighting: fresher/clearer by day, warmer at dusk, darker/subdued at night. Use local time and solar schedule if available; let users override. Gradual changes, not sudden full-screen flashes.
 - Returning from ambient to Home should preserve the last useful focus state and transition smoothly.
@@ -477,7 +600,7 @@ Possible Android building blocks to test before writing new code: `vessosa/ha-vi
 - Home tile named **Music**, using the existing **Amazon Music subscription**. Avoid displaying Amazon's technical integration details.
 - Intended custom Now Playing screen is Apple Music inspired: large album cover, colour-derived soft background, song, artist, album, progress, prominent Play/Pause, Previous/Next, volume; remote-friendly focus. Discover personal playlists, recent music and favourites only when authorised APIs make that possible.
 - **Technical gate:** Amazon Music playback/library Web API is currently closed beta. Do **not** assume a custom catalogue or independent streaming is available. Phase 1 may open the official app; investigate Android MediaSession state, casting and Home Assistant Alexa Media Player/Echo Studio metadata for a richer Now Playing view without claiming guaranteed control.
-- Long music listening should use OLED-friendly dimming; Ring overlay still takes precedence. Frame native Art Mode remains visually clean when selected.
+- Long music listening should use OLED-friendly dimming; smoke/CO emergencies and the Ring overlay still take precedence. Frame native Art Mode remains visually clean when selected.
 
 ## 14. OpenAI voice assistant (P1, agreed design; microphone GATE)
 
@@ -528,7 +651,7 @@ These are **engineering targets to validate**, not measured performance of your 
 
 **Owner-facing entry point and flow:**
 
-1. Keep it outside the entertainment interface: **Settings > Advanced > TV Performance & Cleanup**, guarded by an adult/admin profile. First install permits **Skip** without repeated prompting. If a TV is controlled through an external Android streamer, show separate named targets: **Samsung Frame (Tizen)** and **Connected Android device**.
+1. Keep it outside the entertainment interface: **Settings > TV & performance > Optional cleanup**, guarded by an adult/admin profile and an additional explicit consent step. First install permits **Skip** without repeated prompting. Never infer that an external Android streamer exists on the Frame; if the user independently connects one, treat it as a separate named device, not the Frame runtime.
 2. Start with **Read-only Check TV**. Detect brand/model/firmware/OS, supported access level, installed apps (only where APIs permit), free storage (only if accurately available), and measured Home/app navigation speed. Never infer processor speed or free RAM just from model age or count of installed apps.
 3. Explain **what is genuinely possible on this TV**: standard settings-only tidying; removal of user-installed apps through official OS flows; reversible Android package disabling on *verified* profiles; and unsupported actions. Where the TV has no safe automation method, show a guided checklist or **No supported changes found**, not a misleading Cleanup button.
 4. Preview each candidate with name, exact identifier where known, user impact, dependencies, platform restrictions, test evidence, risk and expected measured benefit if established. No 'remove everything' preset. No 'one-click boost' claims.
@@ -563,7 +686,7 @@ These are **engineering targets to validate**, not measured performance of your 
 
 **Data flow:** Alexa reminder entity (scheduled time + label) -> Home Assistant due-reminder automation/event gateway -> de-duplicated household notification -> each opted-in TV overlay receiver. Guard against duplicate sensors/devices, restarts, stale reminders, time-zone changes and reminders being deleted or modified; only display a message that was confirmed due. No reminder text may be fabricated. The bridge should not need the launcher open. Store minimal reminder data briefly and do not leak household reminders to external services or logs.
 
-**Presentation:** subtle frosted/dark toast and gentle entrance/exit; reminder title and concise message with truncation for long text. Configurable duration, mute/snooze display, per-TV opt-in and privacy option to show only `Alexa reminder` without the personal label. No playback pause, focus theft, volume change or permanent UI; Back dismisses where technically supported. **Ring live camera override has absolute precedence over reminders** (a smoke or carbon monoxide alarm ranks above both, owner decision 24 October 2026). Delay/queue reminder briefly during Ring viewing, with expiry to prevent a stale popup.
+**Presentation:** subtle frosted/dark toast and gentle entrance/exit; reminder title and concise message with truncation for long text. Configurable duration, mute/snooze display, per-TV opt-in and privacy option to show only `Alexa reminder` without the personal label. No playback pause, focus theft, volume change or permanent UI; Back dismisses where technically supported. **Ring live camera override takes precedence over reminders, and smoke/CO emergencies take precedence over both; a reminder arriving during an emergency is dropped** *(changed in v3.3)*. Delay/queue a reminder briefly during Ring viewing, with expiry to prevent a stale popup.
 
 **Device behaviour and platform gate:**
 
@@ -614,7 +737,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-32 | Unknown TV platform | Open optional cleanup module | Safe read-only guidance only, no unsupported Android/Tizen commands or misleading promises |
 | AT-33 | Samsung Frame Home | Focus and select Samsung TV Plus tile | Correct branding and themed backdrop; existing native Samsung TV Plus opens with working channels and guide; no TV Plus tile on Sony/TCL |
 | AT-34 | Samsung Frame | Launch Samsung TV Plus while ReamSmartz VPN policy is enabled | Samsung TV Plus does not mistakenly inherit ReamSmartz VPN gate; Live TV/ReamSmartz remains protected |
-| AT-35 | Samsung Frame, TV Plus playing | Ring doorbell pressed or person detected | Automatically displays live camera as the highest-priority event; verifies return to previous channel/app or documents firmware limitation before release |
+| AT-35 | Samsung Frame, TV Plus playing | Ring doorbell pressed or person detected | Automatically displays live camera as the highest-priority event after any active smoke/CO emergency; verifies return to previous channel/app or documents firmware limitation before release |
 | AT-36 | Samsung Frame, optional cleanup | Preview all proposed changes and run regression check | Samsung TV Plus app, channel list and required services cannot be disabled; playback, guide, Art Mode, audio and system recovery still work |
 | AT-37 | Neutral Home arrival on each TV | Show Home without moving remote | Full image, one low glass dock, one clock, tiny utilities only; no three-row content wall or unrelated promotional hero |
 | AT-38 | App dock | Highlight Netflix, BBC, Music, Live TV in turn | Background is unmistakably related to the highlighted service or its own brand-aware fallback; generic unrelated scenery never remains under an active selection |
@@ -628,17 +751,17 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-46 | Evening transition | Keep the same app selected across day/dusk/night boundary | Only material warmth/lighting changes gently; context, artwork identity, position and focus stay stable |
 | AT-47 | Sony OLED and TCL | Leave launcher inactive for configured timeout | Dock and clock vanish, artwork fills entire screen without permanent bright static controls; input returns to previous focus |
 | AT-48 | Samsung native Art Mode | Observe with no Ring event | Family/artwork only: no clock, HUD, VPN, apps, Alexas or music controls, regardless of time of day |
-| AT-49 | Any state including Frame artwork | Ring press or verified person detection | Ring live view interrupts immediately even during transition, then restores exact prior visual/playback state; no animation causes a missed event |
+| AT-49 | Any state including Frame artwork | Ring press or verified person detection | Ring live view interrupts immediately even during transition (unless a smoke/CO emergency is active, when it is queued), then restores exact prior visual/playback state; no animation causes a missed event |
 | AT-50 | Netflix playing | Trigger Alexa reminder during playback, then trigger Ring | Reminder remains a small focus-neutral toast; Ring takes priority without stale toast lingering |
 | AT-51 | Voice on Home | Activate ChatGPT then press Back | Small temporary listening pane appears without obscuring main content; Back returns to identical Home focus and backdrop |
 | AT-52 | Live TV focus with VPN off | Move focus onto tile, then press OK | Focus alone never starts VPN or Live TV; OK opens protected, clearly explained Connect/Retry/Back flow |
 | AT-53 | Music screen | Play music then leave controls idle | Genuine album artwork drives the background, compact play/pause/skip is legible; quiet state reduces persistent OLED-bright UI |
 | AT-54 | Settings accessibility | Turn on reduced motion, high contrast and reduced transparency | All content and commands remain available, focus unmistakable; movement and glass complexity fall back without a redesign |
 | AT-55 | Public project design hand-off | Inspect layouts and short motion studies for all Section 4.13 states | Assets are cleared, input maps and source permissions supplied, source-of-truth design tokens present, and videos/screenshots show the same visual system |
-| AT-56 | Saved layout migration | Load arbitrary package and missing approved choices | Only the complete approved set remains; approved relative order preserved |
+| AT-56 | Saved layout migration (v2.3 supersedes fixed-membership assertion) | Load legacy fixed-set order, valid user-added shortcuts, unavailable packages and corrupt saved state | Preserve intentional valid owner pins and relative order; drop or mark unavailable entries safely; fresh install gets six curated defaults; provide deterministic empty-dock recovery without silently restoring removed defaults |
 | AT-57 | Home dock | Hold OK, Move with Left/Right, press OK, restart | Smooth reorder saves and persists without confusing focus |
 | AT-58 | Home edit mode | Reorder then Back; repeat with a Ring alert | Back restores old order, interruption does not half-save and Ring wins |
-| AT-59 | Home edit menu | Try to remove or add a tile | Only Move and Cancel are available; no arbitrary app picker |
+| AT-59 | Home edit menu (v2.3 supersedes fixed-membership assertion) | Hold OK on Home/Apps, Open, Move, Add/Remove from Home and App information; restart and retry as Child | All supported actions work with remote; deliberate edits persist; Back cancels; protected edits require adult authorisation; removing a shortcut never uninstalls its app |
 | AT-60 | Sony/TCL/Frame | Use different dock order and Xbox/TV Plus shortcuts | Per-TV capabilities remain correct and Live TV stays VPN protected |
 | AT-61 | Six/seven-item dock | Exercise approved room choices, child lock and reduced motion | Readable single dock with persisted deliberate owner edits and platform-appropriate shortcuts |
 | AT-62 | TCL Settings > Connections | Enter valid and invalid Home Assistant/Jellyfin settings by remote | Correct authentication/connectivity states, protected local storage and offline fallback |
@@ -657,6 +780,8 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 Collect cold/warm start, D-pad latency, focus-to-background timing, dropped frames, RAM and first-frame playback on the real Android TV 11 TCL and Sony. The reported third-party "90% faster" and proposed 500ms 4K start are **not** measured Unified TV results. No bloatware changes form part of the first pilot.
 
 ## 18. Delivery stages and decision gates
+
+*These stages are the original v1.x delivery plan, kept for traceability. The current order is the release gates G0–G6 in the authority section and [SPEC.md](SPEC.md) *(changed in v3.3)*.*
 
 **Stage 0: Hardware audit and safe proof of concept.** Collect model/firmware IDs for **Sony, TCL and Samsung Frame**, record individual performance baselines **before any changes**, identify safe official settings and rollback limits by OS, validate Home Assistant Ring **and Alexa reminder** entities, VPN networking and embedded playback. No irreversible changes and no mandatory cleanup.
 
@@ -776,7 +901,7 @@ Use the Ring integration's currently exposed event model; normalise legacy binar
 
 SmartThings capabilities vary by device. The consumer SmartThings app's Art Mode controls do not prove a universal cloud command for closing Netflix, launching a developer app or restoring artwork. Evaluate Home Assistant's Samsung integration and a model-specific local Samsung or Art Mode adapter; use SmartThings only for commands actually exposed and tested. Do not force-stop DRM applications through undocumented APIs. App launch acknowledgement and camera first-frame acknowledgement are different steps.
 
-On dismiss or timeout, restore only the captured state that the platform permits. Art Mode should regain its prior artwork without chrome. An interrupted third-party stream may require the viewer to resume manually; preserve navigation/source where supported and report the limitation. Repeated Ring events must not build an infinite queue. A fully off TV stays off unless an explicit wake policy is later enabled. If a launch or restoration command fails, show a truthful status in the household controller and retain a safe remote recovery path. Ring has priority over reminders, voice and transitions; reminders never force the Frame out of Netflix or Art Mode.
+On dismiss or timeout, restore only the captured state that the platform permits. Art Mode should regain its prior artwork without chrome. An interrupted third-party stream may require the viewer to resume manually; preserve navigation/source where supported and report the limitation. Repeated Ring events must not build an infinite queue. A fully off TV stays off unless an explicit wake policy is later enabled. If a launch or restoration command fails, show a truthful status in the household controller and retain a safe remote recovery path. Ring has priority over reminders, voice and transitions, and is itself below smoke/CO emergencies; reminders never force the Frame out of Netflix or Art Mode.
 
 ### 24.4 Embedded playback and private authentication
 
@@ -823,7 +948,7 @@ The submitted Samsung AT-58 to AT-61 are mapped to NT-01 to NT-04 below, preserv
 
 ### 25.2 Test levels and current evidence
 
-Use four separate evidence levels: automated policy/unit tests; desktop/emulator integration; physical TV interaction; and household service end-to-end tests. Each capability lists its actual highest completed level and remaining gates. No all-TV-ready label is permitted while one required target or mandatory Ring/VPN path is unproven.
+Record the highest completed `test_level` for each capability: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony` or `physical_frame` *(changed in v3.3)*. A household service end-to-end test is a `physical_*` test with the real service connected. Each capability lists its actual highest completed level and remaining gates. No all-TV-ready label is permitted while one required target or mandatory Ring/VPN path is unproven.
 
 On 24 October 2026, the standalone CI preview was installed on the authorised Android TV 11 TCL with stock Home retained. Its home screen, controls, unconfigured library response, protected Live TV refusal, hold-OK edit menu, move cancellation, saved layout across restart and stock Home recovery were exercised. Hardware testing identified weak Settings focus visibility and focus restoration after reorder; fixes and subsequent results belong in the dated TCL report. A 100-directional-event smoke check is not an input-latency benchmark, and observed process memory is not a proven budget. No configured Jellyfin playback, Ring, VPN tunnel, Alexa, gallery-source or voice service acceptance is implied.
 
@@ -876,10 +1001,602 @@ v2.1 historically recorded the fixed-dock decision, material rendering pass and 
 | LIB-03 | Native DLNA direct play | Representative files play, pause, seek, stop and return correctly on each supported runtime; unsupported codecs fail clearly. |
 | LIB-04 | Progress truth | Jellyfin start/progress/stop reaches the server and resume is verified; DLNA-only playback is never labelled server-synchronised. |
 | GAL-01 | Five example images | All five original images load, rotate, fit and respond to pause/next/previous/Back without private data appearing. |
-| VPN-01 | Four states | Distinct Connected, Disconnected, Checking, Unknown; no state alone unlocks Live TV. |
+| VPN-01 | Four states and Live TV protection | Distinct Connected, Disconnected, Checking, Unknown; no state alone unlocks Live TV. Live TV unlocks only after NordVPN provider, routing and drop protection are proven on that TV (GATE-VPN-01..05) *(changed in v3.3: merges the register's use of this ID)*. |
 | MUS-01 | Official Music route | Correct installed Amazon Music app opens; missing-app route uses the supported store; account search/playlists work in the official app after sign-in. |
 | MUS-02 | Custom Music gate | Authorised API/media control access is proven before claiming custom playlist/search/Now Playing support. |
 | REL-01 | Version retention | GitHub version/tag, APK, hash, notes, limitations and test results retained; no overwrite of previous release or another agent's code. |
 | REL-02 | Updated UX evidence | Fresh screenshots belong to the exact physically tested APK; no substitution of old screenshots. |
 
-Version 2.2 incorporates the latest owner directions for editable Apps, two-column Settings, automatic DLNA, exact media scope, Amazon Music, authorised sample art, privacy and retained GitHub releases. Platform limitations remain explicit and implementation status is kept separately.
+Version 2.2 incorporates the latest owner directions for editable Apps, two-column Settings, automatic DLNA, exact media scope, Amazon Music, authorised sample art, privacy and retained GitHub releases. Platform limitations remain explicit and implementation status is kept separately. The v2.3 implementation focus and supersessions follow in Section 27.
+
+
+## 27. v2.3 delivery focus, architecture clarification and quality gates
+
+**Status and scope.** This section is an approved delivery-plan update to the complete v2.2 requirements, not a claim that Preview 0.5 or any hardware acceptance has passed. Preserve earlier feature requirements unless this section explicitly supersedes their wording. A narrow preview can ship with honestly labelled unavailable features; it must not be called the full household release.
+
+### 27.1 Milestone strategy and sequencing
+
+| Track | Priority | Deliverable | Dependency and release rule |
+|---|---|---|---|
+| A. TCL viewing vertical slice | **Gate G3 (Preview 0.5), after G1 TCL Home and G2 Animated Home and Wallpaper** *(changed in v3.3)* | Stock-Home-safe install; premium Home; editable Apps; NAS discovery and exact folder selection; title browsing; embedded playback; return/recovery; physical screenshots | Actual TCL access, compatible representative file and verified build/signing. Do not block source development indefinitely on failed ADB; do not claim physical pass without it. |
+| B. Samsung feasibility | **Parallel, time-boxed** | Official SDB handshake, author/distributor certificate, signed WGT install, basic D-pad/Back, AVPlay smoke test, app lifecycle and foreground/Art Mode feasibility notes | No working Tizen app or automatic interruption can be assumed from Developer Mode or open port. Owner performs any required certificate sign-in. |
+| C. Household safety integrations | **Parallel investigation, gated delivery** | Home Assistant pairing and real Ring press/person tests; VPN route/drop verification and LAN coexistence | Ring and Live TV release gates remain mandatory for the full product. Keep unsupported paths unavailable and honestly labelled. |
+| D. Cross-TV parity | **After proven TCL slice and Samsung feasibility** | Sony installation, Xbox/HDMI/eARC, Samsung native TV Plus/Art Mode, visual and remote parity | Each runtime requires independent hardware evidence. |
+| E. Secondary experiences | **After stable core, without deleting scope** | Official Amazon Music, gallery refinement, voice, matchday, Alexa reminders, optional performance advice/cleanup | Authorised integrations, safety and hardware support must be proven; no fake API or privileged action. |
+
+The first completed milestone must be a **viewing journey**, not merely a collection of screens or a passing CI job. Each subsequent milestone must retain previous passing journeys as regression tests. Do not merge two agents' branches just to satisfy a date or version number.
+
+### 27.2 Preview 0.5: The Viewing Experience acceptance contract
+
+Preview 0.5 is an Android/TCL-first candidate. Its label must say **hardware-unverified** until the following journeys have been observed on the exact APK, device and firmware. Sony compatibility is a separate result, not implied by TCL.
+
+| ID | Required journey | Pass condition and evidence |
+|---|---|---|
+| P05-01 | Safe install/update and launch | Inspect package identity/signature and existing data before install; matching-key update retains configuration; factory Home remains default and accessible; no forced uninstall/reset. Record APK hash and install result. |
+| P05-02 | Premium Home and remote focus | Six fresh curated defaults, correct platform availability, accurate brand/selected-title artwork or honest neutral fallback, legible glass/focus, predictable D-pad/OK/Back and no focus trap. Capture video or exact-build screenshots and input observations. |
+| P05-03 | Editable Apps and dock | Compact grid, long-OK Open/Move/Add or Remove from Home/App information, owner edits survive restart, cancellation does not save, no duplicate package mappings, missing app state handled, child editing protected, Live TV gate applies to every route. |
+| P05-04 | Local media discovery | Unconfigured Films & TV discovers Synology MediaServer by name on the TCL, supports Retry, distinguishes no server from failed authorisation, and does not require an address for DLNA. Document actual network/VPN condition. |
+| P05-05 | Collection restriction | Owner selects only `/video/Kids`, `/video/Movie`, `/video/TV Show` by discovered server hierarchy/object IDs; saved viewer exposes no other collection; child DLNA bypass refused; folder identity/recovery after NAS restart checked. |
+| P05-06 | Browse and title identity | Browse real selected content without sparse-pagination loss; show accurate title and poster where a verified metadata adapter exists; otherwise use a coherent, honestly labelled fallback without mismatched imagery. A folder-button prototype alone is not the premium-catalogue design pass. |
+| P05-07 | Embedded film playback | At least one representative real NAS video opens within Media3; pause, seek, stop and Back work; record format, codec, audio, subtitle availability and first-frame time. Unsupported formats fail with a useful message, not a false success. |
+| P05-08 | Failure and lifecycle recovery | Disconnect/reconnect NAS or Wi-Fi, switch away and back, standby/wake, and cancel during loading; no indefinite spinner, lost focus, unexpected stock-Home replacement or leaked player resources. Show Retry and prior-context recovery. |
+| P05-09 | Settings and accessibility smoke | All six categories and right-hand controls reachable by remote, focus restoration works, enlarged text and reduced motion do not hide essential controls, secrets remain protected. |
+| P05-10 | Honest security and release evidence | Protected Live TV remains blocked without measured routing/drop evidence; no credentials or private device data in logs/screenshots; versioned APK/hash, test report, exact-build screenshots and limitations retained. |
+
+**Conditional catalogue gate:** A truly poster-first experience requires a proven metadata source. Do not invent artwork or claim full search, series hierarchy or Continue Watching from bare DLNA. If that source is unavailable for Preview 0.5, record P05-06 as incomplete and label the build a *connectivity/playback preview*, not the polished viewing milestone. Continue Watching appears only after authenticated progress round-trip is verified; local DLNA resume, if implemented, must be labelled local to this device.
+
+**Performance evidence:** Measure rather than promise: cold/warm launch, remote focus response, title-to-first-frame, seek recovery, buffering, memory and long-session stability on the TCL. Record the measurement method, conditions and result. No unsupported universal FPS, sub-second start or 4K claim.
+
+### 27.3 Media service and catalogue boundaries
+
+```text
+Owner-approved collection roots (local-only configuration)
+        |
+        +--> UPnP/SSDP: discover MediaServer and ContentDirectory
+        |        |
+        |        +--> DLNA object IDs, bounded browse, video resources
+        |                 |
+        |                 +--> Android Media3 / Tizen AVPlay (format-tested)
+        |
+        +--> Optional authenticated catalogue adapter, only when available
+                 |
+                 +--> verified item identity, metadata, artwork, search,
+                      seasons, account restrictions and server progress
+```
+
+- Discovery does not equal catalogue quality. DLNA item IDs, filesystem paths, Jellyfin IDs and playback URLs are distinct; never assume one can be transformed into another without a verified mapping.
+- The adapter must identify titles deterministically where possible; ambiguous titles require a safe fallback or owner correction. Cache provenance, expiry and negative lookups; do not publish household media names or artwork captures.
+- Fix sparse DLNA pagination using SOAP `NumberReturned` and `TotalMatches` independently of accepted-video count; handle filtered audio/unsupported entries, bounded retries and cancellation. Test mixed pages, multiple interfaces and multicast behaviour under VPN.
+- Direct play remains preferred; format support and subtitles are hardware-specific. A compatible server remux/transcode route may be supported only when explicitly configured and proven.
+- Restrict server browsing to owner-selected roots in the viewer and player, not just on Home. For Child use an authenticated restricted account where available; refuse unauthenticated DLNA as the Child pathway.
+- NAS administrative discovery and a MediaServer response do not prove catalogue, auth, folder scope or video playback on any television.
+
+### 27.4 Home, setup and reliability design rules
+
+- Home remains a **quiet, deliberate selection of favourites**. Apps is the complete remote-friendly installed-app browser; installing/uninstalling is distinct from pinning/unpinning. Keep the one-dock visual intent, handle overflow without tiny tiles, and offer an obvious recovery route if every pin is removed.
+- A focused item changes the atmosphere only using appropriately licensed and genuinely related imagery. Prefer the existing brand/neutral fallback over unrelated artwork. Cache and prefetch within strict memory limits; cancellation prevents stale focus backgrounds appearing after rapid remote navigation.
+- Initial setup should be guided: discover by friendly name, explain why access is needed, verify a connection before saving and expose addresses/tokens only in Advanced. Never silently grant trusted HTTP consent, persist discovery results as credentials or create unsupported pairing APIs.
+- Treat launch, loading, ready, empty, disconnected, unauthorised, unsupported, retrying and resumed states explicitly. Avoid infinite spinners; preserve previous navigation focus and user actions through lifecycle transitions.
+- Do not interfere with native television controls, protected streaming-app screens, stock launchers or native Art Mode. Gallery idle art and Frame Art Mode remain separate.
+
+### 27.5 Samsung early feasibility and platform truth
+
+Before designing feature-complete Tizen parity, verify in this order on the actual Frame: developer host authorisation and SDB handshake; valid private certificates; signed WGT install/update; app startup and basic remote focus/Back; foreground AVPlay with representative media; standby/cold boot/reboot; switching to/from native Netflix/TV Plus; native Art Mode preservation; supported Ring event foreground launch and restoration. Record negative results explicitly. A hidden Tizen Web Application cannot be assumed to receive Ring events; any external Home Assistant coordinator requires a supported launch and first-frame acknowledgement path. Failure of a mandatory Ring/Art Mode journey is a **full-product release blocker**, not permission to fake the feature or alter native Samsung services.
+
+### 27.6 Evidence register and multi-agent change control
+
+Maintain one machine-readable acceptance register (CSV/JSON/Markdown table is acceptable) with these columns: `requirement_id`, `feature`, `owner_agent`, `branch_commit`, `build_hash`, `device_model`, `firmware`, `test_level`, `observed_result`, `evidence_path`, `status`, `severity`, `next_action`. Allowed status values: `not_started`, `implemented_unverified`, `automated_pass`, `hardware_pass`, `hardware_fail`, `blocked`, `unsupported`, `deferred_preview_only`. Allowed `test_level` values: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame` *(changed in v3.3)*. The register is `ACCEPTANCE_REGISTER.csv`, the only place status is recorded. Only `hardware_pass`, backed by evidence at a `physical_*` level on a named model, may support a hardware claim; source code and simulation do not imply cross-TV completion.
+
+Assign one active agent per owned path/feature. Keep Android, Tizen, shared design tokens, service adapters and release automation in explicit branch ownership. Fetch before editing and pushing, stage only owned paths, scan for private data, avoid force-push and do not merge another agent's unreviewed work. Keep durable private release signing, same-author updates, rollback and immutable tags. The concise current decision index is [SPEC.md](SPEC.md); superseded proposal documents are kept unchanged in [archive/](archive/README.md) (done in v3.3); **never delete historical evidence**.
+
+### 27.7 Release language and retained scope
+
+- **Preview 0.5** means the bounded TCL viewing candidate described above. Passing automated checks is useful but insufficient. A poster-catalogue shortfall must be named, not concealed.
+- **Household Android release** additionally requires Ring press/person interruption and recovery, verified Live TV isolation or explicit unavailable capability, authorised profile restrictions, sustained performance and TCL/Sony device-specific tests.
+- **Full cross-TV release** additionally requires Samsung native WGT/AVPlay, TV Plus and Art Mode preservation, documented platform-specific launch/Back, Ring/Art Mode acceptance, and all applicable NT/AT journeys. Unsupported features must be agreed and disclosed rather than simulated.
+- Preserve every earlier agreed feature and security restriction, including music, voice, gallery, matchday, Alexa, Sony Xbox, optional safe cleanup and accessibility. Lower scheduling priority does not revoke requirements.
+
+### 27.8 v2.3 decision and change log
+
+- Reprioritised the next build around one end-to-end TCL viewing journey while retaining parallel Samsung feasibility and household safety work.
+- Corrected AT-56 and AT-59 to honour editable Home rather than the superseded fixed dock; clarified optional cleanup location under the current six-category Settings structure.
+- Clarified that the restored Synology MediaServer is not proof of Jellyfin or a finished poster catalogue, and introduced a conditional metadata/catalogue acceptance gate.
+- Added P05-01 to P05-10 for physical hardware verification, failure recovery, honest screenshots, signing and privacy.
+- Added shared architecture boundaries, one evidence register, explicit multi-agent ownership and graduated preview/household/cross-TV release language.
+- No source code, device configuration, GitHub branch, application signing material or existing release has been changed by this specification revision.
+
+
+## 28. v2.4 remote-control ownership, seamless Home and system-button compatibility (P0)
+
+### 28.1 Product outcome and honest platform boundary
+
+**Owner requirement:** Unified TV must feel like the television's primary experience. Ordinary remote use must not unexpectedly expose the old TV launcher or strand the viewer in stock menus. A coherent experience includes Home, Back, OK, directional navigation, long presses, playback, Guide, Source/Input, Settings, voice, volume, channel, power, accessibility and device-specific buttons.
+
+This is an **experience goal subject to OS ownership** rather than permission to hijack keys. Never promise interception of reserved keys, tamper with firmware, disable stock recovery, capture protected remote events, replace manufacturer Art Mode, or conceal unavoidable native hand-offs. If a button is reserved by the OS, document the resulting native destination and the shortest tested path back to Unified TV. Third-party streaming apps remain native apps and may have their own Back/Home behaviour.
+
+**Modes are distinct and must be labelled clearly:**
+
+1. **Android preview app `io.unifiedtv.preview` (always):** an ordinary app with no HOME entry, which stays installed alongside the launcher *(changed in v3.3)*. The physical Home button legitimately opens the original Android/Google TV Home. This is an expected, clearly disclosed limitation, **not a failed implementation**. Do not claim the old interface is gone in this mode.
+2. **Android launcher app `io.unifiedtv.launcher` (owner opt-in, Sony and TCL independently):** its HOME activity-alias ships disabled; when the owner chooses **Make Unified TV the Home screen** in Settings it is enabled and Android's own Home selection decides *(changed in v3.3)*. Pressing Home from Unified TV or a third-party app should return to Unified TV, subject to manufacturer-reserved behaviour. Offer a guided, reversible setup and a tested stock-Home restoration path; never silently change the default or disable stock Home.
+3. **Samsung Frame native Tizen application:** normal Web Application APIs do **not** confer Smart Hub/Home key ownership. Home, Source, voice, channel and other reserved keys may open Samsung native UI. Do not claim Unified TV replaces Smart Hub. Test which key events reach the app, the native hand-off, resume behaviour, and whether a documented supported launch mechanism can bring the user back. Preserve Frame Art Mode and Samsung TV Plus.
+
+**Success criterion:** On an Android television in confirmed default-Home mode, a normal Home press returns to Unified TV rather than the stock launcher. On Samsung, any unavoidable Smart Hub hand-off is a **documented platform gap** with a tested return path, not a hidden defect or a fabricated workaround. Full parity cannot be signed off unless the owner explicitly accepts these differences.
+
+### 28.2 Remote button behaviour matrix
+
+| Button / gesture | Inside Unified TV | In third-party/native app | Platform rule / exception |
+|---|---|---|---|
+| D-pad Up/Down/Left/Right | Move focus predictably, never trap it; use directional semantics for Home, shelves and grids | App owns navigation | Key repeat and long holds must not lag or move focus after release |
+| OK / Select | Activate focused item once; long OK opens the relevant context menu | App owns selection | Avoid duplicate click and long-press triggering both actions |
+| Back / Return | Close overlay -> exit detail -> return to originating tile -> return to Unified Home; show a safe exit confirmation only when appropriate | Native app controls its own Back; when control returns, restore Unified TV state | At Unified Home, Back must **not unexpectedly open stock Home**; use an explicit exit or OS-mandated outcome and test it |
+| Home | In Android default-Home mode return to Unified Home and restore meaningful focus; safe preview opens stock Home | Android default Home should bring user to Unified TV when supported | Tizen Home/Smart Hub reserved; cannot guarantee interception |
+| Guide / Live TV | Open Unified TV's own guide or protected Live TV entry **only if the key is delivered and supported** | May open native tuner/guide | Never bypass NordVPN Live TV policy; native reserved Guide must be disclosed |
+| Source / Input | Open a supported, intentional source picker or native input selector | Often OS-owned | Preserve HDMI/CEC and Sony Xbox input access; no unsupported key remapping |
+| Settings / Menu | Open Unified Settings for app-owned controls; system settings only via deliberate explicit action | May be OS-owned | Do not obstruct Wi-Fi, accessibility, audio, recovery or updates |
+| Play/Pause, FF/Rewind, Next/Previous | Control active Unified media player, with seek semantics and no duplicate events | App owns media keys | Preserve Bluetooth/CEC media transport and music behaviour |
+| Volume, Mute | Leave to TV/OS/receiver hardware path; optional visual feedback only | Native volume remains functional | Never intercept or break eARC, Echo Studio or Bluetooth audio |
+| Channel +/- and number keys | Use only if supported and meaningfully mapped to a live-TV/guide context | Native tuner may own them | No silent switch into restricted Live TV or legacy UI where preventable |
+| Voice / microphone | Offer in-app voice entry where supported; show fallback | System assistant often owns hardware key | Do not claim capture of a reserved Google/Samsung voice key |
+| Power, standby, wake | Persist focus/player state and recover safely on next launch | OS owns power | No power-key interception, forced wake or battery/standby regression |
+| Colour keys, Info, dedicated app buttons | Optional mappings only when delivered, discoverable and not reserved | Manufacturer/streaming shortcuts may own them | No dependence on these buttons for core journeys |
+| Samsung Art Mode / Frame-specific keys | Preserve native Art Mode and supported transitions | Samsung owns them | Do not simulate or override Art Mode |
+
+### 28.3 Navigation, lifecycle and escape rules
+
+- Define a **single navigation state machine** shared in concept across Android and Tizen: `UnifiedHome -> Apps / Library / Gallery / Settings -> Detail -> Player`, with overlays on top. Back unwinds one layer; Home (where app-owned) returns to UnifiedHome; preserve originating tile and scroll position.
+- Distinguish **in-app Back** from **OS Home**, **exit app**, **input switching**, and **third-party app launch**. Never rely on an accidental OS fallback as the intended route. Provide a visible *Return to Unified TV* instruction or supported action where appropriate.
+- When launching Netflix, Disney+, BBC, Samsung TV Plus or HDMI, save origin/focus and playback state. On returning to the Unified app, restore the relevant screen without flash, duplicate launch, stale backdrop or reset to the first tile. Do not assert that an ordinary app can override a third-party app's Back or Home key.
+- A failed app launch, OS dialog, permission prompt, loss of network, standby/wake or remote disconnect must not trap the viewer. The standard remote must remain sufficient to recover; accessibility remotes and CEC controllers need regression checks.
+- **Android default-Home onboarding:** explain the change and how to reverse it; check actual launcher eligibility; ask the owner to select Unified TV through supported OS UI; confirm selection; verify Home from within Unified TV, from Netflix, after standby and after reboot. If not supported or rejected, retain safe preview mode.
+- **Stock recovery:** provide an in-app **Restore original TV Home** instruction/action where supported, plus an independent OS Settings route documented per tested model. Do not remove, disable or rename the manufacturer launcher. A broken/uninstalled Unified TV must not prevent normal TV use.
+- **Samsung feasibility:** record key codes actually received by the WGT, keys consumed by Tizen, Smart Hub transitions, re-entry, app termination/resume, remote variations and Art Mode. Do not use unverified service-menu tricks, accessibility hijacks or privileged APIs to achieve key ownership.
+
+### 28.4 Required hardware acceptance and evidence
+
+| ID | Test | Pass / required evidence |
+|---|---|---|
+| RC-01 | TCL safe-preview Home press | Stock Home opens as disclosed; Unified TV can be relaunched; no settings changed silently |
+| RC-02 | TCL opt-in default-Home selection | After owner authorisation, Home from Unified, Netflix and another app returns to Unified TV; record model, firmware, launcher selection and video |
+| RC-03 | Sony opt-in default-Home selection | Repeat RC-02 on Sony independently; no TCL-only assumption |
+| RC-04 | Back stack, overlays and edit mode | Back dismisses overlay, cancels unsaved edit, returns detail/player to origin and stops at a stable Unified Home; no surprise legacy UI while app owns navigation |
+| RC-05 | Button coverage on each physical remote | Record each matrix button: `received`, `OS-reserved`, `third-party-owned`, `unsupported` or `not-present`; capture actual destination, not guessed mappings |
+| RC-06 | Streaming-app round trip | Launch Netflix/Disney+/BBC, use Home/Back as supported, return to Unified TV with correct focus and no stale hero image |
+| RC-07 | Power and recovery | Cold boot, standby/wake, app crash/uninstall and network outage preserve usable remote, sound, stock recovery and reliable re-entry |
+| RC-08 | Input, guide and Live TV | HDMI/CEC, native tuner/Guide and Samsung TV Plus work without circumventing VPN restrictions or exposing prohibited viewing routes |
+| RC-09 | Samsung Frame reserved-key feasibility | On actual Frame WGT, capture Home/Back/Guide/Source/voice/Art Mode outcomes and verified return path; mark non-overridable keys as platform limits |
+| RC-10 | Restore original Home | On TCL and Sony after opting in, restore manufacturer Home without PC, root, ADB or a working Unified TV app; record full steps and pass result |
+| RC-11 | Remote responsiveness and accessibility | Fast D-pad repeat, long OK, held Back, CEC and accessible input produce one predictable action without lost focus or repeated activations |
+
+**Release gating:** RC-01, RC-04, RC-05, RC-06, RC-07 and RC-11 apply to Preview 0.5 where testable; RC-02 and RC-03 apply to the launcher app `io.unifiedtv.launcher` and are required **before calling it a full launcher replacement**; they do not apply to the preview app. RC-09 is mandatory before any Samsung seamless-interface claim. RC-10 is mandatory before recommending opt-in default-Home mode. No platform's test result can substitute for another's.
+
+### 28.5 v2.4 change log
+
+- Added explicit owner requirement to minimise unintended exposure to the old TV interface when using ordinary remote controls.
+- Defined opt-in Android default-Home mode separately from the intentionally safe Preview 0.5 and the Tizen Smart Hub limitation.
+- Added per-button behaviour matrix, navigation/return lifecycle, manufacturer recovery and 11 hardware acceptance tests.
+- Preserved native volume, power, voice, HDMI/CEC, protected Live TV, Samsung TV Plus and Frame Art Mode.
+- No application code, launcher defaults, device settings or repository branches were changed by this specification revision.
+
+## 29. v2.5 household-first remote ownership and always-return contract (P0, owner release blocker)
+
+### 29.1 Non-negotiable household outcome
+
+The three owner's actual televisions and their supplied physical remotes are the release targets, not representative device categories. The product must be usable every day by household members without knowing that a separate stock launcher exists. The expected Android behaviour is **Home always returns to Unified TV**, whether pressed from the Unified app, Netflix, BBC iPlayer, Disney+, a media player or after waking the TV. **Back never accidentally finishes the Unified Home activity**. The remote must remain able to operate volume, mute, power, inputs, audio and emergency system recovery.
+
+This is an **acceptance requirement**, not a claim about the current APK. No device may be labelled 'always returns' without actual hardware evidence after boot, standby, third-party app round trips and repeated remote key use. A Samsung reserved-key limit must be surfaced as a blocker to full seamless parity, not redefined as a pass.
+
+**Owner preference overrides generic repository defaults:** household-specific tested mappings, profiles and instructions have first priority. Public GitHub users can provide their own adapter and button map. Do not hold up the owner's three-device mapping for hypothetical remotes, and do not hardcode private network identifiers or personal credentials in public source.
+
+### 29.2 Three actual television targets
+
+| Household target | Confirmed facts | Required remote ownership and return behaviour | Information not yet evidenced / must be captured on TV |
+|---|---|---|---|
+| **TCL living-room TV** | TCL 55-inch; Android TV **11**; Unified TV preview installed and owner has **already pressed a remote button and been dumped into stock UI**, unable to find the app | **First priority:** install the separate launcher app `io.unifiedtv.launcher` (HOME activity-alias shipped disabled); when the owner chooses **Make Unified TV the Home screen**, enable it and let Android's own Home selection decide *(changed in v3.3)*, then test physical Home from Unified TV, Netflix, Disney+, BBC and standby. Back at Unified Home stays there. Provide a labelled 'Open Unified TV' recovery entry in Apps and an owner-tested stock launcher restore path | Exact TCL model, firmware, remote part number and photographed key layout; which specific button caused the observed escape; whether firmware exposes and persists default Home selection |
+| **Sony BRAVIA OLED** | Sony BRAVIA **65-inch OLED**, Google TV; Xbox on **HDMI 3** with eARC consideration | Same Android HOME default selection **independently verified on Sony**. Home returns to Unified TV from every tested streaming app; Source/Input intentionally opens native inputs, Xbox action selects the verified HDMI 3 route without breaking eARC. Back and long-Back remain predictable. Protect OLED idle behaviour | Exact Sony model/firmware and physical remote model/key layout; launcher chooser availability; manufacturer shortcut and TV/Guide key behaviour |
+| **Samsung The Frame** | **QE50LS03AAUXXU**, 50-inch, Tizen **2310.0**; Samsung Smart Remote with **123 on-screen number keypad** rather than physical number keys; preserve Art Mode and Samsung TV Plus | **Native Tizen Web App** only. Test Back/Return inside Unified TV; physical Home/Smart Hub, Source, 123 keypad, volume, channel, microphone, power and Art Mode transitions. Native Home/Smart Hub is system-owned: **do not promise that Home can be redirected to Unified TV**. Implement and video-verify the fastest supported app relaunch from Smart Hub; restore previous Unified focus on re-entry when possible. If this still exposes Smart Hub, record as **owner experience blocker / platform limitation** | Exact Smart Remote model and key arrangement, actual WGT installation, Smart Hub pinning/launch options, supported resume behaviour and all reserved-key outcomes |
+
+Do not invent missing Sony/TCL remote button labels or assert remote model numbers without a photograph, manufacturer part number or device-level key log. Record the exact button the owner used to escape on TCL as a reproducible regression test. The known Samsung '123' button must be tested as the on-screen keypad, **not** as a physical digit keypad.
+
+### 29.3 Android implementation contract: true default Home, not a fullscreen app
+
+1. Build **two separately installed apps from one codebase as Gradle product flavours** *(changed in v3.3)*: `preview` (`io.unifiedtv.preview`) has **no HOME entry at all**, keeps its identity, stays installed and is never uninstalled; `launcher` (`io.unifiedtv.launcher`) declares a HOME activity-alias handling `ACTION_MAIN` plus `CATEGORY_HOME` and `CATEGORY_DEFAULT` that **ships disabled**, is enabled only when the owner chooses **Make Unified TV the Home screen** in Settings, and is withdrawn again if the owner does not choose it or reverses the choice. The launcher is signed with the owner's durable key from its first release. Confirm intent resolution on each television rather than assuming a normal `LEANBACK_LAUNCHER` entry is enough.
+2. Present an on-TV owner-controlled onboarding flow explaining that pressing Home will now open Unified TV. Launch the supported Home selection/settings UI where available; **never silently assign the default, require root, disable the factory launcher or run persistent ADB hacks**. If OEM firmware forbids default selection, record a hard platform blocker and investigate supported alternatives separately.
+3. Ensure Home renders an idempotent root screen and Back at root is consumed/handled without `finish()`, `finishAffinity()` or an unintentional fallback to stock Home. Overlays and child pages unwind in deterministic order. A long Back or repeated rapid Back must not escape unexpectedly.
+4. Persist pinned apps, selection and library state. Recover from process death, cold boot and standby without exposing setup or a blank screen. The launcher must work offline and must not depend on the NAS, VPN, HA or a network request to render Home.
+5. Launch external apps through verified platform intents. On returning via physical Home, restore Unified TV promptly and never show a second 'legacy Home' step. Do not claim to intercept Home while a third-party app has focus; **the OS routes it to the chosen default Home**.
+6. Retain an independent emergency route to factory Home through supported OS Settings, even if Unified TV fails to start. Verify it on each device. Never disable or uninstall system packages or interfere with volume, Wi-Fi, input selection, accessibility or firmware updates.
+7. Use hardware key logging only in owner-authorised debug builds to identify app-delivered events. Document OS-reserved keys and dedicated app buttons, which may bypass the launcher entirely. Do not use accessibility-service key hijacking or unsupported remapping to pretend they can be controlled.
+
+### 29.4 Samsung Frame contract: supported limits are not negotiable
+
+The 2021 Frame/Tizen 2310.0 cannot be treated as an Android default launcher. An ordinary Tizen Web Application is not entitled to intercept or replace the system Home/Smart Hub key. See Section 31 for a newly documented, unsupported native Home reassignment experiment on a DIFFERENT Samsung Frame; this is a feasibility lead, not verified compatibility for this household. Test native application lifecycle and supported Samsung launcher entry points after every Home, Back, Source, channel, standby and Art Mode journey. Never disable Smart Hub, modify firmware, enter the service menu or damage Art Mode to conceal the old interface. If the owner's requirement is literally that **every remote button must keep Unified TV as the visible system interface**, classify Samsung as **not achievable through the ordinary native Web App architecture alone**. A guarded, unsupported native reassignment experiment may be considered under Section 31 only after device-specific feasibility and recovery gates; success is not guaranteed. A convenient app shortcut is mitigation, not parity.
+
+### 29.5 Mandatory owner-device remote test matrix
+
+On each actual remote, record its photo/model where possible, button legend, short/long press, starting context, actual destination, whether app receives a key event, return route, repeatability, and evidence video. Include every physical button and the Samsung 123 overlay. Minimum journeys:
+
+| ID | Television | Test | Required result |
+|---|---|---|---|
+| HRC-01 | TCL | Owner's **previously problematic button** from Unified Home, Apps, Settings and player | No surprise legacy launcher when an app-controlled key is used; reserved key recorded explicitly; exact reproduction fixed |
+| HRC-02 | TCL | Home from Unified, Netflix, Disney+, BBC, another app | Unified Home appears on first Home press with no manual Apps hunt **after default Home has been selected** |
+| HRC-03 | TCL | Repeated Back/long Back from every Unified screen | Never exits the Unified root unexpectedly |
+| HRC-04 | TCL | Power cycle, standby, network loss, app crash | Remote recovers to a usable Unified Home or an independently usable stock fallback; no lockout |
+| HRC-05 | Sony | Repeat HRC-02/03/04 on Sony's own remote and firmware | Same independently proven Home ownership and Back behaviour |
+| HRC-06 | Sony | Input/Source and Xbox on HDMI 3, volume/eARC | Xbox route works; native input and sound controls remain usable; Home returns to Unified where OS allows |
+| HRC-07 | Samsung Frame | Home/Smart Hub from WGT and Netflix; app re-entry | Exact native destination and fastest supported return are filmed; **not** recorded as seamless replacement if Smart Hub appears |
+| HRC-08 | Samsung Frame | 123 keypad, Return, Source, channel, power, Art Mode | Correct device-specific behaviour and preservation of native Art Mode/TV Plus |
+| HRC-09 | All three | Every physical button including long presses and dedicated app shortcuts | One device-specific signed-off key map; any unavoidable system hand-off labelled and owner-approved |
+| HRC-10 | Android TVs | Restore factory Home after default selection, including if Unified crashes | Fully tested supported OS recovery with physical remote, no PC or ADB required |
+| HRC-11 | All three | 20 successive round trips across apps and standby/wake | No stranded state, lost focus or unexpected return to stock interface beyond documented reserved-key limits |
+
+**Release gate:** TCL HRC-01 to HRC-04 and HRC-10 are **P0 before the next owner daily-use build**. Sony HRC-05/06/10 are **P0 before Sony daily-use release**. Samsung HRC-07/08 and a written owner decision on Smart Hub limitations are **P0 before Samsung is called a seamless household deployment**. Mark `hardware_pass` only after observed tests on exact TV, firmware, APK/WGT hash and physical remote. No emulator-only or automated-only sign-off.
+
+### 29.6 Immediate recovery and development sequencing
+
+- **Today, TCL:** from stock Home find Unified TV in Apps/See all apps or Settings > Apps and open it. Record the current package ID and launcher intent. This is recovery only, **not a permanent fix**.
+- **Next build:** implement and verify HOME role eligibility in the launcher app `io.unifiedtv.launcher`; provide owner-directed default Home setup and physical Home/Back tests before any additional visual polish or integrations.
+- **Then Sony:** repeat independently with its own remote, default Home and HDMI 3/eARC checks.
+- **Samsung in parallel:** obtain a signed WGT running on Frame; test real remote reserved keys and Smart Hub re-entry. Surface impossibility rather than inventing interception.
+- Keep the original factory Home installed and a documented reversible fallback on Android throughout.
+
+### 29.7 v2.5 change log
+
+- Elevated three household physical remotes above generic repository/device support.
+- Added a concrete TCL regression for the owner's real incident of accidentally leaving Unified TV.
+- Required default Android HOME selection and remote-based recovery for TCL and Sony before daily-use release.
+- Made Samsung Frame QE50LS03AAUXXU / Tizen 2310.0 / 123-keypad behaviour explicit without claiming impossible Smart Hub interception.
+- Added eleven device-specific hardware tests and clear release blockers; no source code or TV settings changed by this document update.
+
+
+## 30. v2.6 discreet original-interface escape hatch (owner decision, P0)
+
+### 30.1 Intent and discoverability
+
+Unified TV remains the normal day-to-day interface on the owner's three televisions wherever the OS permits. Add a deliberately unobtrusive **Settings > TV & performance > Advanced > Open original TV interface** action. On Android it lives in the launcher app `io.unifiedtv.launcher`; the preview app never holds the Home role *(changed in v3.3)*. This must appear as a small secondary text row at the bottom of the advanced settings panel, not a large tile, hero button, Home shortcut, prominent Settings category or always-visible remote hint. The wording must be understandable without developer knowledge; do not call it 'stock launcher', 'intent', 'Tizen' or 'HOME role' in the viewing UI. Make the action remote-focusable, legible, and screen-reader accessible despite its visually low prominence. It is intentionally discoverable in Settings but not easy to trigger accidentally.
+
+Selecting the row opens a confirmation sheet with the two meanings distinguished clearly:
+
+- **Open original interface for now** (primary option): launch the manufacturer's interface through a supported mechanism **without clearing Unified TV's default Home selection**. Explain that pressing Home should return to Unified TV on Android when Unified is the chosen default; on Samsung, Home is owned by Smart Hub and may stay there. If the platform does not support temporarily opening the factory Home independently, disable this option with a plain-language explanation; do not pretend it works or silently change defaults.
+- **Make original interface the default** (advanced, Android only): explicitly guide the owner to the system-supported default Home app selection or reset flow. Show a second clear confirmation explaining that future Home presses will go to the original interface until the owner selects Unified TV again. Never change the default silently, remove the manufacturer's launcher, or use root/ADB to force the choice.
+- **Cancel**: return to the same Settings row with focus preserved and no state changes.
+
+If household profile permissions are active, only the owner/adult profile can invoke the advanced option or change the default Home. The PIN is an in-app guard against accidental use, not a claim that it can restrict OS Home, dedicated app keys or manufacturer menus.
+
+### 30.2 Platform-specific implementation
+
+| Owner TV | Temporary original-interface action | Restore original as default | Return and limitations |
+|---|---|---|---|
+| TCL 55-inch Android TV 11 | Discover and verify the actual factory Home component and an OS-supported launch route on this firmware. Do not hardcode a generic package or assume a direct Home activity launch is permitted. If blocked, state unavailable and offer the explicit system Home-selection route instead. | Use the native default-app/Home chooser or supported Settings flow with owner confirmation; never disable stock Home. | With Unified selected as default, physical Home should return to Unified; test from stock interface and other apps. Reboot and crash recovery must remain safe. |
+| Sony BRAVIA 65-inch Google TV | Independently resolve and test Sony/Google TV factory Home launch behaviour on the actual Sony. Do not assume TCL component names or Settings paths. | Native supported Home selection/settings with owner confirmation and rollback. | Home should return to Unified only while selected as default; preserve native inputs, audio and HDMI 3 Xbox behaviour. |
+| Samsung Frame QE50LS03AAUXXU, Tizen 2310.0 | Use a supported native route to Smart Hub/TV UI if available; otherwise explain that the physical Home key opens Smart Hub. Never intercept reserved Home or disable Art Mode. | Not applicable through ordinary Tizen Web App APIs. Section 31 records an unsupported native Home reassignment possibility for a different model/firmware; do not display a misleading supported 'set default' choice. | The normal supported route remains Smart Hub; if the separately authorised Section 31 experiment proves compatible, record the actual reassigned Home destination and tested native Smart Hub escape. Never claim compatibility from another model. |
+
+The public repository may offer additional platform adapters, but the owner's three TVs and remotes take priority. No private device identifiers or network details belong in public source.
+
+### 30.3 Interaction and resilience rules
+
+1. Do not expose 'Exit Unified TV' as an ordinary root Back action. Back at Unified Home remains on Home; the Settings escape hatch is the deliberate exit route.
+2. The first choice must be a temporary **visit**, not a destructive configuration change. Never imply a temporary visit is possible if testing proves it is not.
+3. Do not close or disable Unified TV's launcher component when temporarily opening another interface. Preserve the last screen and selection for return.
+4. A deliberate switch of default Home must be reversible with the physical remote even if Unified TV fails to start. Provide a short on-TV recovery explanation before proceeding.
+5. Any OS Settings or chooser screens are native UI, not visually restyled copies; show the actual tested device-specific route.
+6. In child mode, keep the escape hatch absent or adult-locked according to profile policy, while acknowledging that OS-reserved keys remain outside the application's control.
+7. Maintain a developer-visible diagnostic state recording which manufacturer interface route was actually verified on each TV; do not put debug data in the viewing UI.
+
+### 30.4 Acceptance tests
+
+| ID | Device | Test | Pass condition |
+|---|---|---|---|
+| OI-01 | All three | Navigate Settings using physical remote | Small 'Open original TV interface' row is reachable at bottom of Advanced; not visible on Home or prominent in Settings. |
+| OI-02 | All three | Open action and cancel | Clear choices, correct focus and no launcher/default change after Cancel. |
+| OI-03 | TCL | Choose temporary visit | Opens actual TCL interface only if supported; Unified remains default Home; Home returns to Unified on first press. Otherwise option is honestly unavailable. |
+| OI-04 | Sony | Choose temporary visit | Independently verified Sony behaviour, with no false TCL assumptions. |
+| OI-05 | TCL and Sony | Choose permanent original Home | Explicit confirmation and supported OS selection; factory Home becomes default only after owner action; restore Unified using remote-only steps. |
+| OI-06 | Samsung Frame | Choose original interface | Opens Smart Hub by supported means or clearly instructs physical Home; no 'make default' option; Art Mode and TV Plus remain intact. |
+| OI-07 | All three | Child profile and rapid Back/OK presses | No accidental permanent default change; in-app adult gate enforced where configured; OS limits stated honestly. |
+| OI-08 | TCL and Sony | Power cycle, crash and restore | Both launcher choices remain recoverable without PC, ADB, root or disabled stock packages. |
+
+**Release gate:** OI-01/02/03/05/07/08 are P0 for TCL owner daily-use deployment; repeat OI-01/02/04/05/07/08 before Sony daily-use deployment. OI-06 is required for Frame. Record actual model, firmware, physical remote, build hash and video of each verified route. No simulated-only sign-off.
+
+### 30.5 v2.6 change log
+
+- Added a deliberately small, secondary escape hatch in Advanced Settings to reach the original manufacturer interface.
+- Distinguished temporary viewing of the original UI from permanently changing the Android default Home.
+- Added exact household platform contracts and eight acceptance tests; retained Samsung's reserved-key limitations.
+- Preserved the owner's goal that Unified TV is the normal experience, and maintained manufacturer Home recovery for safety.
+- Specification-only update: no APK/WGT, remote mapping or TV configuration has been changed.
+
+
+## 31. v2.7 Samsung Frame native Home research: CleanFrame evidence and owner-specific feasibility (P0 research gate)
+
+### 31.1 Why this section exists
+
+The owner found **CleanFrame** (https://github.com/nthnclrk/CleanFrame), an MIT-licensed personal launcher for Samsung The Frame, and its companion video (https://www.youtube.com/watch?v=sCfbcoQgeWo). Its author documents an **actual physical Home-button return from Netflix to CleanFrame** on one Samsung Frame. This materially changes the feasibility assessment: a Samsung Home reassignment has been demonstrated on specific hardware through **unsupported native mechanisms**, even though ordinary Tizen Web Apps cannot claim the Home button. It **does not** establish that the same technique works on the owner's older Samsung Frame. The YouTube video's comments and AI-tool attribution have **not been independently verified**; rely on the repository's source and recorded device tests for engineering decisions.
+
+Primary sources (reviewed 24 October 2026):
+
+- Project and caveats: https://github.com/nthnclrk/CleanFrame
+- Reference TV setup, signing, test and recovery stages: https://github.com/nthnclrk/CleanFrame/blob/main/docs/agent-tv-setup-guide.md
+- Native helper contract and caveats: https://github.com/nthnclrk/CleanFrame/blob/main/scripts/native-home/README.md
+- Device evidence: https://github.com/nthnclrk/CleanFrame/blob/main/docs/tv-status.md
+- Native helper source: https://github.com/nthnclrk/CleanFrame/tree/main/scripts/native-home
+
+### 31.2 Precisely what is established, and what is not
+
+| Item | CleanFrame reference (reported by author) | Owner's Samsung Frame / implication |
+|---|---|---|
+| Hardware | Samsung 55-inch Frame **QA55LS03DAWXXY / LS03D** (2024 generation) | **QE50LS03AAUXXU / LS03A** (2021 generation): different hardware |
+| Software | Firmware **T-PTMDUABC-0090-2130.0**; developer capability **Tizen 9.0, ARMv7, 32-bit** | Firmware **T-NKM2DEUC-2310.0** as recorded by owner; **actual Tizen API/runtime and CPU architecture must be read from this TV**, not inferred from version number |
+| Signed app | Installed and opened; Netflix and YouTube launch reported | Unified TV signed WGT install not yet verified on owner's Frame |
+| Home | Physical Home from Netflix returned to CleanFrame on reference TV | **Unverified**; ordinary Tizen Web App key handling is insufficient |
+| Reversal | Author reports native query, apply, restore and reapply on reference firmware | No known independently tested restore on owner's Frame |
+| Startup | Normal power-on after another app remained tentative | Must be tested independently: power-on, standby and cold restart differ |
+| Art Mode and native Smart Hub escape | Corrected native escape and Art Mode still required physical confirmation in reference guide | Preserve native Art Mode as a release blocker; cannot assume parity |
+
+Do **not** convert author-reported results into owner-device `hardware_pass`. A repo source file, successful build or simulator test is not physical evidence.
+
+### 31.3 Engineering explanation (research, not a supported public API)
+
+CleanFrame's optional Home control is **separate from its JavaScript launcher and from ordinary remote key event handlers**. Its documentation describes a one-shot temporary **.NET native helper** executed through a developer SDB connection using an **undocumented package-name command-execution workaround** as Samsung's SDK user **UID 901**. The helper is not a persistent service, does not request root and does not change security policy in the reference setup. It queries and, only when authorised, attempts to change native Home routing and associated `vconf` settings, then restores original values on request. The reference source uses guarded query/apply/restore behaviour and firmware/app-identity checks. This is **not an official Samsung SDK launcher replacement feature** and can break with firmware changes or fail to recover.
+
+Engineering agent: inspect `scripts/native-home/README.md`, `Control.cs`, the setup guide and recorded status **before** proposing any owner-device implementation. Do not blindly copy firmware guards, helper binaries, app IDs, package identifiers, signing credentials, native settings values or commands from CleanFrame. Do not treat the video or an AI model's success claim as a device capability test. Do not bypass firmware checks to force the reference helper to run.
+
+### 31.4 Mandatory staged approach for this owner's Frame
+
+**Stage S1 — Read-only inventory and developer access (authorised normal development):** Record model, complete firmware, TV IP and PC IP privately, real Tizen runtime/CPU architecture, Samsung SDK/SDB versions, installed apps and native capabilities. Use Samsung's official developer-mode workflow and SDB port **26101**. Confirm a real capability response, not just an open port. Do not alter Home/startup. The owner's previously recorded TV and PC addresses are kept only in private local notes and must be rechecked rather than assumed current *(changed in v3.3)*: the addresses were removed from the public specification. Never publish network identifiers or DUIDs.
+
+**Stage S2 — Signed Unified TV application:** Generate this project's own package and application IDs; use owner's Samsung developer account, author certificate, distributor certificate including TV DUID and official signed `.wgt` packaging. Install, launch and test navigation without any Home modification. Record signing identity and a safe update path. Do not reuse CleanFrame's author identity or signed binary.
+
+**Stage S3 — Read-only native feasibility:** Review whether this exact firmware exposes equivalent native operations, permissions and runtime dependencies. Determine whether the original Home/startup configuration can be read without writes and whether a *separate, independently usable recovery path* exists if the developer connection or helper fails. Document unknowns and differences from the LS03D reference. Even query/inspect methods may stage files on the TV; obtain permission for that operation. Do not run an experimental command transport simply to see what happens.
+
+**Stage S4 — Recovery baseline and risk review:** Save exact original values and their *presence/absence* state in private local recovery records, along with firmware, build hash, application ID and verified recovery tooling. Keep an offline copy outside the public repo. Prepare and validate restoration as far as safely possible **before** considering any reassignment. Establish a fallback independent of the same undocumented mechanism; if that cannot be demonstrated, **do not apply the Home reassignment**. Warn that a backup alone does not guarantee recovery, and that firmware updates may break both modification and rollback. No root, service-menu changes, firmware downgrade, factory reset or security-policy modifications are authorised by this specification.
+
+**Stage S5 — Explicit owner go/no-go:** Present a short device-specific feasibility report: what is verified, what remains unknown, what could break (Home, startup, Smart Hub, Art Mode), expected reversibility, and a recovery plan. A separate explicit owner approval is required before any native Home/startup write. No AI agent may interpret approval to edit this specification as approval to modify the television. Under OD-05 only the written proposal (gate G5P, covering S1–S5) is authorised; S6 and S7 need a later, separate explicit approval.
+
+**Stage S6 — Guarded experiment only if S1–S5 pass:** In a supervised maintenance window, use a device-specific implementation with strict firmware, user, installed-app, original-value and target-ID guards. Apply once, read back state, check physical Home, then restore exact original state and verify the physical Samsung Home destination. Reapply only with renewed owner approval after successful rollback. Stop on ambiguous output; never loop or force repeated writes. Never uninstall or change the application identity while native Home routing still targets it: restore original routing first.
+
+**Stage S7 — Household physical verification:** Test actual Samsung Smart Remote (including its **123** numeric overlay), Home from Netflix/YouTube/TV Plus/Unified, Back, Source, channel controls, Settings escape to Smart Hub, Art Mode, short/long Power, standby/wake, cold restart, app crash and firmware-change recovery. Video each pass and log exact firmware and build. If any core behaviour fails or cannot be independently recovered, leave the original Samsung Home configuration in place and mark native reassignment **unsupported on this owner device**.
+
+### 31.5 Relationship to the small 'Open original TV interface' option (Section 30)
+
+- The small **Settings > TV & performance > Advanced > Open original TV interface** entry remains mandatory.
+- **Before** native reassignment, use a supported Smart Hub route or explain the physical Home button's native destination; do not pretend a temporary visit is implemented if not possible.
+- **If** reassignment is independently proven on this Frame, this option must provide a tested deliberate escape to **Samsung Smart Hub**, and the physical Home button must return to Unified TV afterwards. The developer must verify the exact escape target rather than assume CleanFrame's reference route works.
+- Restoring the original Home assignment permanently is a separate advanced, explicitly confirmed operation and must be possible through the verified recovery plan. Do not describe an unsupported native reassignment as an official Samsung 'default launcher' setting.
+- Preserve Samsung Art Mode and the ability to operate the TV normally even if Unified TV is unavailable. No remote trap or unsafe lockout is acceptable.
+
+### 31.6 Additional Samsung acceptance tests (new; not yet passed)
+
+| ID | Gate | Pass condition |
+|---|---|---|
+| CF-01 | S1 | Verified actual owner firmware, runtime, architecture, SDB capability output and Smart Remote key inventory |
+| CF-02 | S2 | Signed Unified TV WGT installed and opened using owner's app identity and certificates |
+| CF-03 | S3 | Documented read-only feasibility and native API/permission differences against CleanFrame's LS03D reference |
+| CF-04 | S4 | Original values, including absent settings, preserved; recovery independently demonstrable before any write |
+| CF-05 | S5 | Owner separately authorises a specific, reviewed experiment after a clear risk report |
+| CF-06 | S6 | If attempted, one guarded apply, readback, exact restore and observed original Home all succeed before any reapply |
+| CF-07 | S7 | Home from Netflix and at least one other external app reliably returns to Unified TV on owner's Frame |
+| CF-08 | S7 | Explicit Settings escape opens native Smart Hub and Home returns to Unified TV without changing the saved routing |
+| CF-09 | S7 | Native Art Mode, standby/wake, power-on and cold restart work on physical Frame; each recorded separately |
+| CF-10 | S7 | Crash, update and uninstall/recovery procedure prevents Home targeting a missing app; firmware changes trigger revalidation |
+
+**Status as of v2.7:** All CF tests **not yet verified on owner's Frame**. CleanFrame demonstrates a **promising unsupported technique on another Samsung model**; it does not close this household's Samsung release gate. If an independently safe recovery path cannot be established, **do not attempt reassignment**. For the TCL and Sony, continue with the separately specified supported Android default-HOME approach; do not import Samsung's native helper.
+
+### 31.7 v2.7 change log
+
+- Added verified CleanFrame repository references and the author's documented physical Home-from-Netflix result.
+- Corrected the previous blanket implication that native Samsung Home reassignment is categorically impossible, while retaining that ordinary Tizen Web Apps cannot do it through supported APIs.
+- Distinguished the developer's 2024 LS03D / Tizen 9 reference from the owner's 2021 LS03A / firmware 2310.0.
+- Defined strict discovery, recovery, owner-consent, physical remote and Art Mode release gates.
+- Connected any future native reassignment to the existing discreet original-interface escape hatch.
+- Specification-only change: no TV configuration, repository code, certificates or binaries modified.
+
+
+---
+
+## 32. v2.8 — Dynamic ambient mesh: animated radial gradients, optical-depth glass and app-focused light
+
+**Status:** Product/visual requirement approved for development; six palette mockups (SmartTube, Netflix, Disney+, BBC, Live TV, Music), supplied in chat on 25 October 2026 as rough UX ideas and kept outside Git because they contain third-party logos, define the intended *look* (see [REFERENCES.md](design/REFERENCES.md)), not evidence that it has been implemented or meets performance targets. **Applies to all three owner TVs** (TCL Android TV 11, Sony BRAVIA Google TV, Samsung Frame 2021 native Tizen). Preserve Sections 27–31, especially remote/Home ownership and the discreet original-interface escape. This section supersedes any earlier suggestion that the active Home dock should use only static photographic or baked-gradient backdrops; idle Art Mode and photographic galleries remain separate.
+
+### 32.1 Desired experience and motion model
+
+When the focused item changes across the six-app Home dock, the full-screen background becomes a **dynamic ambient mesh**: overlapping, soft-edged radial light fields in the focused app's palette over a deep dark base. It should resemble coloured LED bias lighting shining through a frosted-glass wall, **not** a flat brand-colour fill, hard-edged blob, image slideshow, or full-screen photograph. Preserve legibility of the time, VPN state, microphone and Settings controls, app title, focus indicator, labels, bottom hints and any alerts.
+
+**Two different motions are required:**
+
+1. **Focus-to-focus colour transition:** Start when D-pad focus changes. Crossfade between the outgoing and incoming complete mesh states over **400 ms** (target), with an ease-in-out curve; no flash, blank frame, abrupt palette jump or lagging title. Title, selected tile halo and background must correspond to the **same current focus**. The selected app does **not** launch merely because focus changed; OK remains the launch action.
+2. **Subtle ambient drift while focused:** The radial-light centres may slowly wander, breathe or change scale within restrained bounds so the mesh feels alive. Use a long, non-repeating-feeling cycle, initially **20–40 seconds** per motion path; keep amplitudes small (e.g. centre shifts roughly 2–5% of viewport size and/or scale 1.00–1.06), with no perceptible bobbing, sudden resets or distracting movement behind text. Drift is independent of focus and never restarts on a focus change. These values are starting design targets, adjustable after real-TV observation. Movement must remain low contrast and slow enough to feel atmospheric rather than animated wallpaper.
+
+**Fast navigation:** When the user taps across multiple icons quickly, always prioritise the *latest* focus. Cancel or retarget superseded transitions; do not queue six 400 ms animations or allow the background to display an earlier app after the selection has moved on. Focus and key handling must remain responsive during all animation. No ambient motion should trigger an app launch, alter remote focus or interfere with the back/Home contract.
+
+### 32.2 Six canonical palette/focus states
+
+Each palette uses at least two soft radial light fields and a dark vignette/base. Positions are **approximate art direction**, not rigid pixel coordinates; tune on the real TVs while keeping the supplied references recognisable. Use muted falloff at the corners and behind the top header. No single saturated opaque fill should cover the screen.
+
+| Focus | Palette | Radial-light arrangement and target mood | Visual reference |
+|---|---|---|---|
+| **SmartTube** | Crimson red, dark charcoal | Strong soft red glow from **bottom-left**, diffuse secondary red nearer the centre-left; fades into deep grey/near-black upper and outer edges. Crisp white header; cinematic red light behind glass. | Chat mockup, not in Git (pending owner references) |
+| **Netflix** | Blood red, true black | Low-key dark red **central** glow with a heavy cinematic vignette and near-black extreme corners; deliberately the darkest mesh. | Chat mockup, not in Git (pending owner references) |
+| **Disney+** | Navy, indigo, cyan | Broad luminous blue/indigo field; restrained cyan bloom **behind/below the dock** illuminating upward, dark navy perimeter. Night-sky feel without stars or visible texture. | Chat mockup, not in Git (pending owner references) |
+| **BBC** | Rich magenta, deep pink | Diffuse pink/magenta wash, saturated yet dark enough for white text; aggressive *visual softness* and no visible gradient banding. Do not treat every BBC brand/service as requiring the same colour outside this dock. | Chat mockup, not in Git (pending owner references) |
+| **Live TV** | Deep violet, indigo | Restrained purple/violet pools, dark edges and sufficient calm negative space for VPN/connection sheets and locked-state messages. | Chat mockup, not in Git (pending owner references) |
+| **Music** | Peach, coral, vibrant pink | Warmest and most energetic **multi-point** mesh; peach and coral drift into luminous pink while dark outer edges remain. Suggest flowing light, not flashing or pulsing to a beat by default. | Chat mockup, not in Git (pending owner references) |
+
+**Visual reference rule:** these six mockups are *rough UX ideas only*; the named `references/01-smarttube.jpg`… files were never committed *(changed in v3.3)*. The shipped active dock backgrounds must be produced procedurally at runtime, never by switching between images. Keep each app's palette in a declarative theme configuration, separate from navigation and from the icon asset; user-customised dock order must not break palette assignment. For arbitrary user-added apps, provide a neutral, accessible fallback palette, optionally a curated app palette if known. Never infer arbitrary saturated colours from an icon without contrast checks.
+
+### 32.3 Layer composition, glass and focus treatment
+
+Draw in this order, back to front:
+
+1. Opaque deep charcoal/navy/black base (theme dependent), never bright full-screen flat colour.
+2. Two to four **radial light layers** with large feathered falloff and subtle animated positions, each a small pre-rendered light sprite moved and scaled as a GPU-composited layer, never a continuously repainted full-screen gradient *(changed in v3.3)*; dark vignette layer to protect corners and header contrast.
+3. Optional *very subtle* dithering/noise where supported to reduce 8-bit colour banding; avoid a visible grain overlay or excessive texture.
+4. Frosted-glass dock surface: translucent neutral tint, fine light top rim, soft edge and natural shadow; background hue should appear to bleed through it without compromising icon contrast.
+5. App tiles and labels. Selected tile gains a slight lift/scale, crisp luminous outline, soft coloured halo and fully readable label; unfocused tiles remain legible, not washed out or blanked. The app title above the dock updates with focus.
+6. Header controls, footer hints and all alerts remain sharp, with no blur applied to text, icons or focus outlines.
+
+The supplied mockups are not pixel-perfect implementation templates: maintain existing six-app dock semantics, editable slots, safe-area margins, remote-focus visibility, high-contrast typography and responsive layouts. The glass surface must not cause a large continuous screen-space blur cost merely to achieve the visual effect.
+
+### 32.4 Platform-specific implementation requirements (do not assume feature parity)
+
+**Samsung Frame QE50LS03AAUXXU — native Tizen Web App:** Implement the mesh as layered **CSS `radial-gradient()` backgrounds** on absolutely positioned, clipped elements. For the 400 ms palette change, preferably use two mesh containers and animate **opacity** between them; CSS does not universally interpolate gradient stops or gradient position smoothly on older Tizen browsers. Ambient drift should primarily animate **`transform: translate3d(...) scale(...)`** on a small number of composited layers rather than continuously rewriting full-screen gradient strings. Avoid large continuously animated CSS `filter: blur(...)` / `backdrop-filter` effects unless real-device testing proves they are safe. Soft gradient stops can create the apparent shader blur without expensive true pixel blur. Check the actual Tizen browser engine, GPU memory, Art Mode behaviour and 2021 Frame remote response.
+
+**TCL Android TV 11:** Pre-render each radial light once (for example with `RadialGradient`) into a small bitmap sprite and move, scale and fade those sprites as GPU-composited layers; never repaint full-screen gradients every frame *(changed in v3.3)*. **Do not make `RenderEffect` a dependency:** Android `RenderEffect` was introduced in **API 31 (Android 12)**, while the owner's TCL is **Android TV 11 / API 30** unless real-device checks establish otherwise. Prefer gradient falloff that looks blurred without an additional full-screen Gaussian blur. Double-buffer/composite the two palettes and animate alpha over 400 ms. Any actual blur must use an API-appropriate, tested fallback.
+
+**Sony BRAVIA Google TV 65-inch OLED:** Use the same Android gradient/theme model. Where the actual Sony OS is **API 31+**, `RenderEffect` may be evaluated selectively for small bounded surfaces (e.g. glass treatment) after confirming API level and GPU performance, but the design never depends on it; otherwise use the TCL-compatible falloff/compositing path. Avoid excessive peak brightness and prolonged static luminous shapes on OLED; retain a dark overall image and drifting/idle-dim behaviour.
+
+**Shared design logic:** One canonical palette/state mapping and 400 ms transition contract across all three TVs, with platform-specific renderers. If any renderer cannot hold a smooth transition at full resolution, reduce layer count, render gradients at a suitable internal resolution, or use precomputed *small* procedural textures while retaining dynamic movement; do not silently replace the whole experience with six heavyweight full-screen JPEGs. Treat CSS/Android APIs as implementation candidates until tested on each actual device.
+
+### 32.5 Performance, accessibility and interruption rules
+
+- **Target:** Smooth focus input and perceived **60 fps** animation where the panel/device can sustain it; verify with frame-time traces and human observation. Do not promise guaranteed 60 fps merely because the backdrop is code-generated. Aim for a 16.7 ms frame budget at 60 Hz, without blocking key processing. Record dropped frames and memory on each physical television.
+- **Rendering budget:** Limit active full-screen gradient layers and composited surfaces; avoid continuous 4K blur passes, huge off-screen buffers, texture churn and decoding 4K imagery per D-pad press. Reuse gradients and render targets where possible. Make sure old mesh states are released/reused after crossfade.
+- **Contrast:** Time, app title, labels, status controls and focus ring must remain readable in all six states and while transitioning. Check 4K and 1080p outputs, bright/dark rooms, colour-vision differences and TV-specific picture modes. Status warnings and VPN-gated Live TV messages must never disappear into similarly coloured light.
+- **Motion accessibility** *(changed in v3.3)*: **Settings → Appearance** provides **Keep the Home background still** (stops drift, keeps the 400 ms crossfade), **Reduce motion** (instant crossfade, no drift) and **Lightweight rendering** (still frames, 200 ms crossfade). Honour supported system reduced-motion preferences when detectable. No strobe, fast oscillation, sharp pulsing or sound-reactive flashing by default.
+- **Power/idle:** Pause animation when Unified TV is backgrounded, an external app is active, the TV enters standby or Samsung Art Mode takes over, or the interface is in an idle photograph/gallery mode. Do not animate behind protected video or over native overlays. Resume gracefully with the correct focused palette and no flash. Keep idle/Art Mode photography as its own mode, not a permanent backdrop under the active dock.
+- **Failure path:** If a shader/CSS effect fails, falls below a device-specific frame-rate threshold or exhausts memory, fall back to a stable **static procedural mesh in the correct palette**, never a white screen, broken dock or unusable remote navigation. Log the downgrade for diagnostics, without surfacing technical jargon to the household.
+
+### 32.6 Developer state contract (illustrative, not prescribed source code)
+
+- `focusedDockAppId` drives `ambientPaletteId`, `displayedAppTitle`, selected-tile outline and halo as one atomic UI state.
+- On focus change, compute target palette immediately, retain current composite as the outgoing state, and crossfade to the newest target in 400 ms; rapid repeat D-pad input must retarget from the *currently visible* state.
+- Slow ambient drift is a secondary animation on the current mesh and must not restart sharply every time focus changes. Drift must not alter focus state or launch actions.
+- Dock editing/reordering must preserve stable app IDs and associated palettes. A removed or unavailable app must not leave a stale title or glow.
+- Route changes, Settings, alerts, overlays, app launches, Back/Home, and return from third-party apps must preserve the expected focus and apply the matching mesh without showing the wrong brand colour.
+
+### 32.7 Physical acceptance tests — ambient mesh (all unverified until tested)
+
+| ID | Test on each of TCL / Sony / Samsung | Pass condition |
+|---|---|---|
+| AM-01 | Step across all six dock icons one by one | Each palette and light position is recognisably the intended one (comparison with the chat mockups is pending owner references and does not block implementation); title/halo/focus always match |
+| AM-02 | Change focus with one D-pad press | Full background crossfades in ~400 ms with no flash, hard cut or text blur |
+| AM-03 | Hold/rapidly tap D-pad across dock | Latest selected app wins; no queued transitions, stale palette, dropped focus or accidental launch |
+| AM-04 | Leave a single tile focused for 60 seconds | Soft radial centres drift gently without obvious loop, jitter, pulsing or distracting text movement |
+| AM-05 | Test Keep the Home background still, Reduce motion and Lightweight rendering | Drift stops; the crossfade is 400 ms, instant or 200 ms respectively; remote and contrast remain fully functional |
+| AM-06 | Observe all six states on real hardware | Clock, status, focus ring, labels and footer remain legible; no visible banding or blown-out edges |
+| AM-07 | Profile memory, frame pacing and key latency | Smooth navigation at the device's tested refresh rate; no unacceptable stutter, memory growth or crash |
+| AM-08 | Open app, return Home, enter Settings and open Live TV locked overlay | Palette, focus and status sheets remain correct; no background leaking over external apps |
+| AM-09 | Standby/wake; Samsung Art Mode; gallery/idle transition | Animation pauses appropriately and resumes correctly; native Art Mode and gallery photography are preserved |
+| AM-10 | Disable/force rendering fallback | Correct static palette displays with fully usable Home and remote, never a black/white failure screen |
+| AM-11 | Edit/reorder six dock apps; add an unknown app | Brand palette follows stable app identity, not slot position; unknown app gets neutral accessible fallback |
+| AM-12 | Compare actual TCL, Sony and Samsung screens with the owner's six mockups (pending owner references) | Product owner confirms visual character, glass depth and subtle motion; per-device deviations recorded |
+
+**Release gate:** AM-01 through AM-03, AM-06 through AM-09 and AM-11 are required before marking the animated Home dock complete on any specific TV. The motion and fallback checks are also required before enabling the feature as the default daily-use experience. No screenshot, browser simulation or code review substitutes for actual device testing. The original Home/remote reliability requirements remain higher priority than visual polish.
+
+### 32.8 References and v2.8 change log
+
+The six mockups were supplied in chat as rough UX ideas. The files named `references/01-smarttube.jpg` to `references/06-music.jpg` were **never committed**, and the mockups stay outside Git because they contain third-party logos *(changed in v3.3)*. See [REFERENCES.md](design/REFERENCES.md). This file remains complete and readable on its own.
+
+- Added runtime-generated radial-gradient ambient meshes and **400 ms D-pad focus crossfades**.
+- Added slow, restrained drifting/breathing light centres rather than a static background.
+- Recorded six app-specific palettes, placement and optical-depth requirements from the supplied mockups.
+- Defined glass dock layering, focus glow, accessible motion controls, performance/fallback requirements and 12 device acceptance tests.
+- Corrected Android API compatibility: `RenderEffect` cannot be assumed on the owner's Android 11 TCL.
+- Reconciled older Section 8 performance guidance with dynamic gradients; photographs remain reserved for idle Art Mode/gallery and Synology content artwork.
+- **Specification and reference packaging only**: no application code, TV settings, remote mappings or Home routing modified.
+
+
+---
+
+## 33. v2.9 — Apple tvOS-inspired calm visual language and optional depth-clock Wallpaper mode
+
+**Status:** Approved design direction for development, **not** evidence of an implemented feature. **Applies to the household TCL Android TV 11, Sony BRAVIA Google TV and 2021 Samsung Frame native Tizen application**, subject to the device gates below. This section integrates the owner's five photo-clock and liquid-glass references (never committed; see [REFERENCES.md](design/REFERENCES.md)) with the existing Unified TV design; it does not reproduce Apple software or assume Apple proprietary APIs/assets. The intended result is recognisably Unified TV: cinematic, elegant, calm, remote-first, with gentle layered motion and high-quality typography.
+
+### 33.1 Experience architecture — three deliberately distinct visual states
+
+| State | Intended appearance | Entry and exit | Relationship to earlier requirements |
+| --- | --- | --- | --- |
+| **Active Home / app dock** | Section 32 brand-aware, slowly drifting radial-gradient mesh; luminous focus, translucent dock and restrained glass | Immediate on Home or any D-pad navigation; app focus controls colour | **Section 32 remains authoritative.** No large clock or photographic wallpaper competing with active controls. |
+| **Unified TV Wallpaper mode** | Full-screen **Artwork** or **My Photos** with optional oversized translucent **depth clock** partially obscured by the foreground subject; no permanent dock, VPN badge or technical chrome | Enter via idle timeout or explicit Wallpaper command; any supported navigation key reveals Home | New optional visual experience described here. Distinct from native Samsung Art Mode. |
+| **Samsung native Art Mode / system standby** | Manufacturer-controlled art and power behaviour | Samsung's supported Art Mode and Power controls; native transitions preserved | **Never replaced or overridden.** The existing no-clock rule applies to native Art Mode, not to Unified TV's optional Wallpaper mode. |
+
+**Design principle:** The photograph/artwork should be the hero. The clock is a carefully composed graphic element *inside* the scene, not a bright text overlay pasted on top. Use depth layering only where the image can support it convincingly. The active Home dock must still open quickly, even while images are loading.
+
+### 33.2 Appearance settings and discoverability
+
+Add **Settings → Appearance → Wallpaper** as a first-class, remote-operable section within the existing six-category Settings layout. It must contain:
+
+1. **Wallpaper source:** `Artwork` (curated/licensed collection), `My Photos` (owner-selected NAS gallery/albums; a later task whose access method, DLNA folders versus the Synology Photos API, must be designed first), or `Off` (existing ambient Home behaviour only). A future `Mixed` option may alternate sources, but must never silently mix private photos into public/guest profiles.
+2. **Clock style:** `Depth clock` (preferred when compatible), `Simple clock`, `No clock`. An accessible **High-contrast clock** variant is also available. If a suitable subject mask is unavailable, automatically use Simple clock, or No clock when chosen; never present fake occlusion.
+3. **Photo selection:** Choose album/folder, preview photographs, include/exclude individual items, set shuffle or sequential order and choose crop/focal position. The existing gallery's authorised folders are respected; do not index unrelated NAS directories.
+4. **Timing:** Idle start choices `Off`, `2`, `5`, `10`, `15` minutes (suggest `5 minutes` as initial default, adjustable per TV/profile); slideshow interval choices `30 seconds`, `1`, `5`, `10` minutes. Allow `Start Wallpaper now` from Appearance and optionally a discreet remote action from Home.
+5. **Visual controls:** Clock 12/24-hour format, optional date, clock placement (`Automatic` / limited safe manual offsets), depth strength, gentle photo motion on/off, dimming/brightness, transition style and a **Preview** action showing real photographs at TV resolution.
+6. **Privacy/profile:** `Show my photos on this TV` is opt-in per TV and profile; private albums must not be shown in guest/child mode unless explicitly approved. On a shared family TV, show a clear local privacy confirmation before enabling a personal album.
+
+No mandatory login, cloud photo upload, facial recognition or Apple ecosystem account. If the NAS is offline, use a previously authorised local cache only if the owner allowed caching, or revert to curated artwork/ambient mesh; never display a broken-image or empty screen.
+
+### 33.3 Depth clock — true foreground occlusion
+
+The attached reference imagery demonstrates **large, elegant clock numerals behind a photographed person**, so the subject's head, shoulders, body or another suitable foreground object visually passes *in front* of parts of the digits. Implement the actual depth ordering:
+
+1. **Base photograph/artwork:** Full-bleed image, scaled and cropped with focal-point-aware composition, preserving important faces and avoiding TV overscan/safe-edge cropping.
+2. **Clock layer:** Large, refined, translucent or subtly glass-like numerals, correctly displaying the current local time and updating at minute boundaries. Typography and spacing should feel premium and soft, not like a giant opaque banner. Use the household's preferred 24-hour format by default unless changed in Settings.
+3. **Foreground cutout layer:** A clean alpha mask/segmented foreground rendered above the clock, so the clock is hidden **only where the subject overlaps it**. Maintain convincing hair edges, shoulders, clothing, fingers and other visible boundaries. Soft feathering is allowed but avoid glowing cutout halos or opaque rectangles.
+4. **Optional atmospheric light:** Very subtle colour/tonal treatment sampled from the photo, with enough contrast for the numerals; do not apply Section 32's app-brand gradient over the photo.
+5. **Subtle motion:** Gentle parallax, micro-scale/translation and/or extremely slow lighting drift may add dimensionality; avoid fake 3D depth, subject warping, visible crop edges, zoom jumps, distracting loops or motion that makes clock numerals difficult to read.
+
+**Mask strategy** *(changed in v3.3)*: the depth clock uses **prepared foreground masks for selected curated artwork only**, reviewed and shipped alongside the licensed image. There is **no real-time segmentation on the TCL**. Any other image shows the standard clock. For a future My Photos feature, masks may only be prepared off the TV (on an authorised local computer or server) and stored as separate cached derivatives, after that feature's own design and tests. No image may be uploaded to a third-party AI/cloud service without a separate, informed owner opt-in. Never misrepresent a rough CSS gradient mask as accurate human foreground segmentation.
+
+**Graceful fallback:** If there is no subject, the mask is low quality, the clock would obscure a face, or contrast cannot be achieved, use a smaller simple clock placed in available negative space or no clock, according to preference. The app should determine suitability from actual image/mask geometry, not merely whether a file has a `.png` extension. Allow manual clock-position override for difficult photos.
+
+### 33.4 Curated artwork versus owner photographs
+
+- **Artwork:** Curated landscape, nature, abstract, cinematic or original commissioned imagery suitable for 16:9 4K TVs, with carefully selected focal points and optional depth masks. Ship only artwork that is free and **explicitly licensed for this use**, bundled offline (no real-time download to display it), with its source, licence and attribution recorded in [ARTWORK.md](design/ARTWORK.md) *(changed in v3.3)*; Apple marketing images supplied as *design references* must not be bundled as application wallpapers without permission.
+- **My Photos (later task; access method to be designed first):** Use owner-authorised albums and photo directories, including compatible Synology/NAS paths; preserve EXIF orientation, colour profiles where supported and sensible HDR/SDR conversion. Avoid stretching portrait photos: use tasteful letterbox/blurred-edge composition or a user-selected crop. Do not automatically scrape all NAS photos.
+- **Selection and ordering:** Respect per-profile album scope, favourite photos, exclude lists, duplicates, randomisation and image orientation. Optional date/location captions must be off by default and must never reveal private metadata unexpectedly.
+- **Transitions:** Gentle 500–1200 ms fades between approved images; do not decode full-resolution images synchronously on the UI thread. A photo may be displayed without depth effect while its mask is being prepared, without flashing when the mask becomes available.
+
+### 33.5 Remote, Home and interaction rules
+
+- The Wallpaper mode is **non-interactive until the user acts**. First D-pad/OK/Back/Home input should immediately dismiss the wallpaper and reveal the correct Unified TV Home or previous navigation state, with visible focus; **do not swallow the first press** or require multiple presses. The first navigation press reveals Home without accidentally launching a dock app. Subsequent presses navigate normally.
+- The remote Home button must use the device-specific Section 28/29/31 contract. On TCL/Sony, selecting Unified TV as the default launcher is a separate, owner-controlled installation choice. Samsung reserved-button/native Home behaviour remains subject to the Section 31 device-specific feasibility gates.
+- Native volume, mute, power, input/source, voice, HDMI/CEC, accessibility and Samsung Art Mode functions remain available. An active Ring doorbell/person alert follows the existing notification policy; restore the exact prior wallpaper/Home/native state where supported.
+- The discreet **Settings → TV & performance → Advanced → Open original TV interface** escape remains unchanged and available after exiting Wallpaper mode.
+- Wallpaper must never hide a critical setup error, lock a user into a screen, intercept native power functions or automatically take over another app's playback.
+
+### 33.6 Platform rendering and performance
+
+**TCL Android TV 11:** Render photo + clock + precomputed foreground mask as a small number of hardware-accelerated composited layers (for example Canvas/OpenGL or compatible views), with masks generated/cached outside the critical render path. **Do not depend on Android 12 `RenderEffect`**, which is unavailable on this device. Avoid expensive real-time 4K blur and neural segmentation on the UI thread.
+
+**Sony BRAVIA Google TV:** Use the same Android compositing model with device capability checks; preserve default Home, HDMI 3 Xbox switching and normal remote/system behaviour. Do not assume the Sony's GPU or API level until verified.
+
+**Samsung Frame QE50LS03AAUXXU (2021):** Use native Tizen Web App layered DOM/canvas/WebGL where actual browser/GPU tests support it; prefer a precomputed transparent PNG/WebP mask or cutout and opacity transforms. Test CSS blend/mask support rather than assuming recent browser APIs, avoid per-frame full-screen `filter: blur()`, and ensure the wallpaper app does not impersonate or replace **Samsung native Art Mode**. If the TV transitions into native Art Mode, the native feature owns the display.
+
+**Performance gates:** First D-pad/Home response remains immediate; no frame hitch from photo decode, segmentation, shader compilation or NAS fetch. Preload next image at an appropriate decoded size, bound image/mask caches by actual device memory, and release GPU textures when hidden. Target smooth transitions on each physical TV; **60 fps is a target, not a claim**, and is subordinate to responsiveness and reliability. Provide a low-motion/low-power mode and disable parallax for reduced-motion preferences.
+
+**OLED/image retention:** Especially on the Sony OLED, avoid a permanently fixed high-contrast clock: allow gentle position variation, adaptive dimming, configurable wallpaper timeout and display/power saving. Prefer no clock in extended idle/overnight sessions and respect TV screen-saver/standby controls. No unsupported claim of eliminating burn-in risk.
+
+### 33.7 Visual integration with the existing design system
+
+The desired **Apple tvOS-like feel** means elegant focus animation, clean hierarchy, spatial depth, calm transitions, polished glass materials and simple remote navigation—not a pixel-for-pixel copy of Apple UI, proprietary iconography or protected artwork. Keep the existing six-app dock, app discovery, family profiles, NAS media, Live TV/VPN protection and accessibility rules. Use one coherent typography, spacing, corner-radius, shadow, focus and motion system across active Home, Wallpaper, Settings and gallery. In Wallpaper mode, the clock should appear to belong *inside* the photo, while in active Home the brand-aware ambient mesh remains the hero.
+
+**Owner visual references (described as bundled separately, but never committed; see [REFERENCES.md](design/REFERENCES.md)):** `wallpaper-reference-01.png` (music/glass controls), `wallpaper-reference-02.png` (liquid-glass home controls), `wallpaper-reference-03.png`, `wallpaper-reference-04.png`, `wallpaper-reference-05.png` (large depth clock with foreground person). These are visual requirements/reference examples only, not licensed production assets. The precise clock positions and photographic subjects are examples, not fixed templates. Visual comparisons against them are pending owner references and do not block implementation.
+
+### 33.8 Acceptance tests (WP-01–WP-16)
+
+| ID | Test on real household hardware | Required result |
+| --- | --- | --- |
+| WP-01 | Settings → Appearance → Wallpaper on TCL/Sony/Frame | Artwork / My Photos / Off and clock options are discoverable, fully D-pad operable and saved per TV/profile. |
+| WP-02 | Enable Artwork, wait for configured idle interval | Full-screen artwork appears; dock/header/VPN controls disappear; selected source and timer are respected. |
+| WP-03 | Choose My Photos and a specific Synology album (later task) | Only authorised images appear, with correct orientation and no unrelated NAS folders. |
+| WP-04 | Use curated artwork with a prepared foreground mask | Oversized clock visibly sits behind subject silhouette, including hair/shoulders, with clean edges. |
+| WP-05 | Use a photo with no usable mask/face obstruction | Graceful Simple clock or No clock; no fake depth or overlapping face. |
+| WP-06 | Observe minute rollover, 12/24-hour setting and optional date | Time is accurate; minute update has no full-screen flash or stale numerals. |
+| WP-07 | Press first D-pad/OK/Back/Home from Wallpaper | Unified TV controls return promptly, focused and usable; first input never accidentally launches an app. |
+| WP-08 | Open Netflix/Disney+/BBC then return Home | Correct launcher behaviour per device; Wallpaper never overlays third-party playback. |
+| WP-09 | Move rapidly across six app icons after leaving Wallpaper | Section 32 400 ms ambient mesh returns, smooth and independent of photo caching. |
+| WP-10 | Unplug/disconnect NAS during My Photos mode | Safe fallback to approved cached images or Artwork; no blank UI, privacy leak or crash. |
+| WP-11 | Switch adult/child/guest profiles | Private photo albums are hidden unless explicitly authorised for that profile. |
+| WP-12 | Test Samsung native Art Mode, Power, wake and Smart Hub | Native Art Mode remains intact; optional Wallpaper mode is not misrepresented as Art Mode. |
+| WP-13 | Test TCL Android 11, Sony and 2021 Tizen GPU/CPU/memory | No main-thread photo decode or segmentation stalls; bounded cache and responsive remote. |
+| WP-14 | Enable reduced motion, high contrast and OLED protection | Clock remains readable; motion and bright static elements reduce appropriately. |
+| WP-15 | Trigger authorised Ring event while Wallpaper is active | Existing alert policy works and restores appropriate previous state without losing remote control. |
+| WP-16 | Restore original TV interface via discreet Settings option | Wallpaper does not obstruct escape; manufacturer UI can be reached per platform rules. |
+
+**Delivery priority (OD-02/OD-04):** implement Wallpaper source selection, curated artwork and the simple clock first; then the **depth clock** for curated artwork with prepared masks; My Photos album selection and safe NAS/cache handling is a later, separately designed task *(changed in v3.3)*. Do not block the TCL Home-button fix, Samsung Home feasibility/recovery work or core media playback on advanced photo masking. The full feature is not accepted until WP-01–WP-16 are tested on the relevant physical televisions with screenshots/video and failures clearly recorded.
+
+**Change log — v2.9:** Added a tvOS-inspired design language and optional Wallpaper mode with curated Artwork or owner photos, foreground-occluded depth clock, masks/segmentation and fallback, settings, privacy, accessibility, OLED/performance, physical remote acceptance, and explicit preservation of Samsung native Art Mode. The v2.8 animated app-focused radial mesh remains the active Home background.
+
+
+**Change log — v3.2:** Confirmed smoke and carbon monoxide sensor alerts as the highest-priority notification class, above Ring, with explicit life-safety limitations and SAFE-01..10 tests; required durable Android/Tizen signing identities, in-place upgrade evidence, protected key custody and SIGN-01..08 tests. Prior v3.1 owner decisions remain unchanged.
+
+**Change log — v3.3 (25 October 2026):** Corrected the specification in place and added the short authoritative [SPEC.md](SPEC.md). Eight owner decisions (OD-01..OD-08). One release gate order (G0 audit, G1 TCL Home, G2 Animated Home and Wallpaper, G3 NAS viewing, G4 Sony, G5/G5P Samsung, G6 household). Smoke/CO above Ring everywhere, with the queued-doorbell rule, per-alarm display and acknowledgement, and the Home Assistant `binary_sensor` state model. Two Android apps from one codebase (preview without HOME; launcher with a disabled HOME alias). One animation timing rule. One status and test-level vocabulary. Corrected Android key-rotation explanation. Visual references marked as kept outside Git. Curated, explicitly licensed offline artwork and prepared masks only. Removed the open-question log and private network addresses. Full list: [SPEC_CHANGES_v3.3.md](SPEC_CHANGES_v3.3.md).

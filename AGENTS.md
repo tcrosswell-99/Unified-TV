@@ -1,6 +1,6 @@
 # Working on Unified TV
 
-This independent GitHub fork is **not** the original CleanYourTV project. Read [README.md](README.md), [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) and [docs/ROADMAP.md](docs/ROADMAP.md) before changing code.
+This independent GitHub fork is **not** the original CleanYourTV project. Read [README.md](README.md), [docs/SPEC.md](docs/SPEC.md) (the current specification; detail in [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md)), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) and [docs/ROADMAP.md](docs/ROADMAP.md) before changing code.
 
 **North star: Content first, underlying technology hidden.**
 
@@ -57,7 +57,7 @@ This section describes the inherited CleanYourTV and CleanYourTV UI tooling as i
 | `examples/` | One folder per tested TV model (`debloat.txt`, sometimes notes and a `config.json`), indexed in `examples/README.md`. Upstream evidence, not Unified TV support claims. |
 | `launcher/` | Inherited reference launcher `com.gathin.tvhome`: plain Java, `minSdk` 26, no `INTERNET` permission. |
 | `launcher-ui/` | Inherited CleanYourTV UI app `io.cleanyourtv.ui`, built without Gradle by `launcher-ui/build.sh`. |
-| `preview/` | One codebase, two separately installed apps (Gradle flavours): the Unified TV Preview `io.unifiedtv.preview` (no HOME intent at all; never uninstalled or re-signed) and the Unified TV launcher `io.unifiedtv.launcher` (a HOME entry that ships switched off until the owner chooses it; signed with the owner's durable key, see [docs/SIGNING.md](docs/SIGNING.md)). Read [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) and [docs/ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv) before changing it. |
+| `preview/` | One codebase, two separately installed apps (Gradle flavours): the Unified TV Preview `io.unifiedtv.preview` (no HOME intent at all; never uninstalled or re-signed) and the Unified TV launcher `io.unifiedtv.launcher` (a HOME entry that ships switched off until the owner chooses it; signed with the owner's durable key, see [docs/SIGNING.md](docs/SIGNING.md)). Read [docs/SPEC.md](docs/SPEC.md) and [docs/ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv) before changing it. |
 | `addons/` | Optional module-card apps, each its own Gradle project, never built into the launcher. |
 | `themes/`, `tools/`, `tests/` | Theme folders (keys in `themes/README.md`); the ADB client `tools/tv.py` and scripts; the Python `unittest` suite. |
 | `docs/` | Unified TV design docs (`docs/PRODUCT_SPEC.md`, `docs/HOME_VIEW.md`, `docs/IDEAS.md`), `docs/TROUBLESHOOTING.md`, `docs/devices/` and the inherited [workflows](#workflows-inherited). |
