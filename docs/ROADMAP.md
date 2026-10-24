@@ -24,6 +24,7 @@
 ## 2. Premium core experience
 
 - Design and build the single glass dock, correctly matched app and NAS context artwork, genuine focus lift, quiet 24-hour clock, light/dark mood and remote movement.
+- Include a remote-only installed Apps library, pin/unpin Home shortcuts and hold OK to Move with persistence per TV, sensible dock overflow and optional child edit protection.
 - Render the same layout with high/balanced/lightweight graphics profiles. Benchmark TCL and ageing Sony.
 - Add opt-in shared/room-specific app ordering, BBC shortcut, Sony Xbox action and Samsung TV Plus bridge.
 - Build NAS poster strip and `View All` browse, then prove direct VLC playback. Do not claim continue-watching without actual playback progress tracking.

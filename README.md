@@ -11,7 +11,7 @@ A family-first, independently maintained smart TV launcher project that puts the
 
 A household can have a Sony in the living room, a TCL elsewhere and a Samsung Frame in another room. Each television has a different home screen, input flow and set of recommendations. Unified TV aims to give the family **the same simple navigation and visual language everywhere**, without pretending every device has the same capabilities.
 
-- **One clean dock:** familiar streaming apps and a small number of personal choices, not advertisements and endless content rows.
+- **One clean, editable dock:** favourite streaming apps that family members will be able to pin, remove or reorder with the remote. No adverts or endless content rows. **Planned for Unified TV.**
 - **Content-aware atmosphere:** focus Netflix, BBC or a film in your own library, and the full-screen artwork changes to match that selection. No unrelated wallpaper behind a highlighted tile.
 - **Personal films and television:** browse your own NAS collection through beautiful posters and a simple `View All` library. VLC can handle playback behind the scenes, without being another home-screen tile.
 - **Room-specific shortcuts:** an Xbox tile only on the television connected to the console; Samsung TV Plus only where it is installed. The layout stays familiar.
@@ -49,7 +49,7 @@ A Ring doorbell **must** interrupt wallpaper/art mode on the reference deploymen
 
 The initial household reference uses six familiar choices: **SmartTube · Netflix · Disney+ · BBC · Live TV · Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
 
-All these are *configurable examples*, not compulsory apps. People without a NAS, Ring, Alexa, Xbox, VPN or AI subscription should still have a lovely, responsive launcher.
+All these are *configurable examples*, not compulsory apps. The planned **Apps** screen lets viewers pin and rearrange dock shortcuts independently for each TV; it never uninstalls an app. See [app customisation](docs/APP_CUSTOMISATION.md). People without a NAS, Ring, Alexa, Xbox, VPN or AI subscription should still have a lovely, responsive launcher.
 
 ## Privacy and performance
 

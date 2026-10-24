@@ -3,7 +3,7 @@
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 1.4 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
+**Version:** 1.5 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -61,7 +61,7 @@ The rendering system uses one shared design and per-TV capability configuration,
 - Directional pad changes focus predictably; **OK** activates; **Back** returns one navigation level; **Home** returns to our launcher wherever Android allows.
 - Focus must be obvious even without background images: tile scale, elevation/contrast and accessible outline. Do not use colour alone.
 - On entering Home, restore the last relevant focus position; when dismissing an overlay, restore the underlying screen and playback state.
-- Hold OK: small optional context action for rearranging apps / information; children should not enter administrative settings accidentally.
+- **Hold OK** on a Home tile to access **Move**, **Remove from Home** and optional **App info**; short OK always launches. A parental edit lock may require a PIN. All editing works with the ordinary remote.
 - Fast repeated D-pad presses must stay responsive. Cancel or coalesce outdated artwork requests so focus is never blocked by network imagery.
 - When content is missing/offline, show a short human explanation and a safe next action, never an exception stack or raw URL.
 
@@ -73,6 +73,16 @@ The rendering system uses one shared design and per-TV capability configuration,
 - Ring is still mandatory while native Samsung TV Plus plays: it must trigger the automatic live camera takeover and return path. A standard Android overlay cannot render over the native Tizen app.
 - Alexa text overlays during native TV Plus playback are not promised without an independently tested Samsung-supported mechanism; this limitation must be visible in compatibility documentation.
 - The cleanup module must mark Samsung TV Plus and dependencies as **protected** and exclude them from disable/remove proposals.
+
+### 3.3 Remote-only app library and dock editing (P0)
+
+**Users must be able to find installed apps, pin them to the glass dock, remove shortcuts and reorder the dock without using ADB, another device or a configuration file.** This is part of the premium core interaction, not a developer option.
+
+Home has a small **Apps** grid entry (or equivalent under Settings). Choosing **Add to Home** pins the app, while **Remove from Home** unpins it but never uninstalls or disables it. On a Home tile, hold OK and select **Move**: Left/Right shifts it, OK saves and Back cancels. Order persists after restarts; an interruption must not save a half-complete move.
+
+App order and available actions are per-TV; the Sony's Xbox and Frame's Samsung TV Plus actions stay specific to their rooms. The Live TV NordVPN gate cannot be bypassed by reordering. With more pinned apps than fit, keep one horizontal, scrollable dock rather than shrinking tiles or adding another row. An optional child edit lock is permitted.
+
+**Full user journeys, error states and acceptance tests:** [Apps and Home dock customisation](APP_CUSTOMISATION.md). See AT-56 through AT-61 in Section 17.
 
 ## 4. Premium interface and interaction system (P0: design release gate)
 
@@ -275,6 +285,7 @@ The project is not ready for launcher development from only a single static hero
 12. Day-to-dusk-to-night treatment of the *same* contextual hero, showing the mood shift without changing the subject.
 13. Appearance/Accessibility settings showing Reduce Motion, High Contrast, theme preference and render quality.
 14. Two performance recordings: rapid focus changes on TCL and Sony, plus matching screenshots to demonstrate visual parity.
+15. Apps library and editable dock: add an installed app, open the hold-OK Move menu, reorder and save/cancel, remove and restore a Home shortcut, show a long horizontal dock and distinct Sony/Frame capabilities.
 
 Provide each with a focus map (Up/Down/Left/Right/OK/Back), source of artwork, enter/exit transition, timing measurement, empty/error state, permission or integration dependency, and supported/unsupported TV matrix. Use **copyright-cleared original or properly licensed placeholder imagery** for published mockups; do not copy Apple's system screens or paid design concepts. Reference demonstrations from third parties are inspiration, not assets for the public repository.
 
@@ -566,6 +577,12 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-53 | Music screen | Play music then leave controls idle | Genuine album artwork drives the background, compact play/pause/skip is legible; quiet state reduces persistent OLED-bright UI |
 | AT-54 | Settings accessibility | Turn on reduced motion, high contrast and reduced transparency | All content and commands remain available, focus unmistakable; movement and glass complexity fall back without a redesign |
 | AT-55 | Public project design hand-off | Inspect layouts and short motion studies for all Section 4.13 states | Assets are cleared, input maps and source permissions supplied, source-of-truth design tokens present, and videos/screenshots show the same visual system |
+| AT-56 | Apps library | Add a previously unpinned installed app to Home | Tile appears with correct identity and launches by short OK; no ADB |
+| AT-57 | Home dock | Hold OK, Move with Left/Right, press OK, restart | Smooth reorder saves and persists without confusing focus |
+| AT-58 | Home edit mode | Reorder then Back; repeat with a Ring alert | Back restores old order, interruption does not half-save and Ring wins |
+| AT-59 | Apps/Home | Remove a shortcut then add it back | App remains installed, signed in and accessible throughout |
+| AT-60 | Sony/TCL/Frame | Use different dock order and Xbox/TV Plus shortcuts | Per-TV capabilities remain correct and Live TV stays VPN protected |
+| AT-61 | Extended dock | Pin eight or more apps; test child edit lock | Single readable scrollable row, no collisions or accidental editing |
 
 
 ## 18. Delivery stages and decision gates
@@ -636,6 +653,7 @@ No mandatory removal of bloatware, no promise that every manufacturer permits fa
 
 ## 22. Change log
 
+- **v1.5 (24 October 2026):** Added P0 Apps library and remote-only Home dock pin/move/remove, persistent per-TV layout, child edit lock, single-row overflow, a required design state and six acceptance tests (AT-56..61). Refer to `docs/APP_CUSTOMISATION.md`.
 - **v1.4 (24 October 2026):** Replaced the brief cinematic-focus paragraph with a **full P0 visual and interaction specification** for an original Liquid Glass-era-inspired, CleanFrame-calm interface. Defined one-dock resting Home, progressive reveal of NAS row, exact-app/film hero background contract and fallback source priority, focus timing and state machine, glass/material tokens, UK time and minimalist statuses, four time-of-day modes, remote journeys, accessibility, reduced-resource rendering on TCL and Sony, Ring/Alexa/VPN/voice presentation, 14 required design hand-off screens, 12 design pass/fail rules and 19 new acceptance tests (AT-37..55). Corrected previous generic-background mockup mismatch. tvOS 26 introduced Liquid Glass; tvOS 27 is the continued version reference. No other functional requirements weakened.
 - **v1.3 (24 October 2026):** Required Samsung TV Plus as a Frame-only tile, preserved its native Tizen app and related services during optional TV cleanup, excluded TV Plus from the ReamSmartz VPN check, and added native-app/Ring acceptance tests.
 
