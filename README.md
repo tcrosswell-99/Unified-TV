@@ -1,5 +1,7 @@
 # Unified TV
 
+**Preview 0.3:** fixed approved dock with rearrangement only, offline coastal background, material rendering and NordVPN handoff/status. See [current status](docs/PREVIEW_0_3.md). This supersedes earlier app pin/add/remove descriptions below.
+
 **Current native plan:** [Complete specification v2.0 draft](docs/PRODUCT_SPEC.md) selects native Android for Sony/TCL and a native Tizen Web Application for Frame, with embedded Media3/AVPlay and no VLC playback. No external Frame streamer is required. Native Tizen remains unfinished. [TCL hardware evidence](docs/TCL_TEST_2026_10_24.md) records the limited Android smoke pass and remaining gates. Earlier external-streamer and VLC milestones below are superseded by this plan.
 ### Different TVs. One familiar experience.
 

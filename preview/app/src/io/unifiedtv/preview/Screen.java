@@ -12,7 +12,7 @@ class Screen extends Activity {
     LinearLayout column;
     int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     void page(String title) {
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(0xff101827);
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setBackground(MaterialScene.backdrop(this));
         scroll.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         scroll.setFocusable(false);
         column=new LinearLayout(this); column.setOrientation(LinearLayout.VERTICAL); column.setPadding(48,28,48,36);
@@ -23,7 +23,7 @@ class Screen extends Activity {
         Button b=new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(20); b.setMinHeight(58);
         android.graphics.drawable.StateListDrawable background=new android.graphics.drawable.StateListDrawable();
         GradientDrawable focused=new GradientDrawable(); focused.setColor(0xfff3f6ff); focused.setCornerRadius(dp(8)); focused.setStroke(dp(3),0xff88b7ff);
-        GradientDrawable normal=new GradientDrawable(); normal.setColor(0xff29354a); normal.setCornerRadius(dp(8)); normal.setStroke(dp(1),0xff607089);
+        GradientDrawable normal=new GradientDrawable(); normal.setColor(0x8029354a); normal.setCornerRadius(dp(8)); normal.setStroke(dp(1),0xff607089);
         background.addState(new int[]{android.R.attr.state_focused},focused);
         background.addState(new int[]{android.R.attr.state_pressed},focused);
         background.addState(new int[]{},normal); b.setBackground(background);

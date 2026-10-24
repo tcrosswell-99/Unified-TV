@@ -1,9 +1,11 @@
 <!-- Unified TV: public reference specification. No account credentials, local addresses, family photographs or private configuration belong in this repository. -->
+
+**Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
 > **Status: design requirements, not shipping claims.** This specification describes a reference household and a reusable system. Hardware abilities and third-party integrations require real-device validation. No local network credentials are published here.
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 2.0 draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
+**Version:** 2.1 draft | **Date:** 24 October 2026 | **Status:** Consolidated requirements; native platform release gates outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -99,19 +101,11 @@ External developers and GitHub Actions cannot assume access to the household's p
 - Alexa text overlays during native TV Plus playback are not promised without an independently tested Samsung-supported mechanism; this limitation must be visible in compatibility documentation.
 - The cleanup module must mark Samsung TV Plus and dependencies as **protected** and exclude them from disable/remove proposals.
 
-### 3.3 Remote-only app library and dock editing (P0)
+### 3.3 Approved dock and rearrangement only
 
-**The six shared choices are curated defaults, not a permanent six-app limit.** Preserve remote-only Add to Home, Move, Remove from Home and independent room layouts. Use a single, horizontally scrollable dock and optional child editing lock so personalisation never creates a crowded default.
+The shared six choices are a fixed allowlist. Sony adds Xbox; the Frame design adds Samsung TV Plus. There is no arbitrary installed-app picker and no Add to Home, Remove from Home or pinning action. Existing layouts migrate by discarding unapproved entries, preserving approved relative order and restoring missing approved choices. Hold OK opens Move and Cancel only. Left/Right moves, OK saves and Back restores the original order. Adult PIN protection remains. Availability does not alter membership: a missing application gives a clear unavailable response rather than a substitute.
 
-
-
-**Users must be able to find installed apps, pin them to the glass dock, remove shortcuts and reorder the dock without using ADB, another device or a configuration file.** This is part of the premium core interaction, not a developer option.
-
-Home has a small **Apps** grid entry (or equivalent under Settings). Choosing **Add to Home** pins the app, while **Remove from Home** unpins it but never uninstalls or disables it. On a Home tile, hold OK and select **Move**: Left/Right shifts it, OK saves and Back cancels. Order persists after restarts; an interruption must not save a half-complete move.
-
-App order and available actions are per-TV; the Sony's Xbox and Frame's Samsung TV Plus actions stay specific to their rooms. The Live TV NordVPN gate cannot be bypassed by reordering. With more pinned apps than fit, keep one horizontal, scrollable dock rather than shrinking tiles or adding another row. An optional child edit lock is permitted.
-
-**Full user journeys, error states and acceptance tests:** [Apps and Home dock customisation](APP_CUSTOMISATION.md). See AT-56 through AT-61 in Section 17.
+The latest direct owner instruction replaces the earlier editable-shortlist decision. AT-56 now tests rejecting arbitrary saved packages and restoring the full approved set. AT-59 now tests that the context menu cannot remove a tile. AT-61 now tests the six/seven-item layout, child edit lock and reduced motion. Historical change-log entries describe older decisions; they do not authorise pinning in the current product.
 
 ## 4. Premium interface and interaction system (P0: design release gate)
 
@@ -601,12 +595,12 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-53 | Music screen | Play music then leave controls idle | Genuine album artwork drives the background, compact play/pause/skip is legible; quiet state reduces persistent OLED-bright UI |
 | AT-54 | Settings accessibility | Turn on reduced motion, high contrast and reduced transparency | All content and commands remain available, focus unmistakable; movement and glass complexity fall back without a redesign |
 | AT-55 | Public project design hand-off | Inspect layouts and short motion studies for all Section 4.13 states | Assets are cleared, input maps and source permissions supplied, source-of-truth design tokens present, and videos/screenshots show the same visual system |
-| AT-56 | Apps library | Add a previously unpinned installed app to Home | Tile appears with correct identity and launches by short OK; no ADB |
+| AT-56 | Saved layout migration | Load arbitrary package and missing approved choices | Only the complete approved set remains; approved relative order preserved |
 | AT-57 | Home dock | Hold OK, Move with Left/Right, press OK, restart | Smooth reorder saves and persists without confusing focus |
 | AT-58 | Home edit mode | Reorder then Back; repeat with a Ring alert | Back restores old order, interruption does not half-save and Ring wins |
-| AT-59 | Apps/Home | Remove a shortcut then add it back | App remains installed, signed in and accessible throughout |
+| AT-59 | Home edit menu | Try to remove or add a tile | Only Move and Cancel are available; no arbitrary app picker |
 | AT-60 | Sony/TCL/Frame | Use different dock order and Xbox/TV Plus shortcuts | Per-TV capabilities remain correct and Live TV stays VPN protected |
-| AT-61 | Extended dock | Pin eight or more apps; test child edit lock | Single readable scrollable row, no collisions or accidental editing |
+| AT-61 | Six/seven-item dock | Exercise approved room choices, child lock and reduced motion | Fixed readable single row; no additional app membership |
 | AT-62 | TCL Settings > Connections | Enter valid and invalid Home Assistant/Jellyfin settings by remote | Correct authentication/connectivity states, protected local storage and offline fallback |
 | AT-63 | TCL Windows pilot | Build separate preview and connect using supported Android 11 debugging or offline sideload | Stock HOME untouched, launch and edit controls work, clean uninstall |
 | AT-64 | TCL AirPin LITE | After authorised setup, restart and cast from iOS device | Receiver operational status is real; no misleading glyph; resource use measured |
@@ -826,3 +820,6 @@ Research reviewed 24 October 2026. Vendor documentation defines API and lifecycl
 - OpenAI voice security https://developers.openai.com/api/docs/guides/voice-webrtc
 
 Version 2.0 preserves the detailed earlier design and acceptance requirements while replacing the external Frame runtime and VLC playback decisions. Unimplemented features remain requirements and do not become working capabilities through this document.
+
+
+v2.1 records the latest fixed-dock decision, material rendering pass and VPN handoff/status work. Native Tizen and earlier household integration gates remain unfinished.

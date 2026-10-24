@@ -24,6 +24,10 @@ public final class GalleryActivity extends Screen {
     private void manage(){
         page("Gallery");text("Choose your own photographs or artwork. Images stay on this TV. Selected images: "+selected.length(),22);
         button("Choose or replace images",()->EditLock.ask(this,this::pick));
+        button("Use included coastal landscape",()->EditLock.ask(this,()->{
+            try{selected=new JSONArray().put("asset:///unified-preview-coast.png");new Vault(this).save("gallery",new JSONObject().put("images",selected));fullScreen();}
+            catch(Exception e){note("Unable to save gallery selection");}
+        }));
         if(selected.length()>0){
             button("Remove an image",()->EditLock.ask(this,()->{
                 String[] labels=new String[selected.length()];for(int n=0;n<labels.length;n++)labels[n]="Image "+(n+1);
@@ -53,10 +57,15 @@ public final class GalleryActivity extends Screen {
     private void showImage(){if(!active||image==null||selected.length()==0)return;String source=selected.optString(index++%selected.length());
         images.execute(()->{Bitmap bitmap=null;try{
             Uri uri=Uri.parse(source);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inJustDecodeBounds=true;
-            try(InputStream in=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(in,null,opts);}
+            try(InputStream in=openImage(uri)){BitmapFactory.decodeStream(in,null,opts);}
             opts.inJustDecodeBounds=false;opts.inSampleSize=1;while(opts.outWidth/opts.inSampleSize>1920||opts.outHeight/opts.inSampleSize>1080)opts.inSampleSize*=2;
-            try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=BitmapFactory.decodeStream(in,null,opts);}
+            try(InputStream in=openImage(uri)){bitmap=BitmapFactory.decodeStream(in,null,opts);}
         }catch(Exception ignored){}final Bitmap next=bitmap;runOnUiThread(()->{if(active&&next!=null)image.setImageBitmap(next);});});
+    }
+    private InputStream openImage(Uri uri)throws java.io.IOException{
+        if(uri.toString().equals("asset:///unified-preview-coast.png"))return getAssets().open("unified-preview-coast.png");
+        if(!"content".equals(uri.getScheme()))throw new java.io.IOException("Unsupported image source");
+        return getContentResolver().openInputStream(uri);
     }
     @Override protected void onResume(){super.onResume();active=true;if(image!=null)timer.post(advance);}
     @Override protected void onPause(){active=false;timer.removeCallbacksAndMessages(null);super.onPause();}

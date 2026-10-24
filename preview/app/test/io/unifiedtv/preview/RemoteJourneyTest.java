@@ -35,6 +35,12 @@ public class RemoteJourneyTest {
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_BACK);
         assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));
     }
+    @Test public void secondEditActionCancelsRatherThanRemovingAnApprovedTile()throws Exception{
+        hold();press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));
+        java.lang.reflect.Field entries=home.getClass().getDeclaredField("dock");entries.setAccessible(true);
+        assertEquals(6,((java.util.List<?>)entries.get(home)).size());
+    }
     @Test public void moveSavePersistsOrderAndSurvivesRecreation()throws Exception{
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         String saved=activity.getSharedPreferences("unified-tv-preview",0).getString("dock","");assertTrue(saved.startsWith("netflix,smartutube,"));

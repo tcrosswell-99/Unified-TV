@@ -14,6 +14,7 @@ public final class SettingsActivity extends Screen {
         button("Connections · Your Films & TV · Adult",()->connection("media-adult"));
         button("Connections · Your Films & TV · Child",()->connection("media-child"));
         button("Household alerts & room actions",()->EditLock.ask(this,()->startActivity(new Intent(this,HouseholdActivity.class))));
+        button("NordVPN connection",()->VpnGate.show(this));
         button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));
         button("TV Performance & Cleanup",()->EditLock.ask(this,()->startActivity(new Intent(this,PerformanceActivity.class))));
         button("Appearance & accessibility",()->{
