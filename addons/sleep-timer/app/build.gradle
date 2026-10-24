@@ -28,3 +28,8 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+dependencies {
+    // No libraries in the APK. Test only: plain JVM tests in src/test.
+    testImplementation 'junit:junit:4.13.2'
+}

@@ -45,6 +45,8 @@ public class GlanceService extends Service {
     /** Bumped on every restart; a connection loop from an older generation stops. */
     private volatile int generation;
     private volatile MqttClient mqtt;
+    /** Guards generation against mqtt, so an older loop cannot install a client after a restart. */
+    private final Object mqttLock = new Object();
     private volatile GlanceConfig config;
     private volatile FrigateApi frigate;
     private volatile Map<String, int[]> detectSizes = Collections.emptyMap();
@@ -291,8 +293,11 @@ public class GlanceService extends Service {
 
     @Override
     public void onDestroy() {
-        running = false;
-        MqttClient m = mqtt;
+        MqttClient m;
+        synchronized (mqttLock) {
+            running = false;
+            m = mqtt;
+        }
         if (m != null) m.stop();
         if (card != null) card.hide();
         cardThread.quitSafely();
@@ -307,9 +312,13 @@ public class GlanceService extends Service {
     }
 
     private void restartNetwork() {
-        int gen = ++generation;
-        running = true;
-        MqttClient m = mqtt;
+        int gen;
+        MqttClient m;
+        synchronized (mqttLock) {
+            gen = ++generation;
+            running = true;
+            m = mqtt;
+        }
         if (m != null) m.stop();
         network = new Thread(() -> connectLoop(gen), "glance-network");
         network.start();
@@ -365,7 +374,11 @@ public class GlanceService extends Service {
                 Log.w(TAG, "mqtt error: the mqtt address in the config is not usable");
                 return;
             }
-            mqtt = client;
+            // fetchFrigateConfig() can block for a while: a restart in the meantime must win.
+            synchronized (mqttLock) {
+                if (!running || gen != generation) break;
+                mqtt = client;
+            }
             client.run(SocketFactory.getDefault());
             if (connected[0]) attempt = 0;
             if (!running || gen != generation) break;

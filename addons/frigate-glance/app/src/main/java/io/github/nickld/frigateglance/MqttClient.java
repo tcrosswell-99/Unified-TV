@@ -33,6 +33,8 @@ public final class MqttClient {
     static final int KEEPALIVE_S = 60;
     static final int PING_EVERY_MS = 30_000;
     private static final int CONNECT_TIMEOUT_MS = 10_000;
+    /** Frigate's review and event messages are a few KB; anything larger is skipped, never buffered. */
+    static final int MAX_PACKET_BYTES = 1 << 20;
     private static final String[] REFUSALS = {
         "", "unacceptable protocol version", "identifier rejected", "server unavailable",
         "bad user name or password", "not authorised",
@@ -117,9 +119,15 @@ public final class MqttClient {
             listener.onConnected();
             while (!stopped) {
                 header = readHeader(in, out);
-                byte[] body = new byte[header[1]];
-                in.readFully(body);
-                if ((header[0] & 0xF0) == 0x30) deliver(header[0], body);
+                if (header[1] > MAX_PACKET_BYTES) {
+                    // A retained oversized message would come back on every reconnect, so read past it
+                    // rather than ending the session; allocating it could run the TV out of memory.
+                    skipFully(in, header[1]);
+                } else {
+                    byte[] body = new byte[header[1]];
+                    in.readFully(body);
+                    if ((header[0] & 0xF0) == 0x30) deliver(header[0], body);
+                }
                 // A steady stream of messages never lets the read time out, but the broker drops a client it
                 // has not heard from for 1.5 keep-alives: ping on schedule whatever arrives.
                 if (clock.getAsLong() - lastWrite >= PING_EVERY_MS) {
@@ -143,6 +151,15 @@ public final class MqttClient {
         byte[] payload = new byte[body.length - start];
         System.arraycopy(body, start, payload, 0, payload.length);
         listener.onMessage(topic, payload);
+    }
+
+    private static void skipFully(DataInputStream in, int n) throws IOException {
+        byte[] scrap = new byte[8192];
+        while (n > 0) {
+            int got = in.read(scrap, 0, Math.min(n, scrap.length));
+            if (got < 0) throw new EOFException("broker closed the connection");
+            n -= got;
+        }
     }
 
     /** Packet type byte and remaining length. A read timeout sends PINGREQ; two in a row end the session. */

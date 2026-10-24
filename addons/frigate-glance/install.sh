@@ -48,12 +48,15 @@ case "$OUT" in *Success*) ;; *) echo "ERROR: pm install failed" >&2; exit 1 ;; e
 # Display over other apps (TCL's Settings hide it) and TCL's auto-start, so the service reconnects after a reboot.
 tv "appops set $PKG SYSTEM_ALERT_WINDOW allow; cmd appops set $PKG APP_AUTO_START allow 2>/dev/null; echo permissions granted"
 
-# The config goes into the app's files folder, or through its provider where the shell may not write there.
+# The config goes in through the app's provider, which stages it in private storage, so the passwords never sit
+# in shared storage. Android 8 and 9 have no `content write`: they print "Unsupported operation" but exit 0 (as
+# in tools/theme.sh), and only there is it copied into the app's files folder, which the add-on reads and deletes
+# when the settings screen opens below. A copy left there by an older install.sh is removed first.
 # The log is cleared first: through the provider the service picks the config up, and logs its connection, at once.
 tv "logcat -c" >/dev/null
 STAGE=/data/local/tmp/fg-config.json
 tv --push "$CONFIG" "$STAGE" >/dev/null
-OUT=$(tv "d=/sdcard/Android/data/$PKG/files; if { mkdir -p \$d 2>/dev/null && cp $STAGE \$d/config.json 2>/dev/null; } || content write --uri content://$PKG.config/config.json < $STAGE; then echo config pushed; else echo config not written; fi; rm -f $STAGE")
+OUT=$(tv "d=/sdcard/Android/data/$PKG/files; rm -f \$d/config.json 2>/dev/null; if { o=\$(content write --uri content://$PKG.config/config.json < $STAGE 2>&1) && case \"\$o\" in *'Unsupported operation'*|*ERROR*|*Error*) false ;; esac; } || { mkdir -p \$d 2>/dev/null && cp $STAGE \$d/config.json 2>/dev/null; }; then echo config pushed; else echo config not written; fi; rm -f $STAGE")
 echo "$OUT"
 case "$OUT" in *"config pushed"*) ;; *) echo "ERROR: the config could not be written on the TV" >&2; exit 1 ;; esac
 

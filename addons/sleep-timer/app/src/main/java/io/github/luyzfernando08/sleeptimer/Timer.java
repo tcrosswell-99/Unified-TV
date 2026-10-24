@@ -20,6 +20,11 @@ final class Timer {
     static final String ACTION_WARN = "io.github.luyzfernando08.sleeptimer.WARN";
     static final String ACTION_SLEEP = "io.github.luyzfernando08.sleeptimer.SLEEP";
     static final String ACTION_TEST = "io.github.luyzfernando08.sleeptimer.TEST";
+    /** An end further back than this is from before the TV last went off (an alarm lost to a reboot): ignored. */
+    static final long STALE_MS = 3 * 60 * 60_000L;
+
+    /** What an alarm should do. */
+    enum Due { NOTHING, WARN, SLEEP }
 
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getSharedPreferences("timer", Context.MODE_PRIVATE);
@@ -29,6 +34,23 @@ final class Timer {
     static long end(Context ctx) {
         long end = prefs(ctx).getLong("end", 0);
         return end > System.currentTimeMillis() - 5_000 ? end : 0;
+    }
+
+    /** The stored end, even once it has passed; 0 when no timer is on. For the alarms, which may come late. */
+    static long rawEnd(Context ctx) {
+        return prefs(ctx).getLong("end", 0);
+    }
+
+    /**
+     * What the warning or sleep alarm does for a timer ending at end (0: none). Without the exact-alarm
+     * permission (Android 14's default) the alarms are inexact and can come long after the end: a late one
+     * still puts the TV to sleep, and a warning that comes after the end goes straight to sleep. A sleep alarm
+     * that comes early, after the timer was pushed back, does nothing; the newer alarm follows.
+     */
+    static Due due(String action, long end, long now) {
+        if (end == 0 || now - end > STALE_MS) return Due.NOTHING;
+        if (now >= end) return ACTION_WARN.equals(action) || ACTION_SLEEP.equals(action) ? Due.SLEEP : Due.NOTHING;
+        return ACTION_WARN.equals(action) ? Due.WARN : Due.NOTHING;
     }
 
     static void start(Context ctx, int minutes) {

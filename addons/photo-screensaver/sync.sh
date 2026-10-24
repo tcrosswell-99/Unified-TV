@@ -27,6 +27,8 @@ URI=content://$PKG.files/pictures
 TMP=/data/local/tmp/cyt-screensaver
 # The screensaver the TV had before the first run, so --off can put it back.
 BEFORE=/data/local/tmp/cyt-screensaver-before
+# The screen-off timeout from before IDLE_MINUTES first changed it, likewise for --off.
+TIMEOUT_BEFORE=/data/local/tmp/cyt-screensaver-timeout-before
 IDLE_MINUTES="${IDLE_MINUTES:-0}"
 SECONDS_PER_PICTURE="${SECONDS_PER_PICTURE:-20}"
 tv() { "$PY" -I tv.py "$@"; }
@@ -39,7 +41,7 @@ tv "pm path $PKG; true" | grep -q package: \
   || { echo "the photo screensaver is not on the TV: run addons/photo-screensaver/build-and-install.sh first" >&2; exit 1; }
 
 if [ "$FOLDER" = --off ]; then
-  tv "if [ -f $BEFORE ]; then { read c; read e; } < $BEFORE; if [ \"\$c\" = null ]; then settings delete secure screensaver_components >/dev/null; else settings put secure screensaver_components \"\$c\"; fi; [ \"\$e\" = null ] || settings put secure screensaver_enabled \"\$e\"; rm -f $BEFORE; fi; rm -f $DIR/* 2>/dev/null; content delete --uri $URI 2>/dev/null; echo screensaver: \$(settings get secure screensaver_components)"
+  tv "if [ -f $BEFORE ]; then { read c; read e; } < $BEFORE; if [ \"\$c\" = null ]; then settings delete secure screensaver_components >/dev/null; else settings put secure screensaver_components \"\$c\"; fi; [ \"\$e\" = null ] || settings put secure screensaver_enabled \"\$e\"; rm -f $BEFORE; fi; if [ -f $TIMEOUT_BEFORE ]; then read t < $TIMEOUT_BEFORE; case \"\$t\" in null) settings delete system screen_off_timeout >/dev/null ;; ''|*[!0-9]*) ;; *) settings put system screen_off_timeout \"\$t\" ;; esac; rm -f $TIMEOUT_BEFORE; fi; rm -f $DIR/* 2>/dev/null; content delete --uri $URI 2>/dev/null; echo screensaver: \$(settings get secure screensaver_components)"
   exit 0
 fi
 
@@ -84,7 +86,7 @@ done
 
 tv "printf '%s' $SECONDS_PER_PICTURE > $TMP-seconds.txt; content write --uri content://$PKG.files/seconds.txt < $TMP-seconds.txt; rm -f $TMP-seconds.txt" >/dev/null
 tv "[ -f $BEFORE ] || { settings get secure screensaver_components; settings get secure screensaver_enabled; } > $BEFORE; settings put secure screensaver_components $DREAM; settings put secure screensaver_enabled 1" >/dev/null
-[ "$IDLE_MINUTES" -eq 0 ] || tv "settings put system screen_off_timeout $((IDLE_MINUTES * 60000))" >/dev/null
+[ "$IDLE_MINUTES" -eq 0 ] || tv "[ -f $TIMEOUT_BEFORE ] || settings get system screen_off_timeout > $TIMEOUT_BEFORE; settings put system screen_off_timeout $((IDLE_MINUTES * 60000))" >/dev/null
 COUNT=$(tv "ls $DIR 2>/dev/null | wc -l" | tr -d '\r ')
 echo "Screensaver: Photos with $COUNT file(s) on the TV, $SECONDS_PER_PICTURE s each ($SENT sent). Undo with: addons/photo-screensaver/sync.sh --off"
 [ -z "${START:-}" ] || tv "am start -n com.android.systemui/.Somnambulator >/dev/null; sleep 3; dumpsys dreams | grep mCurrentDreamName"

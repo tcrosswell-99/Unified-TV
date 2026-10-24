@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Frigate's unauthenticated port answers at http://<ip>:5000 on the home network, so plain HTTP is allowed.
+     Prefer https://<ip>:8971, which needs a login and is pinned on first use. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

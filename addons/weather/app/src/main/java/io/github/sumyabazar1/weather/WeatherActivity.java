@@ -40,6 +40,8 @@ public final class WeatherActivity extends Activity {
     private View content;
     private TextView message;
     private boolean shown;
+    /** Between onResume and onPause: only then is the next refresh scheduled. */
+    private boolean resumed;
     /** options.xml: days after today, and the extras on the "Feels like" line. */
     private int forecastDays;
     private boolean showHumidity;
@@ -68,23 +70,27 @@ public final class WeatherActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         if (place.contains("name")) refresh();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         main.removeCallbacks(tick);   // nothing runs while the page is not on screen
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        main.removeCallbacksAndMessages(null);
         io.shutdownNow();
     }
 
     private void refresh() {
         main.removeCallbacks(tick);
+        if (isFinishing() || isDestroyed()) return;   // io is shut down once destroyed
         double lat = Double.longBitsToDouble(place.getLong("lat", 0));
         double lon = Double.longBitsToDouble(place.getLong("lon", 0));
         io.execute(() -> {
@@ -99,7 +105,8 @@ public final class WeatherActivity extends Activity {
                 if (isDestroyed()) return;
                 if (result != null) show(result);
                 else if (!shown) message.setText(R.string.offline);
-                main.postDelayed(tick, result != null ? Forecast.REFRESH_MS : Forecast.RETRY_MS);
+                // A fetch that ends after onPause must not re-arm the timer: it would run while off screen.
+                if (resumed) main.postDelayed(tick, result != null ? Forecast.REFRESH_MS : Forecast.RETRY_MS);
             });
         });
     }
@@ -195,6 +202,7 @@ public final class WeatherActivity extends Activity {
             pickCity();
             return;
         }
+        if (isFinishing() || isDestroyed()) return;
         io.execute(() -> {
             List<Forecast.Place> found;
             try {
