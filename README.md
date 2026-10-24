@@ -1,135 +1,82 @@
-# CleanYourTV UI
+# Unified TV
+### Different TVs. One familiar experience.
 
-**English** · [Português](README.pt-BR.md)
+A family-first, independently maintained smart TV launcher project that puts the programmes, films, music and games you love at the centre. The aim is a calm, cinematic home screen that feels consistent across televisions from different manufacturers, while letting each room have its own apps and devices.
 
-An Apple TV-style home screen for Android TV, built on **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)**
-(which strips the factory bloat off your TV) with the look of **[Free My TV](https://github.com/simbasjungles/free-my-tv)**.
-Browse movies and shows with TMDB, see where each one streams, and open it right in the app.
+**Content first, underlying technology hidden.**
 
-![Home screen](docs/ui/screenshots/en/home.jpg)
+> **Project status: early development.** This is a public fork of [CleanYourTV UI](https://github.com/matheus-caldeira/cleanyourtv-ui), preserving its existing Android TV code and history. The Unified TV features described below are a **design and development roadmap**, not an installable finished product. There is no verified Unified TV release yet.
 
-This repository is a **fork of CleanYourTV**: everything the original has is still here, unchanged (the per-model
-debloat lists in `examples/`, the scripts in `tools/`, the minimal launcher in `launcher/`). CleanYourTV's README is
-**[`README.cleanyourtv.md`](README.cleanyourtv.md)**, kept current with the rest. The fork only **adds** files, and
-a workflow brings in CleanYourTV's changes every day ([`sync-upstream.yml`](.github/workflows/sync-upstream.yml)).
+## Why Unified TV?
 
-## How it differs
+A household can have a Sony in the living room, a TCL elsewhere and a Samsung Frame in another room. Each television has a different home screen, input flow and set of recommendations. Unified TV aims to give the family **the same simple navigation and visual language everywhere**, without pretending every device has the same capabilities.
 
-| | [CleanYourTV](https://github.com/Gathin23/cleanyourtv) | [Free My TV](https://github.com/simbasjungles/free-my-tv) | **CleanYourTV UI** (this) |
-|---|---|---|---|
-| What it is | Per-model debloat + a minimal launcher | A good-looking home screen for TVs | All of CleanYourTV + a home screen in Free My TV's style |
-| TV debloat | Per-model lists, with backup and restore | — | CleanYourTV's, unchanged |
-| Home screen | Dock and grid, offline | Glass shelf, picks, weather | Free My TV's, adapted, plus **Explore** |
-| ADB on after install | Not needed | Uses the TV's own ADB to keep Home | Not needed: everything is done once from the computer |
-| Browse movies and shows | — | Picks on the home screen | Banner, catalogs, top 10, categories with filters, search, title pages, cast, seasons |
-| TMDB account | — | — | QR code sign-in: watchlist, favorites, ratings, lists |
-| "Watch on…" | — | Opens the app | Opens **the title** in the app (Netflix, Disney+, Apple TV, Max, Prime) when Wikidata knows its id |
-| Remote buttons | `app_keys` in a theme | — | A `remote.json` per model + a settings screen on the TV |
-| Configuration | The theme's `config.json` | Settings on the TV | A `config.json` pushed from the computer + settings on the TV |
-| Language | English | Several | English and Portuguese, plus Spanish, German and Russian; follows the TV |
-| Cost for an AI assistant to adapt | Low | Medium | **Higher**: more code, network and screens, more tokens |
+- **One clean dock:** familiar streaming apps and a small number of personal choices, not advertisements and endless content rows.
+- **Content-aware atmosphere:** focus Netflix, BBC or a film in your own library, and the full-screen artwork changes to match that selection. No unrelated wallpaper behind a highlighted tile.
+- **Personal films and television:** browse your own NAS collection through beautiful posters and a simple `View All` library. VLC can handle playback behind the scenes, without being another home-screen tile.
+- **Room-specific shortcuts:** an Xbox tile only on the television connected to the console; Samsung TV Plus only where it is installed. The layout stays familiar.
+- **Less to learn:** designed for children, visitors and family members who just want to watch something.
 
-Just want a clean TV and a minimal home? Use CleanYourTV's `launcher/`. Want the home screen without the debloat? Use
-Free My TV. This project is for people who want both and a full Explore.
+The visual direction draws on the *principles* of contemporary tvOS motion and material design, and the restraint of projects like CleanFrame. It is an **original interface**, not an Apple product, replica or affiliated project.
 
-## Features
+## What we want to build
 
-**Home screen**
-- "For You" with TMDB picks on your services, and Explore, Movies and Shows tabs.
-- An app shelf with official logos; holding OK on an app drops a menu from its card: move, logo and color (a PNG's URL
-  and a background color, or through `config.json`), the app's Android settings (force stop, clear cache) and close.
-- Weather for your city, a theme that darkens at sunset, a photo screensaver.
-- No ADB left on: debloat, the Home switch and the remote-button service are done once from the computer.
+| Experience | Intended behaviour | Unified TV status |
+| --- | --- | --- |
+| Premium home screen | One translucent dock, contextual full-screen artwork, immediate remote focus and day/night refinement | **Planned redesign** |
+| Favourite apps | SmartTube, Netflix, Disney+, BBC iPlayer, Live TV and Music; configurable per household | **Planned configuration** |
+| Personal NAS library | Poster artwork, films, series, search and `View All`; VLC playback hidden from users | **Planned integration** |
+| Ring doorbell | Optional automatic live camera takeover when pressed **or a person is detected**, even from artwork mode | **Research and real-TV tests required** |
+| Alexa reminders | Optional discreet text toast over playback, where a supported event and overlay are available | **Research and testing required** |
+| Voice assistant | Optional ChatGPT voice to search local content, open apps and answer questions, with British English voice preference | **Planned; API, microphone and permissions testing required** |
+| VPN awareness | Tiny truthful NordVPN connected/off indicator and country flag; fail-closed Live TV access | **Planned; network safety tests required** |
+| Music | Album-led, calm Now Playing experience using an existing music subscription if playback access permits | **Research required for Amazon Music** |
+| Matchday | Optional discreet Tottenham fixture on matchdays only, without score spoilers | **Planned personalisation** |
+| Art mode | User-selected artwork and family photos; native Samsung Frame Art Mode stays visually unmodified | **Research and device-specific testing required** |
+| Performance and cleanup | Optional device scan, before/after benchmarks and reversible cleanup | **Existing Android tooling inherited; Unified TV safety flow planned** |
 
-**Explore** (the ▶ button on the home screen, or a remote button)
-- An Apple TV-like banner with the title's logo; its picture melts into the background, which follows the focused poster.
-- Rows of up to 10 titles with "See more", which opens the whole list as a grid that loads as you scroll.
-- A side menu (Left at the screen's edge): Explore and its settings, Search, Home, My list, then the rest in the order you
-  like, each one hideable: Today's top 10, Movies, Shows, Kids, Anime, Categories, saved filters, and one page per
-  streaming service on the TV.
-- Movies, Shows, Kids and Anime as catalogs: tabs on top, a poster grid below.
-- Search and Categories share one filter: type, one or more categories (Anime, K-dramas and Brazilian included) and
-  release year; a category filter can be saved to the menu. Recent searches.
-- My list as tabs: watchlist, favorites, seen, your ratings.
-- Seen titles get a ✓ on the poster; long titles scroll like a ticker on the focused card.
-- Title pages: rating and age rating, director, where to stream in your region, watchlist, seen, favorite, rate, lists,
-  trailer, seasons and episodes, cast (each person with their page), collection, keywords and reviews.
-- Fast and light: TMDB answers cached on disk (lists for 3 h, titles for 12 h, pictures and people for a week; an old
-  copy when offline) and images too (up to 160 MB, a week). When an app or the TV is on, the launcher lets go of what it
-  kept in memory: on a 2 GB TCL, about 66 MB in the background, down from ~155 MB.
-- No ads and no telemetry: it only talks to TMDB, Wikidata (the services' ids) and Open-Meteo (weather).
+**Nothing in the table implies those integrations are already implemented.** The repository currently contains the inherited CleanYourTV UI application and the original CleanYourTV tools. We will preserve a usable Android baseline while developing and testing changes.
 
-**Remote and configuration**
-- `examples/<model>/remote.json` says which remote buttons can be changed; on the TV each one opens an app, an HDMI
-  input, Explore or your list.
-- `launcher-ui/config.sh` pushes a `config.json` (shelf, hidden apps, city, buttons, services, logos) over ADB, without
-  rebuilding. Only the ADB shell can write that configuration into the app.
-- CleanYourTV themes: `launcher-ui/config.sh --theme themes/<name> [my-config.json]` takes what both launchers share
-  (a theme's dock apps become the shelf, plus hidden apps and remote buttons). The rest of a theme (wallpaper, columns,
-  glass) belongs to the original launcher: here the background comes from the picks' photos.
+## One design, different hardware
 
-## Screenshots
+- **Sony and TCL running Android/Google TV:** the intended native launcher platform. TCL and older Sony hardware receive the same design with lighter rendering where necessary.
+- **Samsung Frame (Tizen):** a native Android APK **cannot** replace Tizen Home. The current approach is an external Android/Google TV device for the shared launcher, while preserving Samsung's native Art Mode and Samsung TV Plus. Switching automatically between native TV features and an external launcher needs model-specific tests.
+- **Other brands:** possible only through supported platform adapters or appropriate external devices. No claim of universal installation or bloatware removal.
 
-| | |
-|---|---|
-| ![Explore](docs/ui/screenshots/en/explore.jpg) | ![Explore's menu](docs/ui/screenshots/en/explore-menu.jpg) |
-| ![Anime catalog](docs/ui/screenshots/en/explore-anime.jpg) | ![Today's top 10](docs/ui/screenshots/en/explore-top10.jpg) |
-| ![Filters](docs/ui/screenshots/en/explore-filters.jpg) | ![Top 10 movies](docs/ui/screenshots/en/explore-top10-grid.jpg) |
-| ![Title page](docs/ui/screenshots/en/title.jpg) | ![An app's menu on the home screen](docs/ui/screenshots/home-app-menu.jpg) |
+A Ring doorbell **must** interrupt wallpaper/art mode on the reference deployment and show live video automatically. This is a release gate, **not** a claim that Samsung already permits third-party overlays. An alternative source/input transition needs to be proven on hardware. See [compatibility](docs/COMPATIBILITY.md).
 
-## Quick start
+## The TV your family knows
 
-You need a computer on the same Wi-Fi as the TV and a coding assistant with shell access (Claude Code, Codex or
-Gemini CLI), as with CleanYourTV.
+The initial household reference uses six familiar choices: **SmartTube · Netflix · Disney+ · BBC · Live TV · Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
 
-| Where | What to do |
-|---|---|
-| **1. On the TV** | Settings → Device Preferences → About → press OK on **Build** seven times → back → Developer options → **USB debugging** on (and **Network/ADB debugging** if there is one). Keep the TV on. |
-| **2. On your computer** | Paste [`PROMPT.md`](PROMPT.md) into your assistant with your TV model, and ask for this fork's home screen in `launcher-ui/` instead of `launcher/`. |
-| **3. Follow along** | Accept "Allow USB debugging?" on the TV and answer the checklist: the apps you use, the shelf order, the voice assistant, Chromecast and updates. |
+All these are *configurable examples*, not compulsory apps. People without a NAS, Ring, Alexa, Xbox, VPN or AI subscription should still have a lovely, responsive launcher.
 
-The assistant backs up, debloats, builds and installs the home screen, and checks each step with screenshots from the
-TV. The debloat, the supported TVs and how to go back are in [CleanYourTV's README](README.cleanyourtv.md).
+## Privacy and performance
 
-## Installing by hand
+Our intent is no advertising, no sale of household data and no mandatory analytics. Personal photos, media paths, Home Assistant URLs and API credentials stay out of Git and public issue reports. Integrations are opt-in and should fail quietly when disconnected.
 
-1. Follow [CleanYourTV's Quick start](README.cleanyourtv.md#quick-start) up to applying your TV's debloat list.
-2. Create the settings with your TMDB key (free, at themoviedb.org → Settings → API) and your city:
-   ```bash
-   cp launcher-ui/config.example.properties launcher-ui/config.properties
-   ```
-   `config.properties` stays out of git. The key belongs to the app and is still needed with the QR sign-in: signing in
-   only tells TMDB who you are, for your list and ratings. `language=auto` follows the TV's language.
-3. Build and install (JDK 17 and the Android SDK with build-tools 34+ and platform android-34; no Gradle):
-   ```bash
-   TV_HOST=192.168.1.50 KEY_SERVICE=1 launcher-ui/build-and-install.sh
-   ```
-   `KEY_SERVICE=1` turns on the remote-button service, once: reinstalls keep it on. `SCREENSAVER=0` keeps the
-   current screensaver.
-4. Optional: `TV_HOST=… launcher-ui/config.sh my-config.json` (see `launcher-ui/config.example.json`) and
-   `launcher-ui/config.sh --remote examples/<model>/remote.json`.
+The optional **TV Performance & Cleanup** journey is separate from installation. On supported Android models, it must inspect the device, explain every proposed change, save original package states and offer independent rollback. **Never automatically debloat a user's television.** Tizen has different limits; native Samsung package removal is not promised.
 
-The script keeps the original's safeguards: it checks Android before building, starts the new Home before touching the
-old one, and undoes the switch if it doesn't take. To open Explore from the computer:
-`adb shell am start -n io.cleanyourtv.ui/.HomeActivity --es open explore` (or `--es open watchlist`).
+## Starting today
 
-## Going back
+This is a **development fork**, not a finished installer. For now, see the [original CleanYourTV UI instructions](docs/upstream/CLEANYOURTV_UI_README.md) if you are evaluating the *inherited* Android code. Those instructions and scripts are inherited from their authors and do not install the future Unified TV experience.
 
-- To CleanYourTV's launcher: install `launcher/` as in its README.
-- To the factory TV: `tools/restore.sh`, as in [CleanYourTV's README](README.cleanyourtv.md#restoring-your-tv).
+Read the [public product specification](docs/PRODUCT_SPEC.md), [design contract](docs/DESIGN_SYSTEM.md), [platform compatibility](docs/COMPATIBILITY.md), [roadmap](docs/ROADMAP.md) and [safe installation/recovery notes](docs/INSTALLATION_AND_RECOVERY.md).
 
-## CleanYourTV updates
+Please **do not apply package changes or use ADB on a household TV without model/firmware-specific research and a verified restore path**. Testing in an emulator or spare device should come first.
 
-The [`sync-upstream.yml`](.github/workflows/sync-upstream.yml) workflow runs every day and merges CleanYourTV's `main`.
-This fork leaves the original's files alone, with one exception: `README.md` is this fork's. On every sync the workflow
-copies CleanYourTV's new README to [`README.cleanyourtv.md`](README.cleanyourtv.md) and keeps this fork's. Any other
-conflict becomes an issue with the commands to solve it by hand.
+## Project and community
 
-## Credits and contact
+Unified TV is being built for a real family first, with the source openly available for anyone who wants to experiment, adapt it to their home or help improve it. Contributions, suggestions and real device test reports are welcome once GitHub Issues and Discussions are enabled.
 
-- [CleanYourTV](https://github.com/Gathin23/cleanyourtv), by Gathin, and [Free My TV](https://github.com/simbasjungles/free-my-tv),
-  by its authors, both under the MIT License. Details in [`launcher-ui/NOTICE`](launcher-ui/NOTICE).
-- This product uses the TMDB API but is not endorsed or certified by TMDB. Service ids from Wikidata. Weather by
-  Open-Meteo.com.
-- Matheus Caldeira, [github.com/matheus-caldeira](https://github.com/matheus-caldeira). Questions and problems in the
-  [issues](https://github.com/matheus-caldeira/cleanyourtv-ui/issues).
+See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Credits](CREDITS.md). No final Unified TV APK or supported-devices list has been published yet.
+
+## Credit and licence
+
+This repository is a **GitHub fork** of [CleanYourTV UI by Matheus Caldeira](https://github.com/matheus-caldeira/cleanyourtv-ui), built on [CleanYourTV by Gathin](https://github.com/Gathin23/cleanyourtv). The inherited UI also includes code from [Free My TV](https://github.com/simbasjungles/free-my-tv). The original history and licence files remain in the repository, including [MIT licence](LICENSE), [Free My TV licence](launcher-ui/LICENSE.free-my-tv) and [launcher attribution notice](launcher-ui/NOTICE). Please check the path for the Free My TV licence in the underlying source tree when preparing any redistribution.
+
+[TV Detox](https://github.com/Ansub/tv-detox) and [CleanFrame](https://github.com/nthnclrk/CleanFrame) are research/design references; their code has **not** been imported into Unified TV in this project phase. Details: [CREDITS.md](CREDITS.md).
+
+Unified TV is independent of Apple, Samsung, Sony, TCL, Google, Amazon, NordVPN and the streaming services it launches. Their names and trademarks belong to their owners.
+
+**Different TVs. One familiar experience.**

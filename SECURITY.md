@@ -1,31 +1,27 @@
-# Security
+# Unified TV security policy
 
-CleanYourTV talks to TVs over ADB and installs a launcher on them, so a security bug here can
-reach people's living rooms. Please report anything you find privately, not in a public issue.
+Unified TV runs close to household televisions, local networks and potentially personal photos, a media NAS, Ring cameras and voice services. That calls for a conservative approach.
 
-## How to report
+## Current status
 
-Use GitHub's private vulnerability reporting: open the
-[Security tab](https://github.com/Gathin23/cleanyourtv/security) and choose **Report a vulnerability**.
-Only the maintainer sees the report. If that doesn't work for you, email
-[hello@itsgathin.com](mailto:hello@itsgathin.com) with "Security" in the subject.
+This independent fork is in early development; no Unified TV releases or verified installations have been published. Inherited upstream scripts and launchers must be evaluated in the context of the exact television and firmware before use.
 
-Please include what is affected (the prompt, a tool in `tools/`, the launcher, a debloat list),
-the steps to reproduce it, and what an attacker could do with it.
+## Report vulnerabilities privately
 
-## What counts
+**Do not post exploits, family images, IP addresses or credentials in public issues.** Use the **Security** tab on [this Unified TV repository](https://github.com/tcrosswell-99/Unified-TV/security) and GitHub's private vulnerability reporting if available. If it is not enabled, request a private contact route from the repository owner rather than disclosing the details publicly.
 
-- The launcher (`com.gathin.tvhome`) doing something it shouldn't: reaching the network, exposing
-  data to other apps, or being made to open something it shouldn't.
-- The tools (`tools/tv.py`, `disable.sh`, `restore.sh`, `theme.sh`, `recovery.py`) running commands
-  on a device or computer they weren't pointed at, or mishandling paths and input.
-- A debloat list or the prompt leading to a TV that can't be restored with `tools/restore.sh`.
-- Anything in a pull request that runs code on a contributor's or maintainer's machine.
+Do not send Unified TV-specific vulnerabilities to the original CleanYourTV or CleanYourTV UI authors. For bugs in their original unmodified code, also follow their own security policies.
 
-ADB itself is powerful by design. Turning on USB or network debugging lets any computer on your
-network ask to connect, and the TV asks you to allow it. Turn debugging off when you're done.
+## Scope and safeguards
 
-## What happens next
+- **Television changes:** package disabling, launcher replacement, remote mappings, input and audio control, recovery.
+- **Network and accounts:** Home Assistant tokens, Ring snapshots/events, NAS storage URLs, music accounts and API credentials.
+- **VPN:** avoid claiming traffic is protected from a mere connected indicator; validate route lockout under tunnel failure.
+- **Voice:** require clear microphone state and tightly scoped, explicitly permitted home/device commands.
+- **Permissions:** minimal Android permissions, no hard-coded service credentials, no debug interfaces left on after setup.
 
-You'll get a reply within a few days. Fixes go into `main` with credit to you, unless you'd rather
-stay anonymous. Please give a fix a reasonable chance to ship before you publish details.
+## Developer/reviewer rules
+
+No destructive or mass system package modifications without model/firmware-specific evidence, advance consent and a restore path independent of the launcher. Never upload logs with real household data. Avoid dependencies/scripts from unreviewed repositories and review GitHub Actions permissions before enabling new workflows.
+
+Information in the public specification is an architectural example. Do not commit addresses, serial numbers, Ring event payloads, NAS filenames or personal photographs from an actual household.

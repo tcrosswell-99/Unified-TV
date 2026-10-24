@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible launcher or optional integration problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include private IPs, account details, tokens, Ring images or family photographs. **Unified TV is under development:** label upstream issues clearly."
+  - type: input
+    id: model
+    attributes:
+      label: Device, model and firmware
+      placeholder: "e.g. Android TV 12 on a specific model and firmware"
+    validations:
+      required: true
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Affected component
+      options:
+        - Core launcher / remote focus
+        - Background artwork / motion
+        - NAS media browsing or playback
+        - Ring / Home Assistant
+        - Alexa reminders
+        - VPN / Live TV
+        - Music
+        - Voice / ChatGPT
+        - Performance and cleanup
+        - Samsung TV / external streamer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the expected and actual result, without private data.
+    validations:
+      required: true
+  - type: textarea
+    id: recovery
+    attributes:
+      label: What have you tested and how did you recover?
