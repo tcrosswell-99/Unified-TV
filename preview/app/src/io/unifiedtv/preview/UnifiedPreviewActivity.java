@@ -45,6 +45,15 @@ import java.util.TimeZone;
  */
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
+    private final Handler idleHandler = new Handler(Looper.getMainLooper());
+    private final Runnable gallery = () -> {
+        try { if (new Vault(this).read("gallery").optJSONArray("images") != null)
+            startActivity(new Intent(this, GalleryActivity.class)); } catch (Exception ignored) {}
+    };
+    @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery); idleHandler.postDelayed(gallery,300000); }
+    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null)surface.refresh(); }
+    @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
+
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -57,11 +66,12 @@ public final class UnifiedPreviewActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (surface != null && surface.key(event)) return true;
+        if (hasWindowFocus() && surface != null && surface.key(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
     @Override protected void onDestroy() {
+        idleHandler.removeCallbacksAndMessages(null);
         if (surface != null) surface.close();
         super.onDestroy();
     }
@@ -81,7 +91,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private static final int WHITE = 0xFFFAFAFC;
         private static final int MUTED = 0xFFC8CCD5;
         private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 380;
-        private final Activity activity;
+        private Activity activity;
         private final SharedPreferences prefs;
         private final Handler handler = new Handler(Looper.getMainLooper());
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -102,8 +112,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable hold = () -> {
             if (okDown && !held) {
                 held = true;
-                if (apps) removeOrPin();
-                else if (index >= 0 && index < dock.size()) { menu = true; menuIndex = 0; invalidate(); }
+                if (apps) EditLock.ask(activity,this::removeOrPin);
+                else if (index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menu = true; menuIndex = 0; invalidate(); }); }
             }
         };
         private final Runnable clockTick = new Runnable() {
@@ -136,11 +146,22 @@ public final class UnifiedPreviewActivity extends Activity {
                 opt.inSampleSize = 2;
                 coast = BitmapFactory.decodeStream(in, null, opt);
             } catch (Exception ignored) { /* Original illustrated gradient is the safe offline fallback. */ }
+            int saved = prefs.getInt("focus", 0);
+            index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
+            if(index>=0) atmosphere=dock.get(index);
+            setContentDescription("Unified TV Home. Left and Right choose apps. Up opens controls. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(2);
         }
 
+        void refresh() { invalidate(); }
+        void pause() {
+            handler.removeCallbacks(hold); okDown=false;held=false;
+            if(moving) goBack();
+            prefs.edit().putInt("focus",Math.max(0,index)).apply();
+        }
         void close() {
+            handler.removeCallbacksAndMessages(null);
             handler.removeCallbacks(hold);
             handler.removeCallbacks(commitFocus);
             handler.removeCallbacks(clockTick);
@@ -168,6 +189,11 @@ public final class UnifiedPreviewActivity extends Activity {
                 installed.add(new Item(pkg, label, pkg, 0xFF323E53, 0xFF161D2D, icon));
             }
             Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.UK)));
+            List<Item> defaults=new ArrayList<>();
+            for(String id:new String[]{"smartutube","netflix","disney","bbc","live","music"}) defaults.add(defaultItem(id));
+            if(Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults.add(defaultItem("xbox"));
+            Set<String> canonical=new HashSet<>();for(Item item:defaults)if(item.pkg!=null)canonical.add(item.pkg);
+            installed.removeIf(item->canonical.contains(item.pkg));installed.addAll(0,defaults);
         }
 
         private Item installedMatch(String[] exact, String query) {
@@ -248,10 +274,10 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 return true;
             }
-            if (!down || e.getRepeatCount() > 0) return true;
+            if (!down) return true;
             handler.removeCallbacks(hold);
             if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
-            if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) openApps(); return true; }
+            if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) controls(); return true; }
             if (menu) { if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + 2) % 3;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % 3;
                 invalidate(); return true; }
@@ -267,14 +293,17 @@ public final class UnifiedPreviewActivity extends Activity {
                 else if (code == KeyEvent.KEYCODE_DPAD_UP) next -= 5;
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN) next += 5;
                 appIndex = Math.max(0, Math.min(installed.size() - 1, next));
-            } else if (code == KeyEvent.KEYCODE_DPAD_UP) openApps();
-            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) info("Your Films & TV will appear here once a NAS is connected");
+            } else if (code == KeyEvent.KEYCODE_DPAD_UP) controls();
+            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) activity.startActivity(new Intent(activity,LibraryActivity.class).putExtra("shelf",true));
             else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (!dock.isEmpty()) {
                     int delta = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
                     index = index < 0 ? 0 : Math.max(0, Math.min(dock.size() - 1, index + delta));
                     focusAt = SystemClock.uptimeMillis();
                     handler.removeCallbacks(commitFocus);
+                    // Never leave a different selected service behind the current focus.
+                    atmosphere=dock.get(index); former=null; fadeAt=0;
+                    announceForAccessibility(atmosphere.name);
                     handler.postDelayed(commitFocus, BG_WAIT_MS);
                 }
             }
@@ -296,7 +325,7 @@ public final class UnifiedPreviewActivity extends Activity {
             } else if (moving) {
                 moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
             } else if (apps) {
-                removeOrPin();
+                EditLock.ask(activity,this::removeOrPin);
             } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
             else info("Use Left or Right to choose an app, or Up to find apps");
             invalidate();
@@ -305,6 +334,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private void removeOrPin() {
             if (!apps || installed.isEmpty()) return;
             Item item = installed.get(appIndex);
+            String service=(item.name+" "+item.pkg).toLowerCase(Locale.ROOT);
+            if(service.contains("vlc") || service.contains("airpin")) { info("This service stays outside the Home dock"); return; }
             for (int j = 0; j < dock.size(); j++) if (dock.get(j).id.equals(item.id)) {
                 dock.remove(j);
                 index = Math.min(index, dock.size() - 1);
@@ -341,12 +372,21 @@ public final class UnifiedPreviewActivity extends Activity {
             invalidate();
         }
 
+        private void controls() {
+            new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
+                new String[]{"Apps · add and rearrange", "Settings", "Who's watching?", "Gallery"}, (dialog,which) -> {
+                if(which==0) openApps();
+                if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
+                if(which==2) SettingsActivity.chooseProfile(activity);
+                if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
+            }).show();
+        }
         private void openApps() {
             apps = true; menu = false; appIndex = 0; invalidate();
         }
 
         private void launch(Item item) {
-            if ("live".equals(item.id)) {
+            if ("live".equals(item.id) || Endpoint.protectedApp(item.pkg == null ? "" : item.pkg, item.name, prefs.getString("livePackage",""))) {
                 info("Live TV locked: NordVPN protection has not been verified");
                 return;
             }
@@ -429,7 +469,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if ("bbc".equals(item.id)) { base = 0xFF1C2431; glow = 0xFF596273; }
             if ("disney".equals(item.id)) { base = 0xFF091329; glow = 0xFF1D477B; }
             if ("smartutube".equals(item.id)) { base = 0xFF171A24; glow = 0xFF62232D; }
-            if ("live".equals(item.id)) { base = 0xFF0D112B; glow = 0xFF4B328B; }
+            if ("live".equals(item.id) || Endpoint.protectedApp(item.pkg == null ? "" : item.pkg, item.name, prefs.getString("livePackage",""))) { base = 0xFF0D112B; glow = 0xFF4B328B; }
             if ("music".equals(item.id)) { base = 0xFF211827; glow = 0xFF963E72; }
             if ("xbox".equals(item.id)) { base = 0xFF061C14; glow = 0xFF217A50; }
             gradient(c, base, glow, base, alpha);
@@ -452,7 +492,7 @@ public final class UnifiedPreviewActivity extends Activity {
             text(c, "VPN ?", 1530, 114, 29, WHITE, false, Paint.Align.LEFT);
             text(c, "○", 1696, 115, 43, WHITE, false, Paint.Align.CENTER);
             text(c, "⚙", 1773, 114, 43, WHITE, false, Paint.Align.CENTER);
-            if (!apps) text(c, "Preview · VPN not verified · Voice not connected", 1810, 188, 18, 0xB4FFFFFF, false, Paint.Align.RIGHT);
+            if (!apps) text(c, "↑ Apps / Settings   ·   ↓ Your Films & TV", 1810, 188, 23, 0xB4FFFFFF, false, Paint.Align.RIGHT);
         }
 
         private void drawDock(Canvas c, long now) {
@@ -462,20 +502,22 @@ public final class UnifiedPreviewActivity extends Activity {
                 text(c, "No Home apps. Press Up to choose some.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
                 return;
             }
-            float full = Math.min(1550, count * 190 + Math.max(0, count - 1) * 24 + 70);
+            int visible = Math.min(6,count);
+            int first = Math.max(0,Math.min(count-visible,index-visible/2));
+            float full = visible * 190 + Math.max(0, visible - 1) * 24 + 70;
             float left = (W - full) / 2;
             float top = 747, bottom = 1005;
             glass(c, left, top, left + full, bottom, 37, 0x8A3C4758, 0x81FFFFFF);
-            float gap = 24, cellWidth = (full - 66 - (count - 1) * gap) / count;
+            float gap = 24, cellWidth = 190;
             cellWidth = Math.min(190, cellWidth);
-            float total = count * cellWidth + (count - 1) * gap;
+            float total = visible * cellWidth + (visible - 1) * gap;
             float start = (W - total) / 2;
-            for (int i = 0; i < count; i++) {
-                float x = start + i * (cellWidth + gap);
+            for (int i = first; i < first+visible; i++) {
+                float x = start + (i-first) * (cellWidth + gap);
                 float y = top + 31;
                 boolean selected = i == index;
                 float scale = selected ? 1.07f : 1;
-                if (selected && focusAt > 0) {
+                if (selected && focusAt > 0 && !prefs.getBoolean("reduceMotion",false) && !prefs.getBoolean("lightweight",false)) {
                     float t = Math.min(1, (now - focusAt) / 185f);
                     scale = 1 + .07f * (t * (2 - t));
                     if (t < 1) postInvalidateDelayed(16);
@@ -505,7 +547,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
             }
             if (index >= 0 && index < dock.size()) text(c, dock.get(index).name, 960, 714, 48, WHITE, false, Paint.Align.CENTER);
-            text(c, "↑ Apps", left + 30, 1050, 23, 0xB6FFFFFF, false, Paint.Align.LEFT);
+            text(c, "↑ Controls    ↓ Your Films & TV" + (count>6?"     "+(Math.max(0,index)+1)+" / "+count:""), left + 30, 1050, 23, 0xB6FFFFFF, false, Paint.Align.LEFT);
         }
 
         private void drawApps(Canvas c) {
@@ -566,7 +608,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void glass(Canvas c, float l, float t, float r, float b, float radius, int colour, int stroke) {
             rect.set(l, t, r, b);
-            paint.setShader(null); paint.setColor(colour);
+            paint.setShader(null); paint.setColor(prefs.getBoolean("opaque",false)||prefs.getBoolean("highContrast",false)?0xff182133:colour);
             c.drawRoundRect(rect, radius, radius, paint);
             outline.setColor(stroke);
             c.drawRoundRect(rect, radius, radius, outline);

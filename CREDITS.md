@@ -32,3 +32,5 @@ The project is **not affiliated with the upstream maintainers**, and Unified TV 
 ## Contributions
 
 New contributors retain credit in Git history. To contribute third-party code or assets, provide source, exact licence, authorship and redistribution evidence in the pull request. Only original or appropriately licensed screenshots/imagery belong in a public release.
+
+Preview embedded playback uses AndroidX Media3 (Apache-2.0) and its transitive libraries. Gradle retains packaged third-party licence notices. Original Unified TV preview components do not import proprietary mockup assets or fonts. See `preview/THIRD_PARTY.md`.

@@ -1,0 +1,19 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'io.unifiedtv.preview'
+    compileSdk 35
+    defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 2; versionName '0.2-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    sourceSets { main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }; test { java.srcDirs = ['test'] } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
+    lint { abortOnError true; disable 'MissingTranslation' }
+    testOptions { unitTests.includeAndroidResources = true }
+}
+dependencies {
+    implementation 'androidx.media3:media3-exoplayer:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
+    implementation 'androidx.media3:media3-ui:1.5.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}

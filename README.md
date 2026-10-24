@@ -35,7 +35,7 @@ The visual direction draws on the *principles* of contemporary tvOS motion and m
 | Art mode | User-selected artwork and family photos; native Samsung Frame Art Mode stays visually unmodified | **Research and device-specific testing required** |
 | Performance and cleanup | Optional device scan, before/after benchmarks and reversible cleanup | **Existing Android tooling inherited; Unified TV safety flow planned** |
 
-**Nothing in the table implies those integrations are already implemented.** The repository currently contains the inherited CleanYourTV UI application and the original CleanYourTV tools. We will preserve a usable Android baseline while developing and testing changes.
+**Nothing in the table implies those integrations are already implemented.** The repository contains the inherited CleanYourTV UI application, original CleanYourTV tools and a separate experimental preview. We will preserve a usable Android baseline while developing and testing changes.
 
 ## One design, different hardware
 
@@ -47,7 +47,7 @@ A Ring doorbell **must** interrupt wallpaper/art mode on the reference deploymen
 
 ## The TV your family knows
 
-The initial household reference uses six familiar choices: **SmartTube · Netflix · Disney+ · BBC · Live TV · Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
+The initial household reference uses six familiar choices: **SmartTube Â· Netflix Â· Disney+ Â· BBC Â· Live TV Â· Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
 
 All these are *configurable examples*, not compulsory apps. The planned **Apps** screen lets viewers pin and rearrange dock shortcuts independently for each TV; it never uninstalls an app. See [app customisation](docs/APP_CUSTOMISATION.md). People without a NAS, Ring, Alexa, Xbox, VPN or AI subscription should still have a lovely, responsive launcher.
 
@@ -60,6 +60,8 @@ The optional **TV Performance & Cleanup** journey is separate from installation.
 ## First Android TV preview (experimental)
 
 An isolated, non-HOME **Unified TV Preview** APK (package `io.unifiedtv.preview`) is being developed to test the glass dock, neutral artwork, contextual focus and D-pad app personalisation before modifying any TV's existing Home. See [prototype details and test limitations](docs/FIRST_ANDROID_PREVIEW.md). This is not yet a supported Unified TV release or an operational Ring/NAS/VPN integration.
+
+See [preview 0.2 implementation and limitations](docs/PREVIEW_0_2.md), including private Connections, catalogue and embedded playback trials. These are not yet hardware-validated household features.
 
 ## Starting today
 

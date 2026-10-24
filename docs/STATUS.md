@@ -1,10 +1,9 @@
 # What is working today?
 
-Unified TV is an independent **early development fork**. No new Unified TV release or cross-platform implementation has been published.
+Unified TV remains an experimental development fork, not a supported household release.
 
-- **Inherited source present:** CleanYourTV UI Android launcher, original CleanYourTV tools and associated licences.
-- **Documentation now present:** product and UX specification, original credits, roadmap, setup and recovery cautions.
-- **Not yet verified as Unified TV features:** redesigned glass dock, contextual media artwork, NAS/VLC library, Ring live-view interruption, person detection, Alexa toasts, ChatGPT voice, NordVPN fail-closed playback, Sony Xbox control, Samsung native TV Plus integration and Frame Art Mode transition.
-- **Not yet tested:** actual reference television hardware, local Home Assistant, Synology, Samsung audio or package-cleanup improvements.
+The inherited launcher is preserved. The separate non-HOME preview now has source for an editable scrolling dock, private remote-based Connections, separate media profiles/PIN, catalogue browsing, embedded playback trial, actual progress reporting, appearance controls and personal gallery. See [precise implementation boundaries](PREVIEW_0_2.md).
 
-Do not report these planned features as available in a build. See [Roadmap](ROADMAP.md) and [Compatibility](COMPATIBILITY.md) for how we will validate each one.
+Automated build/test evidence is recorded in CI and the development report. Compilation is not device acceptance. Ring, Alexa overlays, verified VPN protection, fixtures, voice, Now Playing, Xbox, Samsung TV Plus/Art Mode transitions and cleanup remain pending. Live TV remains blocked.
+
+Reference Sony/TCL/Frame hardware, local servers, real media codecs and VPN packet behaviour have not been tested by this work. No television was installed or its existing launcher changed.

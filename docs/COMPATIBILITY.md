@@ -29,3 +29,5 @@ Core apps are user-configurable. No user should need Ring, Alexa, a NAS, NordVPN
 - **Unsupported:** operating system does not permit this function by the current approach.
 
 Always report genuine model/firmware, failure modes, and steps to restore the factory UI. Never publish real household IP addresses, account tokens, camera snapshots, MAC addresses or serial numbers.
+
+Preview 0.2 implementation and remaining gates: [status and limitations](PREVIEW_0_2.md). This does not advance hardware gates to Tested.

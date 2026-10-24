@@ -1,0 +1,51 @@
+package io.unifiedtv.preview;
+
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.*;
+import android.view.KeyEvent;
+import android.widget.ImageView;
+import org.json.*;
+import java.io.InputStream;
+import java.util.concurrent.*;
+
+/** Foreground-only gallery: no permanent clock, dock or status badges. */
+public final class GalleryActivity extends Screen {
+    private final Handler timer=new Handler(Looper.getMainLooper());
+    private final ExecutorService images=Executors.newSingleThreadExecutor();
+    private JSONArray selected=new JSONArray();private ImageView image;private int index;private boolean active;
+    private final Runnable advance=new Runnable(){public void run(){showImage();timer.postDelayed(this,45000);}};
+    @Override public void onCreate(Bundle b){super.onCreate(b);try{selected=new Vault(this).read("gallery").optJSONArray("images");}catch(Exception ignored){}if(selected==null)selected=new JSONArray();
+        if(selected.length()==0){page("Gallery");text("Choose your own photographs or artwork. Images stay on this TV.",22);button("Choose images",()->EditLock.ask(this,this::pick));button("Back",this::finish);}
+        else fullScreen();
+    }
+    private void pick(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);try{startActivityForResult(i,7);}catch(Exception e){note("This TV has no image picker. Gallery import is unavailable on this device.");}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=7||result!=RESULT_OK||data==null)return;
+        JSONArray list=new JSONArray();try{
+            int count=data.getClipData()==null?1:Math.min(100,data.getClipData().getItemCount());
+            for(int n=0;n<count;n++){
+                Uri uri=data.getClipData()==null?data.getData():data.getClipData().getItemAt(n).getUri();
+                if(uri==null||!"content".equals(uri.getScheme()))continue;
+                getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);list.put(uri.toString());
+            }
+            new Vault(this).save("gallery",new JSONObject().put("images",list));selected=list;fullScreen();
+        }catch(Exception e){note("Unable to keep access to those images. Try local files.");}
+    }
+    private void fullScreen(){image=new ImageView(this);image.setBackgroundColor(0xff000000);image.setScaleType(ImageView.ScaleType.CENTER_CROP);setContentView(image);
+        getWindow().getDecorView().setSystemUiVisibility(5894);timer.removeCallbacks(advance);if(active)timer.post(advance);
+    }
+    private void showImage(){if(!active||image==null||selected.length()==0)return;String source=selected.optString(index++%selected.length());
+        images.execute(()->{Bitmap bitmap=null;try{
+            Uri uri=Uri.parse(source);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inJustDecodeBounds=true;
+            try(InputStream in=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(in,null,opts);}
+            opts.inJustDecodeBounds=false;opts.inSampleSize=1;while(opts.outWidth/opts.inSampleSize>1920||opts.outHeight/opts.inSampleSize>1080)opts.inSampleSize*=2;
+            try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=BitmapFactory.decodeStream(in,null,opts);}
+        }catch(Exception ignored){}final Bitmap next=bitmap;runOnUiThread(()->{if(active&&next!=null)image.setImageBitmap(next);});});
+    }
+    @Override protected void onResume(){super.onResume();active=true;if(image!=null)timer.post(advance);}
+    @Override protected void onPause(){active=false;timer.removeCallbacksAndMessages(null);super.onPause();}
+    @Override public boolean dispatchKeyEvent(KeyEvent e){if(image!=null){if(e.getAction()==KeyEvent.ACTION_UP)finish();return true;}return super.dispatchKeyEvent(e);}
+    @Override protected void onDestroy(){timer.removeCallbacksAndMessages(null);images.shutdownNow();super.onDestroy();}
+}

@@ -64,3 +64,5 @@
 ## Priority policy
 
 Safety, playback and responsive navigation come before visual flourishes. Ring interruption and VPN fail-closed behaviour are absolute gates for the household reference implementation. The public project must remain useful with all optional household integrations disabled.
+
+Preview 0.2 implementation and remaining gates: [status and limitations](PREVIEW_0_2.md). This does not advance hardware gates to Tested.

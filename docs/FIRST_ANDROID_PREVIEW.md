@@ -1,55 +1,44 @@
-# Unified TV: first Windows-to-TCL test
+# Windows sideload and recovery: standalone preview
 
-> **Status:** first prototype, not a finished launcher or production APK. Verify GitHub Actions build before installing.
+This is an experimental `io.unifiedtv.preview` APK, not a supported launcher replacement. No HOME category is declared. The installed factory launcher stays in place. No package disabling or cleanup is needed.
 
-## Why a separate APK?
+## Obtain and verify
 
-The first prototype is a completely independent Android package, **io.unifiedtv.preview**. Its manifest contains no \`android.intent.category.HOME\` activity or system/cleanup permission. Installing it from Windows using ADB never changes the default Google TV launcher or disables factory apps.
+Download `UnifiedTV-Preview-test-only` from a passing [GitHub Actions CI run](https://github.com/tcrosswell-99/Unified-TV/actions), unzip it, and keep `UnifiedTV-Preview.apk` alongside `SHA256SUMS.txt` and `manifest.txt`. Compare the SHA-256 with `Get-FileHash .\UnifiedTV-Preview.apk -Algorithm SHA256`. The compiled manifest and build job verify the package and absence of HOME registration. Use only this reviewed artifact.
 
-The earlier draft had embedded a preview activity inside the inherited CleanYourTV UI package, which itself declares Android HOME. That approach has been removed from this branch in favour of the safer isolated preview.
+## Android TV 11: do not assume pairing screens
 
-## What is available for testing
+The reference TCL is confirmed Android TV 11. Newer Android TV wireless-pairing screens may not exist. The owner's earlier LAN connection failed; that does not block development. Do not repeat scans or guess debugging ports.
 
-An illustrated neutral scenery placeholder, 24-hour UK clock, minimalist glass dock, installed-app discovery, gentle service-specific gradient backgrounds on focus, and remote-only app add/move/remove with local persistence. Press Up to open Apps; long-press OK on the dock for the edit menu. Long docks need real-TV readability testing.
+If the TV offers supported Network debugging, use only the connection address and port it exposes, on the same trusted network. If no supported connection is available, copy the APK from Windows to a USB drive and open it using a trusted file manager already on the TV. Allow that specific app to install unknown apps only for this task, approve the standalone preview installation, then revoke that permission. USB/file-manager compatibility needs checking on the actual TCL. Another option is a supported USB debugging path, if the TV exposes one. No factory reset, rooting or launcher-disable workaround is required.
 
-**Deliberate placeholders:** the Ring override, NAS/VLC catalogue, ChatGPT voice, Alexa, VPN verification, Sony Xbox control, music playback and Samsung native Tizen integration remain unbuilt. Live TV is blocked rather than risking an unprotected ReamSmartz launch. The icon currently says **VPN ?**, not a verified connection or exit country. Dynamic artwork and a photo gallery follow later.
+## ADB route, only once an authorised connection works
 
-## Build via GitHub Actions
+Install [official Android Platform Tools](https://developer.android.com/tools/releases/platform-tools) on Windows. Replace the variables below with the address actually shown by the TV and the expected checksum from the build artifact. These commands are instructions for the later owner-controlled installation, not commands run by development.
 
-If the fork has no runs under [Actions](https://github.com/tcrosswell-99/Unified-TV/actions), first enable workflows for this fork in the Actions page. On an enabled run, look for the **Standalone Unified TV Preview APK (test only)** job. The \`preview/build.sh\` process compiles an Android 28+ app using SDK 34, builds a test APK, checks its own signature and rejects a HOME declaration.
+```powershell
+$tvEndpoint = Read-Host 'TV debugging IP:port shown by the TV'
+$apk = Join-Path $HOME 'Downloads\UnifiedTV-Preview.apk'
+$checksum = Read-Host 'Expected SHA-256 from SHA256SUMS.txt'
+.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress $tvEndpoint -InspectOnly
+.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress $tvEndpoint -ApkPath $apk -ExpectedSha256 $checksum
+# Later remove only this preview:
+.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress $tvEndpoint -RemovePreview
+```
 
-Once the workflow **passes**, download its **UnifiedTV-Preview-test-only** artifact, unzip it and locate \`UnifiedTV-Preview.apk\`. Every CI job generates a temporary signature, so installing a later CI build over a previous one might fail: uninstall the preview using the helper first (only preview preferences are lost).
+Only supply `-PairAddress` when the device actually offers pairing; Android TV 11 does not guarantee it. With an existing USB connection, use an explicit `-Serial` from `adb devices -l`. The helper refuses ambiguous targets, requires a matching APK checksum and requests an install/remove confirmation. It never sets HOME, disables packages or edits factory apps. Turn debugging off after testing.
 
-## Connect from Windows to TCL
+Fresh CI builds can have different test-signing keys. A signature mismatch requires uninstalling only the old preview; its connection/profile/gallery data is lost and must be re-entered. Never uninstall factory Home. Rollback is simply exit via the remote Home button and uninstall Unified TV Preview through TV Settings > Apps, or the helper. PIN recovery in this prototype is preview data reset/uninstall; it does not affect factory Home.
 
-1. Install [official Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) on the Windows PC and make \`adb.exe\` available on PATH.
-2. On the TCL, open **Settings > System > About**, press OK repeatedly on the **Android TV OS build** entry to reveal Developer options, if available. Then enable **Wireless debugging** in Developer options, on Android versions that support it.
-3. Choose **Pair device with pairing code**. Read the TV's displayed *pairing* IP:port and code. On the Wireless debugging screen, find the separate *connection* IP:port. These ports are different.
-4. Open PowerShell in the Unified TV checkout and run the following, substituting the TV's real addresses:
+## Owner test checklist
 
-\`\`\`powershell
-# Inspect the TV without installing:
-.\scripts\windows\Test-UnifiedTV.ps1 -PairAddress "192.168.1.50:37111" -ConnectAddress "192.168.1.50:41929" -InspectOnly
+- Factory Home still opens with Home; preview launches as an ordinary app.
+- Left/Right acknowledge rapid input, the final brand background matches selection, Up offers controls and Down reveals the media shelf.
+- Pin, remove, restore, move-save and move-cancel work; more than six shortcuts stay legible; restart retains layout.
+- Test valid/invalid HA/media endpoints, IPv6/hostname input, authorisation errors, HTTPS certificates, consented HTTP, Save/Edit/Forget and offline Home.
+- Set an adult PIN, configure different restricted media users and prove Child cannot browse/search/play Adult-only items. This is not a lock on Android or external streaming apps.
+- Test real films, subtitles, audio, seek, stop/reopen and server progress. Do not mark Continue Watching verified until results round-trip.
+- Gallery has no controls or clock, exits on a key without launching an app, and never starts while another app plays.
+- Live TV stays blocked. No Ring, VPN, Samsung, voice or cross-app overlay capability is claimed yet.
 
-# Install the ZIP-extracted APK only after the CI build passes:
-.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress "192.168.1.50:41929" -ApkPath "$HOME\Downloads\UnifiedTV-Preview.apk"
-
-# Remove only the preview if you want to return to the original state:
-.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress "192.168.1.50:41929" -RemovePreview
-\`\`\`
-
-The IP addresses shown above are **examples**, not discovered addresses. If your TCL doesn't have Wireless debugging, the connection procedure is firmware dependent; do not guess a TCP debugging port or enable permanent remote debugging.
-
-## Acceptance test on TCL
-
-- Confirm the detected model and Android version, and take note of normal Google TV Home performance.
-- From the TV remote, test 100 rapid Left/Right presses and confirm responsive focus and final correct themed background.
-- Press Up and pin an installed application. Long-press OK to Move, press Back to cancel, repeat and press OK to save.
-- Remove a Home shortcut. Check the app is still installed and accessible in Apps.
-- Return from Netflix or BBC to the preview and confirm the chosen layout remains.
-- Check long docks with eight or more installed apps and note if labels shrink or overflow.
-- Confirm Live TV shows an unavailable/protected message without launching ReamSmartz.
-- Check that standard Google TV Home continues to work and uninstall preview when finished.
-- Turn Wireless debugging off on the TV once testing is complete.
-
-No network scan, Home Assistant access, Ring camera control, streaming-service credentials or bloatware modifications are performed by these scripts. All diagnostic commands act only on the explicitly paired TV.
+See [0.2 boundaries](PREVIEW_0_2.md) and [full specification](PRODUCT_SPEC.md). Never publish real household addresses or tokens in bug reports.

@@ -6,6 +6,7 @@ Requires Google's official adb.exe: https://developer.android.com/tools/releases
 [CmdletBinding()]
 param(
     [string]$ApkPath,
+    [ValidatePattern("^[A-Fa-f0-9]{64}$")][string]$ExpectedSha256,
     [string]$PairAddress,
     [string]$ConnectAddress,
     [string]$Serial,
@@ -39,12 +40,18 @@ $devices = @($rows | Where-Object { $_ -match '^\S+\s+device(?:\s|$)' } | ForEac
 if ($devices.Count -eq 0) {
     Write-Host "No authorised TV connection yet." -ForegroundColor Yellow
     Write-Host "On TCL: Settings > System > About > Android TV OS build (press OK 7 times)."
-    Write-Host "Then System > Developer options > Wireless debugging, if supported."
-    Write-Host "Use 'Pair device with pairing code' to get IP:PAIRPORT and pairing code."
-    Write-Host "Note also the different IP:DEBUGPORT shown on the Wireless debugging page."
-    Write-Host "Run this script again with -PairAddress 'IP:PAIRPORT' -ConnectAddress 'IP:DEBUGPORT'."
+    Write-Host "On Android TV 11 use only a supported Network debugging address/port shown by the TV."
+    Write-Host "Pairing screens exist only on some versions; do not assume this TV has them."
+    Write-Host "If no supported debugging route works, see the USB/file-manager sideload guide."
+    Write-Host "No TV was selected and nothing was installed."
     exit 1
 }
+if ($ConnectAddress) {
+    if ($devices -notcontains $ConnectAddress) { throw "The requested TV endpoint is not authorised and connected. No other device will be selected." }
+    if ($Serial -and $Serial -ne $ConnectAddress) { throw "Serial and connection endpoint differ. Select one intended target." }
+    $Serial = $ConnectAddress
+}
+if (-not $Serial) { throw "Supply an explicit -Serial or -ConnectAddress for the intended TV." }
 if (-not $Serial -and $devices.Count -gt 1) { throw "Multiple devices connected. Supply -Serial for the intended TV." }
 if (-not $Serial) { $Serial = $devices[0] }
 if ($devices -notcontains $Serial) { throw "Selected -Serial is not a connected ADB device." }
@@ -70,12 +77,15 @@ if (-not $ApkPath) {
 }
 if (-not (Test-Path -LiteralPath $ApkPath -PathType Leaf)) { throw "APK not found: $ApkPath" }
 if ([IO.Path]::GetExtension($ApkPath).ToLowerInvariant() -ne ".apk") { throw "Expected an .apk file." }
+if (-not $ExpectedSha256) { throw "Supply -ExpectedSha256 from the verified build's SHA256SUMS.txt." }
+$actualSha = (Get-FileHash -LiteralPath $ApkPath -Algorithm SHA256).Hash
+if ($actualSha -ne $ExpectedSha256) { throw "APK checksum mismatch. No installation attempted." }
 Write-Host "Target $maker $model; separate package io.unifiedtv.preview; no HOME registration."
 if ((Read-Host "Type INSTALL to authorise installation") -cne "INSTALL") { Write-Host "Cancelled."; exit 0 }
 & $adb @prefix install -r $ApkPath
 if ($LASTEXITCODE -ne 0) { throw "Install failed. If an earlier CI build has a different temporary signature, uninstall ONLY the old preview before retrying." }
 & $adb @prefix shell am start -W -n "io.unifiedtv.preview/.UnifiedPreviewActivity"
 if ($LASTEXITCODE -ne 0) { throw "Couldn't launch preview." }
-Write-Host "Now test with TCL remote: Left/Right select; Up lists apps; hold OK on dock = edit; Back cancels."
+Write-Host "Now test with TCL remote: Left/Right select; Up opens Apps/Settings; Down opens media; hold OK on dock = edit; Back cancels."
 Write-Host "Live TV intentionally stays blocked until VPN protection passes testing."
 Write-Host "Uninstall later with -RemovePreview. Switch Wireless debugging OFF on the TV afterwards."
