@@ -25,7 +25,7 @@ public final class LibraryActivity extends Screen {
     @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);load("");}
     private String rootQuery(String type,String search){
         return "/Users/"+LocalApi.segment(config.optString("user"))+"/Items?Recursive=true&IncludeItemTypes="+type+
-            "&Fields=Overview,UserData&EnableImageTypes=Primary,Backdrop&Limit="+(shelf?"12":"80")+
+            "&Fields=Overview,UserData&EnableImageTypes=Primary,Backdrop&Limit="+(shelf?"12":"24")+
             "&SortBy=DateCreated&SortOrder=Descending"+(search.isEmpty()?"":"&SearchTerm="+LocalApi.segment(search));
     }
     private void load(String request){
@@ -42,21 +42,45 @@ public final class LibraryActivity extends Screen {
         if(request.isEmpty()){
             button(shelf?"View All":"Films",()->navigate(rootQuery("Movie","")));
             button("Series",()->navigate(rootQuery("Series","")));
+            button("Genres",()->navigate("/Genres?UserId="+LocalApi.segment(config.optString("user"))+"&IncludeItemTypes=Movie,Series&Recursive=true"));
             button("Search",()->{EditText search=new EditText(this);search.setSingleLine(true); new AlertDialog.Builder(this).setTitle("Search your library").setView(search).setNegativeButton("Cancel",null)
                 .setPositiveButton("Search",(d,w)->navigate(rootQuery("Movie,Series",search.getText().toString()))).show();});
         }
-        String path=request.isEmpty()?rootQuery("Movie,Series",""):request;
+        String initialPath=request.isEmpty()?rootQuery("Movie,Series",getIntent().getStringExtra("search")==null?"":getIntent().getStringExtra("search")):request;
+        final String path=shelf?initialPath:pagePath(initialPath,offset(initialPath));
         TextView state=text("Loading your library…",22);
         worker.execute(()->{
             try {
                 JSONObject me=LocalApi.get(config,"/Users/Me");
                 MediaAccount.require(me,config.optString("user"),EditLock.child(this));
-                JSONArray items=LocalApi.get(config,path).optJSONArray("Items");
-                runOnUiThread(()->{if(!active(current))return; state.setText(items==null||items.length()==0?"No titles available for this profile":"");render(items,current);});
+                JSONObject result=LocalApi.get(config,path);JSONArray items=result.optJSONArray("Items");
+                runOnUiThread(()->{
+                    if(!active(current))return;
+                    state.setText(items==null||items.length()==0?"No titles available for this profile":"");
+                    if(path.startsWith("/Genres"))renderGenres(items);else render(items,current);
+                    if(!shelf){
+                        int start=offset(path),total=result.optInt("TotalRecordCount");
+                        if(start>0)button("Previous page",()->navigate(pagePath(path,Math.max(0,start-24))));
+                        if(start+24<total)button("Next page",()->navigate(pagePath(path,start+24)));
+                    }
+                });
             }catch(Exception e){runOnUiThread(()->{if(active(current)){state.setText("Library unavailable · check this profile's connection and server permissions.");button("Retry",()->load(request));}});}
         });
     }
     private boolean active(int g){return g==generation&&!isFinishing()&&!isDestroyed();}
+    private static int offset(String path){try{return Integer.parseInt(android.net.Uri.parse(path).getQueryParameter("StartIndex"));}catch(Exception e){return 0;}}
+    private static String pagePath(String path,int offset){
+        android.net.Uri uri=android.net.Uri.parse(path);android.net.Uri.Builder builder=uri.buildUpon().clearQuery();
+        for(String key:uri.getQueryParameterNames())if(!key.equals("Limit")&&!key.equals("StartIndex"))for(String value:uri.getQueryParameters(key))builder.appendQueryParameter(key,value);
+        return builder.appendQueryParameter("Limit","24").appendQueryParameter("StartIndex",""+offset).build().toString();
+    }
+    private void renderGenres(JSONArray items){
+        if(items!=null)for(int n=0;n<items.length();n++){
+            JSONObject genre=items.optJSONObject(n);if(genre==null)continue;
+            button(genre.optString("Name","Genre"),()->navigate(rootQuery("Movie,Series","")+"&GenreIds="+LocalApi.segment(genre.optString("Id"))));
+        }
+        button("Back",this::onBackPressed);
+    }
     private void unavailable(String message){text(message,24);button("Open Settings",()->{EditLock.ask(this,()->startActivity(new Intent(this,SettingsActivity.class)));});button("Back to Home",this::finish);}
     private void render(JSONArray items,int current){
         if(items==null)return;

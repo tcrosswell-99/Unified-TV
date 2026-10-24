@@ -28,7 +28,7 @@ No Alexa source automation has been installed by this development work. Do not c
 
 An optional HA calendar entity supplies `start_time`/`end_time` for Tottenham fixtures. The app checks the UK matchday, shows kick-off time or Live, and hides after a 15-minute grace period. It never renders calendar message text, scores or results. The calendar must cover all relevant competitions and postponements. Refresh is every 15 minutes while Home is active; failed requests hide the card. The Live TV action remains blocked by the same unverified-protection policy.
 
-Ask your TV offers local app/profile/camera commands, remote keyboard input and optional system speech recognition with `en-GB`. Recognition depends on the TV's installed provider and may use its cloud. Optional deliberate Assist requests go to the user's configured HA conversation agent, not an embedded OpenAI key. Keep that agent's exposed controls appropriately scoped; do not expose a Live TV launch action until VPN packet protection passes. OpenAI realtime media discovery and a trusted relay are still absent. Child media profiles do not secure HA, Android or external apps.
+Ask your TV offers local app/profile/camera commands, remote keyboard input and optional system speech recognition with `en-GB`. Recognition depends on the TV's installed provider and may use its cloud. Unrecognised requests do not execute HA conversation actions: this avoids bypassing the protected-source policy through an unconstrained assistant. Find followed by a title searches the restricted media library locally. General HA Assist/OpenAI realtime discovery needs a scoped read-only relay and remains disabled. Child media profiles do not secure HA, Android or external apps.
 
 ## Sources
 

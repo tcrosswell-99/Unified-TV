@@ -49,6 +49,6 @@ public class RemoteJourneyTest {
         assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
     @Test public void upOpensNativeControls()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);assertTrue(d.isShowing());assertEquals(6,d.getListView().getCount());
+        press(KeyEvent.KEYCODE_DPAD_UP);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);assertTrue(d.isShowing());assertEquals(5,d.getListView().getCount());
     }
 }

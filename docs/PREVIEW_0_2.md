@@ -16,9 +16,9 @@ Package `io.unifiedtv.preview`, min Android 9/API 28, target API 33. Android TV 
 
 Child mode separates this app's media account. It does not secure Android, prevent third-party app launches, implement a kiosk or select their accounts. Configure restricted libraries/ratings on the server. Never use a global API key for Child. PIN retries are throttled after five failures. This remains an app editing boundary, not a hardened kiosk. Owner recovery is preview data reset/uninstall; a friendlier recovery flow remains release work.
 
-App artwork uses original brand-aware gradients. Gallery is an initial implementation; configurable timing, weighting, transitions, time-of-day mood and OLED measurements remain. The media shelf opens as a separate progressive destination; the final rising Home transition is pending. Offline poster caching, full pagination/genres, complete Home accessibility and polished visual handoff remain.
+App artwork uses original brand-aware gradients. Gallery is an initial implementation; configurable timing, weighting, transitions, time-of-day mood and OLED measurements remain. The media shelf opens as a separate progressive destination; the final rising Home transition is pending. Offline poster caching,  complete Home accessibility and polished visual handoff remain.
 
-Experimental household adapters now cover HA doorbell/person subscriptions, HLS camera overlays, private reminder events, configured room scripts, fixture-calendar display and deliberate voice/Assist requests. These are source implementations, not verified household integrations. Now Playing, OpenAI realtime discovery, verified VPN routing, shared room preferences and model-safe cleanup remain unimplemented. Native Samsung actions require actual owner scripts and supported TV integrations. Full v1.9 requirements remain in force. No TV installation or validation has occurred.
+Experimental household adapters now cover HA doorbell/person subscriptions, HLS camera overlays, private reminder events, configured room scripts, fixture-calendar display and bounded local voice commands. These are source implementations, not verified household integrations. Now Playing, OpenAI realtime discovery, verified VPN routing, shared room preferences and model-safe cleanup remain unimplemented. Native Samsung actions require actual owner scripts and supported TV integrations. Full v1.9 requirements remain in force. No TV installation or validation has occurred.
 
 ## Build
 
@@ -29,3 +29,5 @@ CI uploads `UnifiedTV-Preview-test-only` and `UnifiedTV-test-and-lint-reports`. 
 See [Windows sideload and rollback](FIRST_ANDROID_PREVIEW.md).
 
 See [household adapter setup](HOUSEHOLD_ADAPTERS.md) and the [all-TV test matrix](ALL_TV_TEST_PLAN.md). A read-only Performance & Cleanup screen reports available memory/storage and partial local input-to-draw samples; no cleanup is enabled.
+
+Catalogue browsing now pages 24 items at a time and includes Genres, limiting poster memory while retaining access to the full server catalogue. General assistant requests remain disabled pending a scoped discovery relay; no unconstrained conversation agent can launch Live TV indirectly.

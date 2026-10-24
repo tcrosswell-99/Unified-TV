@@ -20,7 +20,7 @@ This is a test plan and implementation inventory, **not a claim of full test rea
 | Native TV Plus and Art Mode prior-state return | Hidden | Hidden | Owner HA scripts to supply | Native mode tests required |
 | Fixtures, UK dates/DST, postponement, no score spoilers | Calendar to configure | Calendar to configure | Calendar to configure | Android input only |
 | AirPin setup, receiving, reboot/sleep behaviour | If installed | Manual setup adapter | If installed | Not claimed |
-| Local voice/remote microphone and Assist agent scope | Adapter to test | Adapter to test | Adapter to test | Not claimed |
+| Local voice/remote microphone and guarded commands | Adapter to test | Adapter to test | Adapter to test | Not claimed |
 | OpenAI realtime media discovery | Relay not implemented | Relay not implemented | Relay not implemented | Not claimed |
 | VPN ownership/exit, DNS/IPv4/IPv6 drop/wake leaks and LAN | Live TV blocked | Live TV blocked | Live TV blocked | TV Plus separate |
 | Amazon custom album Now Playing | API access unproven | API access unproven | API access unproven | Not claimed |
@@ -30,4 +30,6 @@ Before testing, record exact model, firmware, OS, free storage/RAM, remote type,
 
 For each result record APK hash, device/firmware, start state, steps, observed result, timing, recovery outcome and evidence location. A pass on one TV never promotes the others. Missing hardware connectivity blocks deployment, not development.
 
-Release gates remain open for full visual handoff/motion polish, complete catalogue pagination/genres/offline caching, physical-TV performance, reliable watch-state round-trip, boot/sleep alert persistence, native Samsung transitions, Amazon access, realtime voice relay, VPN enforcement and cleanup. Do not describe this preview as a complete household release while any P0 gate is open.
+Release gates remain open for full visual handoff/motion polish, offline catalogue caching, physical-TV performance, reliable watch-state round-trip, boot/sleep alert persistence, native Samsung transitions, Amazon access, realtime voice relay, VPN enforcement and cleanup. Do not describe this preview as a complete household release while any P0 gate is open.
+
+Catalogue browsing now pages 24 items at a time and includes Genres, limiting poster memory while retaining access to the full server catalogue. General assistant requests remain disabled pending a scoped discovery relay; no unconstrained conversation agent can launch Live TV indirectly.

@@ -24,7 +24,6 @@ public final class HouseholdActivity extends Screen {
         EditText ringEnter=field("Frame Ring entry script: capture prior state then change input, never wake an off TV",config.optString("ringEnter"),false);
         EditText ringExit=field("Frame Ring return script: restore the captured mode and input",config.optString("ringExit"),false);
         CheckBox reminders=new CheckBox(this);reminders.setText("Allow private reminder events from Home Assistant");reminders.setTextColor(-1);reminders.setChecked(config.optBoolean("reminders"));column.addView(reminders);
-        CheckBox assist=new CheckBox(this);assist.setText("Allow deliberate requests to my configured Home Assistant Assist agent");assist.setTextColor(-1);assist.setChecked(config.optBoolean("assist"));column.addView(assist);
         button("Save household setup",()->{
             try{
                 String profile=room.getText().toString().trim();if(!profile.matches("tcl|sony|frame"))throw new IllegalArgumentException();
@@ -35,7 +34,7 @@ public final class HouseholdActivity extends Screen {
                     if(!v.isEmpty()&&!v.matches(domain+"\\.[a-z0-9_]+"))throw new IllegalArgumentException();value.put(names[n],v);
                 }
                 String cal=calendar.getText().toString().trim();if(!cal.isEmpty()&&!cal.matches("calendar\\.[a-z0-9_]+"))throw new IllegalArgumentException();
-                value.put("calendar",cal).put("reminders",reminders.isChecked()).put("assist",assist.isChecked());new Vault(this).save("household",value);
+                value.put("calendar",cal).put("reminders",reminders.isChecked());new Vault(this).save("household",value);
                 getSharedPreferences("unified-tv-preview",0).edit().putString("room",profile).apply();note("Saved locally. Restart Home to update room shortcuts.");
             }catch(Exception e){note("Check room and entity names. Setup was not saved.");}
         });

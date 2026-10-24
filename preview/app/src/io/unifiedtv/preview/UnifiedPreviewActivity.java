@@ -406,8 +406,10 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void controls() {
+            java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Apps", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
+            if(!fixture.isEmpty())actions.add("Matchday Live TV - protection required");
             new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
-                new String[]{"Apps · add and rearrange", "Settings", "Who's watching?", "Gallery", "Ask your TV", "Matchday Live TV - protection required"}, (dialog,which) -> {
+                actions.toArray(new String[0]), (dialog,which) -> {
                 if(which==0) openApps();
                 if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
                 if(which==2) SettingsActivity.chooseProfile(activity);

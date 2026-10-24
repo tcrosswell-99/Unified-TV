@@ -24,6 +24,7 @@ class Screen extends Activity {
     EditText field(String label,String value,boolean secret) {
         text(label,18); EditText e=new EditText(this); e.setText(value); e.setTextColor(Color.WHITE); e.setTextSize(20);
         e.setSingleLine(true); e.setSelectAllOnFocus(true); e.setContentDescription(label);
+        e.setSaveEnabled(false);e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         e.setInputType(secret ? 129 : android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         column.addView(e,new LinearLayout.LayoutParams(-1,58)); return e;
     }
