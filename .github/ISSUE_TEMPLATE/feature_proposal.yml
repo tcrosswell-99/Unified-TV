@@ -1,0 +1,24 @@
+name: Feature proposal
+description: Suggest a useful, uncluttered family TV improvement
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "Unified TV is a family-first experiment. Feature proposals should preserve the calm Home screen and remain optional when they depend on external services."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What everyday viewing problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: interaction
+    attributes:
+      label: What should the remote/user experience be?
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: TV platforms, permissions, external services and fallbacks
