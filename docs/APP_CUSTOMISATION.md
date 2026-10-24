@@ -2,7 +2,7 @@
 
 **Status:** required Unified TV feature (P0), not yet implemented in the inherited launcher as specified here.
 
-The home screen is a **personal shortlist**, not a fixed collection of apps. A viewer must be able to add, remove and reorder applications using only the television's normal remote. The design should feel as calm as the rest of the glass home screen: **content first, underlying technology hidden**.
+The home screen is a **personal shortlist**, not a fixed collection of apps. The six shared services are defaults, not a permanent allowlist; parents can optionally protect layout editing. A viewer must be able to add, remove and reorder applications using only the television's normal remote. The design should feel as calm as the rest of the glass home screen: **content first, underlying technology hidden**.
 
 ## Installed apps library: Add to Home
 

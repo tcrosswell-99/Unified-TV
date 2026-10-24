@@ -12,6 +12,17 @@
 
 **Completion:** clean Android test build, verified recovery notes, documented starting performance, public docs and a clear difference between inherited and planned features.
 
+## 0.5 Windows-to-TCL pilot and local setup
+
+- CI-compile and verify standalone `io.unifiedtv.preview` APK from GitHub Actions (separate from existing HOME application).
+- Use the confirmed TCL Android TV 11 hardware and private owner-supplied address. Inspect actual Developer options before selecting Android 11 network debugging, USB ADB or approved offline sideload; **do not assume newer TV pairing mode**.
+- Read model/version first, install only with express approval, test glass dock, app focus and edit controls, then uninstall preview and verify normal Google TV Home.
+- Create **Settings > Connections** with on-TV Home Assistant and NAS/Jellyfin host/port, secure credentials, Test/Save/Forget and offline resilience.
+- Test installed **AirPin LITE** independently for start-on-boot and AirPlay discovery, with truthful icon state and no background-app promises.
+- Measure real input latency, memory and playback before any optional bloatware cleanup.
+
+**Gate:** confirmed successful build, non-HOME manifest, safe install/rollback, tested local configuration and no factory package changes. See [TCL pilot guide](LOCAL_CONNECTIONS_AND_TCL_TESTING.md).
+
 ## 1. Technical release gates
 
 - **Ring:** prove doorbell press and person-detection triggers with live video, without remote interaction, over Home and artwork. Test interrupted viewing and exact return on Sony, TCL and Samsung Frame native Art Mode. No claim of success until proven on all target platforms.
