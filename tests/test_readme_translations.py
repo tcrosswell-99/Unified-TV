@@ -72,7 +72,7 @@ class LinkReaderTest(unittest.TestCase):
     """The reader above has to see the shapes the pages really use, and nothing else."""
 
     def test_markdown_and_html_links_are_both_read(self):
-        text = "[ä¸­æ–‡](README.zh-CN.md) Â· <a href=\"README.ja.md\">æ—¥æœ¬èªž</a>"
+        text = "[中文](README.zh-CN.md) · <a href=\"README.ja.md\">日本語</a>"
         self.assertEqual({"README.zh-CN.md", "README.ja.md"}, links(text))
 
     def test_an_anchor_and_a_leading_dot_slash_are_dropped(self):
@@ -86,7 +86,7 @@ class LinkReaderTest(unittest.TestCase):
         self.assertEqual(set(), links("[site](https://cleanyour.tv) [mail](mailto:a@b) [#top](#top)"))
 
     def test_a_missing_language_is_reported(self):
-        text = "[English](README.md) Â· [æ—¥æœ¬èªž](README.ja.md)"
+        text = "[English](README.md) · [日本語](README.ja.md)"
         self.assertEqual(["README.vi.md"], missing([FRONT, "README.ja.md", "README.vi.md"], text))
 
     def test_a_page_that_links_nothing_reports_everything(self):

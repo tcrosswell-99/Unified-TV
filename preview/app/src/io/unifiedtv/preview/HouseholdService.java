@@ -23,7 +23,7 @@ public final class HouseholdService extends Service {
     private final AlertPolicy policy=new AlertPolicy();
     private OkHttpClient client;private WebSocket socket;private JSONObject config,house;
     private WindowManager windows;private View cameraOverlay,reminderOverlay;private ExoPlayer cameraPlayer;
-    private boolean stopped;private int retry=1000,command=10;private int streamId;private TextView cameraState;
+    private boolean stopped,authorised,pendingCamera;private int retry=1000,command=10;private int streamId;private TextView cameraState;
     private static final int NOTIFICATION=42;
     private final Runnable timeout=this::dismiss;
     @Override public void onCreate(){super.onCreate();windows=(WindowManager)getSystemService(WINDOW_SERVICE);
@@ -45,7 +45,10 @@ public final class HouseholdService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&"stop".equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
         if(intent!=null&&"dismiss".equals(intent.getAction())){dismiss();return START_NOT_STICKY;}
-        if(intent!=null&&"camera".equals(intent.getAction())&&socket!=null){try{if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))ring();}catch(Exception ignored){}return START_NOT_STICKY;}
+        if(intent!=null&&"camera".equals(intent.getAction())){
+            if(authorised){if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))ring();}
+            else pendingCamera=true;
+        }
         if(socket==null)connect();return START_NOT_STICKY;
     }
     private void connect(){
@@ -62,7 +65,7 @@ public final class HouseholdService extends Service {
             });
         }catch(Exception e){update("Not configured · open household settings");stopSelf();}
     }
-    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;update("Offline · retrying");main.postDelayed(this::connect,retry);retry=Math.min(30000,retry*2);}
+    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;authorised=false;update("Offline · retrying");main.postDelayed(this::connect,retry);retry=Math.min(30000,retry*2);}
     private void send(WebSocket ws,JSONObject command){ws.send(command.toString());}
     private void message(WebSocket ws,String text){
         if(stopped||ws!=socket)return;
@@ -71,9 +74,11 @@ public final class HouseholdService extends Service {
             if(type.equals("auth_required"))send(ws,new JSONObject().put("type","auth").put("access_token",config.getString("token")));
             else if(type.equals("auth_invalid")){update("Authentication required · update your connection");ws.cancel();socket=null;stopSelf();}
             else if(type.equals("auth_ok")){
+                authorised=true;
                 retry=1000;send(ws,new JSONObject().put("id",1).put("type","subscribe_events").put("event_type","state_changed"));
                 if(house.optBoolean("reminders"))send(ws,new JSONObject().put("id",2).put("type","subscribe_events").put("event_type","unified_tv_reminder"));
                 update("Authorised · waiting for subscription confirmation");
+                if(pendingCamera){pendingCamera=false;if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))ring();}
             }else if(type.equals("result")){
                 if(value.optInt("id")==1)update(value.optBoolean("success")?"Listening · actual triggers and video need TV tests":"Subscription refused · check account permissions");
                 if(value.optInt("id")==streamId&&streamId>0){

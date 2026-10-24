@@ -18,8 +18,22 @@ public final class GalleryActivity extends Screen {
     private JSONArray selected=new JSONArray();private ImageView image;private int index;private boolean active;
     private final Runnable advance=new Runnable(){public void run(){showImage();timer.postDelayed(this,45000);}};
     @Override public void onCreate(Bundle b){super.onCreate(b);try{selected=new Vault(this).read("gallery").optJSONArray("images");}catch(Exception ignored){}if(selected==null)selected=new JSONArray();
-        if(selected.length()==0){page("Gallery");text("Choose your own photographs or artwork. Images stay on this TV.",22);button("Choose images",()->EditLock.ask(this,this::pick));button("Back",this::finish);}
+        if(selected.length()==0||getIntent().getBooleanExtra("edit",false)){manage();}
         else fullScreen();
+    }
+    private void manage(){
+        page("Gallery");text("Choose your own photographs or artwork. Images stay on this TV. Selected images: "+selected.length(),22);
+        button("Choose or replace images",()->EditLock.ask(this,this::pick));
+        if(selected.length()>0){
+            button("Remove an image",()->EditLock.ask(this,()->{
+                String[] labels=new String[selected.length()];for(int n=0;n<labels.length;n++)labels[n]="Image "+(n+1);
+                new android.app.AlertDialog.Builder(this).setTitle("Remove from gallery · originals are kept").setItems(labels,(d,which)->{
+                    selected.remove(which);try{new Vault(this).save("gallery",new JSONObject().put("images",selected));}catch(Exception e){note("Unable to save gallery selection");}manage();
+                }).show();
+            }));
+            button("Start gallery",this::fullScreen);
+        }
+        button("Back",this::finish);
     }
     private void pick(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);try{startActivityForResult(i,7);}catch(Exception e){note("This TV has no image picker. Gallery import is unavailable on this device.");}}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=7||result!=RESULT_OK||data==null)return;

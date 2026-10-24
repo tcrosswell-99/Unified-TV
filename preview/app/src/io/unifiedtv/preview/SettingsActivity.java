@@ -23,7 +23,7 @@ public final class SettingsActivity extends Screen {
                 (d,which,on)->getSharedPreferences("unified-tv-preview",0).edit().putBoolean(keys[which],on).apply()).setPositiveButton("Done",null).show();
         });
         button("Adult / Child profile",()->chooseProfile(this));
-        button("Choose gallery images",()->startActivity(new Intent(this,GalleryActivity.class)));
+        button("Choose gallery images",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
         button("Clear gallery selection",()->new AlertDialog.Builder(this).setMessage("Remove the gallery selection? Original files are kept.").setNegativeButton("Cancel",null).setPositiveButton("Clear",(d,w)->new Vault(this).forget("gallery")).show());
         button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
         button("TV picture, audio, Wi-Fi & Bluetooth",()->{

@@ -173,6 +173,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         void refresh() {
+            handler.removeCallbacks(clockTick);handler.postDelayed(clockTick,60000);
             fixtureFetched=0;fixture();
             if(moving)goBack();
             installed.clear();dock.clear();scanInstalled();loadDock();
@@ -180,6 +181,7 @@ public final class UnifiedPreviewActivity extends Activity {
             atmosphere=index<0?null:dock.get(index);former=null;fadeAt=0;invalidate();
         }
         void pause() {
+            handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);
             handler.removeCallbacks(hold); okDown=false;held=false;
             if(moving) goBack();
             prefs.edit().putInt("focus",Math.max(0,index)).apply();
@@ -452,7 +454,9 @@ public final class UnifiedPreviewActivity extends Activity {
             long now = SystemClock.uptimeMillis();
             drawBackground(c, now);
             drawHeader(c);
-            if(!fixture.isEmpty())text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
+            if(!fixture.isEmpty()) {
+                text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
+            }
             if (apps) drawApps(c);
             else drawDock(c, now);
             if (menu) drawMenu(c);

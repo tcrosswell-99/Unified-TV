@@ -48,6 +48,7 @@ public final class HouseholdActivity extends Screen {
             startForegroundService(new Intent(this,HouseholdService.class));note("Alert service requested. Check its notification for actual connection state.");
         });
         button("Stop household alerts",()->{stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");});
+        button("Request native Frame Art Mode",()->{if(getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))action(this,"art");else note("This action belongs to the Frame room profile");});
         button("Forget household setup",()->{stopService(new Intent(this,HouseholdService.class));new Vault(this).forget("household");show();});
         button("Back",this::finish);
     }
