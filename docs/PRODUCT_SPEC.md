@@ -3,7 +3,7 @@
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 1.5 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
+**Version:** 1.8 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -30,17 +30,35 @@ Build a premium, remote-first, Apple TV-inspired home experience for three house
 9. **Preserve Samsung TV Plus:** Samsung Frame keeps its existing native Samsung TV Plus service, with a Frame-only branded tile. This is a separate source from ReamSmartz and is not subject to the ReamSmartz NordVPN gate. The optional Samsung cleanup must protect TV Plus and all required dependencies.
 10. **No fabricated capabilities:** distinguish desired behaviour from what each firmware, app and service has been tested to support.
 
+### Reconciliation of the shorter v1.7 architecture proposal
+
+The short v1.7 proposal contains useful technical suggestions, but **this full v1.8 document supersedes it without deleting previously agreed requirements**. Adopt local on-TV Connections and a safe Windows-to-TCL Stage 0.5. Evaluate optional AirPin LITE, split tunnelling, hybrid voice commands and Media3 as engineering alternatives rather than declaring them working.
+
+Keep six shared entertainment tiles as an **editable default**, not an immutable allowlist. Keep Samsung's native Art Mode and Samsung TV Plus through hardware-specific Tizen/Android handoffs, the existing optional reversible cleanup, Alexa reminder toasts and both Ring triggers. Do not claim guaranteed sub-500ms 4K NAS playback, undocumented NordVPN control Intents or a VPN kill switch based only on a connection icon. See [v1.7 architecture review](ARCHITECTURE_REVIEW_V1_7.md).
+
 ## 2. Devices and runtime
 
 | ID | Device | Runtime plan | Specific features |
 |---|---|---|---|
 | TV-SONY | Sony BRAVIA 65-inch OLED, Google TV | Native Android TV launcher | Xbox tile; Xbox on HDMI 3 (eARC connector); OLED-safe ambient mode; **equal-priority performance baseline + optional Android cleanup** |
-| TV-TCL | TCL 55-inch, Google TV if confirmed | Same Android launcher, lightweight rendering profile | **Equal-priority performance baseline + optional Android cleanup** with owner consent |
+| TV-TCL | TCL 55-inch, **Android TV 11 confirmed from TV settings** | Same Android launcher, lightweight rendering profile | Equal-priority performance baseline; installed **AirPin LITE** receiver; optional Android cleanup only after independent tests and owner consent |
 | TV-FRAME | Samsung The Frame, Tizen | **Preferred:** Android TV/Google TV external HDMI device running same launcher; Samsung native Art Mode retained | Automatic Art Mode -> Ring -> Art Mode; Echo Studio audio routing; **retain native Samsung TV Plus**; optional Tizen-native, supported-settings cleanup plus separate Android-streamer cleanup |
 
 **GATE-TV-01:** Record exact model, firmware, Android / Tizen version, RAM and available storage of all TVs. Confirm that TCL actually runs Google TV. **GATE-TV-02:** Establish an external Android streaming device for the Frame if required. A native Tizen port is a research track, not a substitute for parity with Android-only apps (especially SmartTube and NordVPN).
 
 The rendering system uses one shared design and per-TV capability configuration, for example `sony`, `tcl`, `frame`. No separate home-screen design forks. Maintain independent volume, wallpaper, brightness and camera-overlay preferences per display. Shared media listings and app ordering should update across the household without exposing configuration tools to viewers. The performance tool should offer the same entry point and language across devices but use *device capability adapters*; future LG webOS, Fire TV and other brands require separate, tested adapters rather than pretending Android tooling runs on every OS.
+
+### 2.1 Local connections and on-TV configuration (P0)
+
+External developers and GitHub Actions cannot assume access to the household's private LAN. The user must be able to configure Home Assistant Green, NAS/Jellyfin and optional room devices entirely with the TV remote.
+
+- **Settings > Connections** includes **Home Assistant**, **Your Films & TV**, and optional **Device Actions / AirPlay**. Each connection has Enable, Hostname/IP, Port, HTTP/HTTPS, Test, Save, Edit and Forget. The OS on-screen keyboard and D-pad must suffice without a Windows PC. Optional device discovery is advisory, never mandatory.
+- Allow IPv4, IPv6 and hostnames including local mDNS names. Never hardcode the household's actual TCL, NAS or Home Assistant IP, Wi-Fi network, MAC address, credentials or camera URLs into public code, GitHub documentation or APK assets.
+- Show **Not configured**, **Reachable**, **Authentication required**, **Authorised** and **Offline** accurately. Reachability is not proof that Ring triggers, NAS media streaming or Xbox control work.
+- Protect credentials using Android Keystore-backed encryption or a protected household service. Never place tokens in plaintext preferences, logs, URL query strings or published screenshots. Prefer authenticated HTTPS; if trusted-LAN HTTP is the only option, require explicit user consent and scope it to the entered host.
+- Per-TV credentials are private and separate. Children can still use Home normally while an adult PIN protects editing. Unavailable integrations must not prevent basic app launching or the dock from working.
+
+**GATE-CONN-01:** use the TCL remote to enter valid and invalid HA/Jellyfin endpoints, test/save/forget and verify precise feedback. **GATE-CONN-02:** verify protected token storage, offline Home operation and no leakage to public diagnostics.
 
 ## 3. Home screen information architecture (P0)
 
@@ -75,6 +93,10 @@ The rendering system uses one shared design and per-TV capability configuration,
 - The cleanup module must mark Samsung TV Plus and dependencies as **protected** and exclude them from disable/remove proposals.
 
 ### 3.3 Remote-only app library and dock editing (P0)
+
+**The six shared choices are curated defaults, not a permanent six-app limit.** Preserve remote-only Add to Home, Move, Remove from Home and independent room layouts. Use a single, horizontally scrollable dock and optional child editing lock so personalisation never creates a crowded default.
+
+
 
 **Users must be able to find installed apps, pin them to the glass dock, remove shortcuts and reorder the dock without using ADB, another device or a configuration file.** This is part of the premium core interaction, not a developer option.
 
@@ -318,6 +340,12 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 
 **GATE-NAS-01:** prove direct play of a film, subtitled film and selected TV episode from a custom tile using VLC on Sony and TCL. **GATE-NAS-02:** verify artwork matching and file access when NordVPN is connected. **GATE-NAS-03:** decide whether 'Continue Watching' is honest and reliable.
 
+### 5.1 Compare invisible playback engines on real NAS content
+
+Keep the user-facing NAS catalogue separate from playback technology. **VLC remains the known working initial handoff** for the household; trial an embedded Android Media3/ExoPlayer player as an alternative, not an automatic replacement. Confirm 1080p/4K MKV, HEVC/HDR, audio passthrough, subtitle tracks, seek/resume and server support on the actual TCL and Sony. Track real first-frame cold/warm timings and p50/p95 latency, not an untested 500ms guarantee. Report unsupported formats and use the compatible player transparently. Never surface VLC or ExoPlayer as a Home tile.
+
+**GATE-PLAYER-01:** play the same representative files with VLC and Media3, including alternate subtitles/audio, and document which backend works. **GATE-PLAYER-02:** do not show Continue Watching unless actual position sync has been proven.
+
 ## 6. Live TV and NordVPN protection (P0, security-critical)
 
 - Visible label is **Live TV**; underlying application is **ReamSmartz**. Every launch origin shares one guarded action: tile, Tottenham card, voice, search and resumed sessions.
@@ -329,6 +357,14 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 
 **GATE-VPN-01:** with VPN off, Live TV traffic fails; **GATE-VPN-02:** drop VPN mid-stream, confirm packets do not escape; **GATE-VPN-03:** Sony, TCL and Frame external device pass independently.
 
+### 6.1 VPN split tunnelling and protection gate
+
+Android VPN transport detection **does not prove that ReamSmartz's packets use the desired tunnel or stop when it fails**. NordVPN Android TV split tunnelling is an optional route configuration to test. Confirm what the installed NordVPN version actually supports; excluding other apps does not by itself protect one app from leaks. Android always-on VPN and Block connections without VPN have different consequences for excluded apps.
+
+Do not promise a silent NordVPN Connect Intent without documented support. Test the actual ReamSmartz package, forced midstream VPN drop, DNS, IPv4/IPv6, wake/restart and access to the NAS/Home Assistant. An on-screen failure scrim is not a firewall. If no real fail-closed mechanism passes tests, keep Live TV blocked in the preview.
+
+**GATE-VPN-04:** confirm no unprotected ReamSmartz packets after tunnel loss. **GATE-VPN-05:** independently prove normal LAN access and unaffected apps under the chosen routing method.
+
 ## 7. Tottenham matchday widget (P0)
 
 - Follow Tottenham Hotspur men's first-team fixtures across domestic and European competitions; matchday means the local date in `Europe/London` (BST/GMT automatically).
@@ -336,6 +372,14 @@ This is a **P0 release gate** alongside the hardware Ring and VPN gates:
 - When match is over, hide after a limited grace period, no later than end of UK matchday; when no fixture is scheduled, no card or reserved blank space.
 - Press OK -> protected Live TV launch through the **same VPN gate**. Do not imply ReamSmartz is the official broadcaster.
 - Fixture provider must cover date/time changes, postponements and multiple competitions; refresh reliably, cache last verified fixture and avoid a false card if data becomes stale.
+
+### 7.1 TCL AirPin LITE receiver integration (P1, optional)
+
+The TCL settings photographs confirm **AirPin LITE** is installed. Earlier external notes called it **AirPro LITE**, which is the wrong product name and must not be repeated. AirPin is a third-party AirPlay/DLNA receiver; its developer documents background receiving after initial launch, but we have **not yet verified automatic startup after reboot on this Android TV 11 TCL**.
+
+Do not make AirPin a permanent app dock tile. Under **Settings > Connections > AirPlay**, detect the actual installed package, offer a guided one-time receiver setup, and show a small AirPlay glyph in the header only when a supported operational state is confirmed. A configured app is not proof of active receiving. Respect Android 11 background activity restrictions and the receiver's own licensing; never bundle its paid code or change its settings without consent.
+
+**GATE-AIRPLAY-01:** verify startup, discovery from an iPhone, casting and graceful return after restart/sleep, plus CPU/RAM use. If automatic startup is unavailable, report a manual setup fallback rather than a false success icon.
 
 ## 8. Ring camera override via Home Assistant Green (P0, absolute release gate)
 
@@ -405,6 +449,10 @@ Possible Android building blocks to test before writing new code: `vessosa/ha-vi
 - Use the **currently supported OpenAI GPT-Live/Realtime API** appropriate at implementation time; not the consumer ChatGPT voice session or its subscription entitlement. API credentials live on a protected household service (ideally Synology if resource appropriate), not in TV APKs.
 - Never expose private Home Assistant tokens to model output. Give the model only allowlisted commands and read-only content search; confirmations for sensitive home actions. Audio retention/privacy and running API costs must be visible in Settings.
 - Test microphone input on actual Sony/TCL remote; the standard remote voice button may be reserved by Google, so an on-screen icon is the dependable starting interaction.
+
+### 14.1 Hybrid voice as a measured option
+
+Use Home Assistant Assist or an allowlisted local phrase recogniser for deterministic TV commands **only when it proves faster on the reference hardware**. Home Assistant Green is modest hardware; do not require on-device Whisper for every instruction without measuring latency. Preserve optional ChatGPT Live/API voice with UK English responses for **general questions**, open discussion and content discovery, not just NAS searches. Maintain explicit microphone consent and a single discreet voice affordance.
 
 ## 15. Architecture and separation of concerns
 
@@ -583,11 +631,26 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-59 | Apps/Home | Remove a shortcut then add it back | App remains installed, signed in and accessible throughout |
 | AT-60 | Sony/TCL/Frame | Use different dock order and Xbox/TV Plus shortcuts | Per-TV capabilities remain correct and Live TV stays VPN protected |
 | AT-61 | Extended dock | Pin eight or more apps; test child edit lock | Single readable scrollable row, no collisions or accidental editing |
+| AT-62 | TCL Settings > Connections | Enter valid and invalid Home Assistant/Jellyfin settings by remote | Correct authentication/connectivity states, protected local storage and offline fallback |
+| AT-63 | TCL Windows pilot | Build separate preview and connect using supported Android 11 debugging or offline sideload | Stock HOME untouched, launch and edit controls work, clean uninstall |
+| AT-64 | TCL AirPin LITE | After authorised setup, restart and cast from iOS device | Receiver operational status is real; no misleading glyph; resource use measured |
+| AT-65 | TCL/SONY NAS | Play representative 4K/HD file with VLC and embedded Media3 candidate | Audio/subtitles work where supported; first frame measured; fallback documented |
+| AT-66 | TCL/SONY Live TV | Force VPN drop during protected ReamSmartz traffic | Target app cannot leak unprotected packets; otherwise remains blocked |
+| AT-67 | Family Home | Use six starting shortcuts, add an eighth and rearrange | One uncluttered dock, remote-only management, per-TV persistence |
+| AT-68 | Samsung Frame | Return from Ring interruption to native Art Mode and native TV Plus | Existing native services remain accessible; actual model verified |
+| AT-69 | Voice | Ask to open BBC and a broad general knowledge question | Local/ChatGPT route operates correctly, UK English voice and visible microphone |
+| AT-70 | Public GitHub | Inspect project files and generated test APK | No personal LAN IP, SSID, MAC, real camera pictures or API secrets committed |
 
+
+### 16.3 Performance claims must be measured
+
+Collect cold/warm start, D-pad latency, focus-to-background timing, dropped frames, RAM and first-frame playback on the real Android TV 11 TCL and Sony. The reported third-party "90% faster" and proposed 500ms 4K start are **not** measured Unified TV results. No bloatware changes form part of the first pilot.
 
 ## 18. Delivery stages and decision gates
 
 **Stage 0: Hardware audit and safe proof of concept.** Collect model/firmware IDs for **Sony, TCL and Samsung Frame**, record individual performance baselines **before any changes**, identify safe official settings and rollback limits by OS, validate Home Assistant Ring **and Alexa reminder** entities, VPN networking and VLC hand-off. No irreversible changes and no mandatory cleanup.
+
+**Stage 0.5: Safe CI/CD and Windows-to-TCL sideloaded test (P0).** Build a test-signed **standalone** Android preview package, separate from the existing HOME application, in GitHub Actions and verify the APK manifest and signature. Confirm Windows can connect to TCL **Android TV 11** through a *supported, user-enabled* debug route. Google's modern Wireless debugging pairing method is officially specified for **Android TV 13+**, so inspect the TCL Developer options for manufacturer **Network debugging** and its stated port before suggesting any ADB commands. If neither supported network nor USB debugging is available, use an APK USB/manual installation route and test UI without ADB. Run read-only model/build checks before any authorised installation. Verify Home, remote focus, app pin/move, safe return, distinct APK package identity and clean uninstall while stock Google TV Home remains unchanged. Do not scan the LAN, change factory packages or start cleanup. Build **Settings > Connections** and test valid/invalid local endpoints as the next Stage 0.5 deliverable. The actual private IP is never in public GitHub. See [TCL testing plan](LOCAL_CONNECTIONS_AND_TCL_TESTING.md).
 
 **Stage 1: Two critical proofs.** Establish Ring automatic live video over Android wallpaper and **Samsung native Art Mode**, both triggers and return path. Prove VPN fail-closed Live TV. These decide the architecture; repeat Samsung interruption tests while **native Samsung TV Plus is playing**.
 
@@ -652,6 +715,9 @@ No mandatory removal of bloatware, no promise that every manufacturer permits fa
 *This document is a build specification, not a claim that each integration has already been verified on the household's hardware.*
 
 ## 22. Change log
+
+- **v1.8 (24 October 2026):** Consolidated the short v1.7 architecture proposal into the complete requirements without removing v1.5 functions; confirmed TCL Android TV 11 and AirPin LITE, added remote-based private Connections UI, secure local settings, separate Windows-to-TCL Stage 0.5 with Android 11-specific debugging constraints, player comparison, honest VPN routing tests, optional AirPin and hybrid voice, nine new tests (AT-62..70). No household network identifiers belong in public GitHub.
+
 
 - **v1.5 (24 October 2026):** Added P0 Apps library and remote-only Home dock pin/move/remove, persistent per-TV layout, child edit lock, single-row overflow, a required design state and six acceptance tests (AT-56..61). Refer to `docs/APP_CUSTOMISATION.md`.
 - **v1.4 (24 October 2026):** Replaced the brief cinematic-focus paragraph with a **full P0 visual and interaction specification** for an original Liquid Glass-era-inspired, CleanFrame-calm interface. Defined one-dock resting Home, progressive reveal of NAS row, exact-app/film hero background contract and fallback source priority, focus timing and state machine, glass/material tokens, UK time and minimalist statuses, four time-of-day modes, remote journeys, accessibility, reduced-resource rendering on TCL and Sony, Ring/Alexa/VPN/voice presentation, 14 required design hand-off screens, 12 design pass/fail rules and 19 new acceptance tests (AT-37..55). Corrected previous generic-background mockup mismatch. tvOS 26 introduced Liquid Glass; tvOS 27 is the continued version reference. No other functional requirements weakened.

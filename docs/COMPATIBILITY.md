@@ -5,7 +5,7 @@
 | Platform | Current inherited Android code | Planned Unified TV experience | Important limitations |
 | --- | --- | --- | --- |
 | Sony BRAVIA Google/Android TV | Android launcher and existing CleanYourTV tooling are present | Shared dock, NAS, optional Home Assistant, performance profiling, room-specific Xbox shortcut | Sony firmware/DRM/HDMI and overlay behaviours require model test |
-| TCL Google/Android TV | Same Android foundation | Same visuals with lightweight rendering and an optional, reversible cleanup flow | Lower RAM/CPU; stock app removal can break updates/casting; TCL model not yet verified |
+| TCL Google/Android TV | Same Android foundation | Same visuals with lightweight rendering, locally configured connections, optional AirPin LITE research and reversible cleanup | Lower RAM/CPU; stock app removal can break updates/casting; TCL Android TV 11 confirmed from device settings; precise retail model still to identify |
 | Samsung Frame native Tizen | **Android APK not supported** | Retain native Art Mode and Samsung TV Plus; use a tested external Android device for shared launcher | No promise of third-party overlays above Tizen apps; Ring/source switching and Art Mode return not proven |
 | Samsung Frame via Android HDMI streamer | Android code can run on compatible external hardware | Shared dock, streaming apps and optional overlays | Native Samsung features still need TV control/automation bridge |
 | Other Android TV / Google TV | Possible, model dependent | Configurable standard launcher | Do not assume manufacturer services or ADB permissions identical |
