@@ -3,7 +3,8 @@ package io.unifiedtv.preview;
 import android.app.*;
 import android.content.*;
 import android.graphics.PixelFormat;
-import android.media.*;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.os.*;
 import android.provider.Settings;
 import android.view.*;
@@ -175,8 +176,8 @@ public final class HouseholdService extends Service {
             WindowManager.LayoutParams p=params(-1,-1,true);p.gravity=Gravity.CENTER;p.x=0;p.y=0;
             alarmOverlay=card;alarmDoor=(TextView)card.getChildAt(3);windows.addView(card,p);ok.requestFocus();
             AudioManager audio=(AudioManager)getSystemService(AUDIO_SERVICE);
-            alarmFocus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
+            alarmFocus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_ALARM).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
             try{audio.requestAudioFocus(alarmFocus);}catch(RuntimeException ignored){}
         }
         alarmChanged();
