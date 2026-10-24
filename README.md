@@ -59,7 +59,7 @@ The optional **TV Performance & Cleanup** journey is separate from installation.
 
 ## First Android TV preview (experimental)
 
-An early, non-default **Unified TV Preview** activity is being developed to test the glass dock, neutral artwork, contextual focus and D-pad app personalisation before modifying any TV's existing Home. See [prototype details and test limitations](docs/FIRST_ANDROID_PREVIEW.md). This is not yet a supported Unified TV release or an operational Ring/NAS/VPN integration.
+An isolated, non-HOME **Unified TV Preview** APK (package `io.unifiedtv.preview`) is being developed to test the glass dock, neutral artwork, contextual focus and D-pad app personalisation before modifying any TV's existing Home. See [prototype details and test limitations](docs/FIRST_ANDROID_PREVIEW.md). This is not yet a supported Unified TV release or an operational Ring/NAS/VPN integration.
 
 ## Starting today
 

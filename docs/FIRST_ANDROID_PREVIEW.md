@@ -1,38 +1,55 @@
-# Unified TV first Android preview
+# Unified TV: first Windows-to-TCL test
 
-**Status: prototype source only until CI build and a real-TV test pass.** This is not a Unified TV release.
+> **Status:** first prototype, not a finished launcher or production APK. Verify GitHub Actions build before installing.
 
-This branch introduces a **standalone preview activity** in the inherited CleanYourTV UI APK. It does *not* register itself as Android HOME and contains no ADB, debloating, accessibility interception, camera control, VPN tunnelling or local network discovery. The inherited HOME activity and system restoration scripts are left unchanged.
+## Why a separate APK?
 
-## What this first iteration demonstrates
+The first prototype is a completely independent Android package, **io.unifiedtv.preview**. Its manifest contains no \`android.intent.category.HOME\` activity or system/cleanup permission. Installing it from Windows using ADB never changes the default Google TV launcher or disables factory apps.
 
-- Neutral scenic background with a single restrained glass dock and 24-hour UK clock.
-- Minimal top-right status group labelled \`VPN ?\`: no pretend tunnel verification or false country flag.
-- Service-related, locally drawn gradient atmosphere after focus settles, rather than wrongly leaving an unrelated beach behind Netflix.
-- Initial Sony/TCL app choices: SmartTube, Netflix, Disney+, BBC, Live TV and Music. Sony gets an extra Xbox **placeholder**, but wake/input switching is *not* wired in.
-- Remote-first controls: Left/Right focus; Up or Menu opens installed Apps; OK adds/removes a shortcut in Apps; on a Home tile hold OK for Move or Remove; Left/Right moves, OK saves, Back cancels.
-- Saved per-device dock order and pinned installed apps through local Android preferences. Removing a shortcut does not uninstall the app.
-- Third-party apps launch only when genuinely installed. The Live TV shortcut is **deliberately blocked** pending verified NordVPN fail-closed protection.
+The earlier draft had embedded a preview activity inside the inherited CleanYourTV UI package, which itself declares Android HOME. That approach has been removed from this branch in favour of the safer isolated preview.
 
-## What is deliberately not yet working
+## What is available for testing
 
-Ring video/alerts, Alexa reminders, Home Assistant, Synology NAS artwork and VLC playback, Samsung Tizen/Art Mode, Amazon Music custom controls, GPT voice, dynamic verified VPN country, personal photo settings, Sony Xbox control and actual per-app cover artwork. These remain requirements under the main product specification and must never be advertised as shipping today.
+An illustrated neutral scenery placeholder, 24-hour UK clock, minimalist glass dock, installed-app discovery, gentle service-specific gradient backgrounds on focus, and remote-only app add/move/remove with local persistence. Press Up to open Apps; long-press OK on the dock for the edit menu. Long docks need real-TV readability testing.
 
-The dock currently uses locally generated material and an abstract coastal fallback. If a redistribution-cleared \`launcher-ui/app/assets/unified-preview-coast.jpg\` exists, the preview uses that as neutral wallpaper; it is not currently bundled in the APK. App-focused backdrops are original local gradients until authorised content imagery is integrated.
+**Deliberate placeholders:** the Ring override, NAS/VLC catalogue, ChatGPT voice, Alexa, VPN verification, Sony Xbox control, music playback and Samsung native Tizen integration remain unbuilt. Live TV is blocked rather than risking an unprotected ReamSmartz launch. The icon currently says **VPN ?**, not a verified connection or exit country. Dynamic artwork and a photo gallery follow later.
 
-## Compiling without touching a television
+## Build via GitHub Actions
 
-The GitHub Actions \`unified-preview\` job invokes \`launcher-ui/build.sh\` to compile the Java app and packages an **unverified, test-only** APK as a short-lived workflow artifact. The existing script generates a signing key with a documented fixed password; **never treat its output as a secure production-signed release**. Use a separate secret signing key and distinct application identity before public distribution.
+If the fork has no runs under [Actions](https://github.com/tcrosswell-99/Unified-TV/actions), first enable workflows for this fork in the Actions page. On an enabled run, look for the **Standalone Unified TV Preview APK (test only)** job. The \`preview/build.sh\` process compiles an Android 28+ app using SDK 34, builds a test APK, checks its own signature and rejects a HOME declaration.
 
-The inherited Android package currently shares \`io.cleanyourtv.ui\` with its parent. Installing it over a version signed by another author might fail or replace local app data. Do not run automated install scripts, set it as HOME, disable packages or enable ADB unless the exact device and rollback plan have been reviewed.
+Once the workflow **passes**, download its **UnifiedTV-Preview-test-only** artifact, unzip it and locate \`UnifiedTV-Preview.apk\`. Every CI job generates a temporary signature, so installing a later CI build over a previous one might fail: uninstall the preview using the helper first (only preview preferences are lost).
 
-## TV evaluation checklist
+## Connect from Windows to TCL
 
-1. Confirm the TV model, Android version, free storage, firmware and original Home behaviour locally.
-2. Install this as a **manual test application** only after the CI APK compiles and is reviewed. Do not change the stock launcher.
-3. Test the D-pad for 100 rapid focus presses, long-press edit modes, Cancel, app discovery and saved layout after returning from playback.
-4. Measure memory consumption, CPU/frame stalls and warm-open time on the real TCL. Compare the same interactions on the Sony.
-5. Verify that selecting Live TV never launches ReamSmartz without a verified VPN.
-6. Uninstall the preview application if it is not suitable; nothing in this prototype disables TV system packages.
+1. Install [official Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) on the Windows PC and make \`adb.exe\` available on PATH.
+2. On the TCL, open **Settings > System > About**, press OK repeatedly on the **Android TV OS build** entry to reveal Developer options, if available. Then enable **Wireless debugging** in Developer options, on Android versions that support it.
+3. Choose **Pair device with pairing code**. Read the TV's displayed *pairing* IP:port and code. On the Wireless debugging screen, find the separate *connection* IP:port. These ports are different.
+4. Open PowerShell in the Unified TV checkout and run the following, substituting the TV's real addresses:
 
-The baseline design and next steps are recorded in the [product spec](PRODUCT_SPEC.md), [design system](DESIGN_SYSTEM.md) and [roadmap](ROADMAP.md).
+\`\`\`powershell
+# Inspect the TV without installing:
+.\scripts\windows\Test-UnifiedTV.ps1 -PairAddress "192.168.1.50:37111" -ConnectAddress "192.168.1.50:41929" -InspectOnly
+
+# Install the ZIP-extracted APK only after the CI build passes:
+.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress "192.168.1.50:41929" -ApkPath "$HOME\Downloads\UnifiedTV-Preview.apk"
+
+# Remove only the preview if you want to return to the original state:
+.\scripts\windows\Test-UnifiedTV.ps1 -ConnectAddress "192.168.1.50:41929" -RemovePreview
+\`\`\`
+
+The IP addresses shown above are **examples**, not discovered addresses. If your TCL doesn't have Wireless debugging, the connection procedure is firmware dependent; do not guess a TCP debugging port or enable permanent remote debugging.
+
+## Acceptance test on TCL
+
+- Confirm the detected model and Android version, and take note of normal Google TV Home performance.
+- From the TV remote, test 100 rapid Left/Right presses and confirm responsive focus and final correct themed background.
+- Press Up and pin an installed application. Long-press OK to Move, press Back to cancel, repeat and press OK to save.
+- Remove a Home shortcut. Check the app is still installed and accessible in Apps.
+- Return from Netflix or BBC to the preview and confirm the chosen layout remains.
+- Check long docks with eight or more installed apps and note if labels shrink or overflow.
+- Confirm Live TV shows an unavailable/protected message without launching ReamSmartz.
+- Check that standard Google TV Home continues to work and uninstall preview when finished.
+- Turn Wireless debugging off on the TV once testing is complete.
+
+No network scan, Home Assistant access, Ring camera control, streaming-service credentials or bloatware modifications are performed by these scripts. All diagnostic commands act only on the explicitly paired TV.

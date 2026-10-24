@@ -1,4 +1,4 @@
-package io.cleanyourtv.ui;
+package io.unifiedtv.preview;
 
 import android.app.Activity;
 import android.content.Context;
@@ -106,6 +106,12 @@ public final class UnifiedPreviewActivity extends Activity {
                 else if (index >= 0 && index < dock.size()) { menu = true; menuIndex = 0; invalidate(); }
             }
         };
+        private final Runnable clockTick = new Runnable() {
+            @Override public void run() {
+                invalidate();
+                handler.postDelayed(this, 60_000L);
+            }
+        };
         private final Runnable commitFocus = () -> {
             if (apps || menu || moving || index < 0 || index >= dock.size()) return;
             Item next = dock.get(index);
@@ -124,6 +130,7 @@ public final class UnifiedPreviewActivity extends Activity {
             setFocusableInTouchMode(true);
             scanInstalled();
             loadDock();
+            handler.postDelayed(clockTick, 60_000L);
             try (InputStream in = a.getAssets().open("unified-preview-coast.jpg")) {
                 BitmapFactory.Options opt = new BitmapFactory.Options();
                 opt.inSampleSize = 2;
@@ -136,6 +143,7 @@ public final class UnifiedPreviewActivity extends Activity {
         void close() {
             handler.removeCallbacks(hold);
             handler.removeCallbacks(commitFocus);
+            handler.removeCallbacks(clockTick);
             if (coast != null) { coast.recycle(); coast = null; }
         }
 
