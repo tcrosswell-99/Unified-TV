@@ -1,14 +1,38 @@
 plugins { id 'com.android.application' }
+
+// Optional durable preview key (spec P05-01), the same pattern as launcher/app/build.gradle: each of these four as a
+// Gradle property (-PUNIFIEDTV_PREVIEW_KEYSTORE=... or ~/.gradle/gradle.properties) or an environment variable.
+// Used only when all four are set, for the debug APK installed on the TV (preview/build.sh) and for release.
+// Otherwise both are signed with the debug key exactly as before, so CI and a plain build need no secrets.
+// UNIFIEDTV_PREVIEW_KEYSTORE is an absolute path or one relative to preview/app; never commit the keystore itself.
+// Android refuses an update signed with another key. Never uninstall a configured preview to get round that:
+// preview/tools/install_preview.py compares certificates first and refuses a mismatch.
+def previewKey = ['UNIFIEDTV_PREVIEW_KEYSTORE', 'UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD', 'UNIFIEDTV_PREVIEW_KEY_ALIAS', 'UNIFIEDTV_PREVIEW_KEY_PASSWORD']
+        .collectEntries { name -> [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse('')] }
+def hasPreviewKey = previewKey.values().every { !it.trim().isEmpty() }
+
 android {
     namespace 'io.unifiedtv.preview'
     compileSdk 35
     defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     sourceSets { main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }; test { java.srcDirs = ['test'] } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        if (hasPreviewKey) {
+            release {
+                storeFile file(previewKey.UNIFIEDTV_PREVIEW_KEYSTORE)
+                storePassword previewKey.UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD
+                keyAlias previewKey.UNIFIEDTV_PREVIEW_KEY_ALIAS
+                keyPassword previewKey.UNIFIEDTV_PREVIEW_KEY_PASSWORD
+            }
+        }
+    }
     buildTypes {
-        release { minifyEnabled false; signingConfig signingConfigs.debug }
-        // Local hardware checks coexist with CI previews signed by another debug key.
-        deviceCheck { initWith debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
+        // The debug APK is the one installed on the TV: with the durable key it updates over earlier durable builds.
+        debug { if (hasPreviewKey) { signingConfig signingConfigs.release } }
+        release { minifyEnabled false; signingConfig hasPreviewKey ? signingConfigs.release : signingConfigs.debug }
+        // Local hardware checks coexist with CI previews signed by another key: own identity, always the local debug key.
+        deviceCheck { initWith debug; signingConfig signingConfigs.debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
     }
     lint { abortOnError true; disable 'MissingTranslation' }
     testOptions { unitTests.includeAndroidResources = true }

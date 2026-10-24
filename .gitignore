@@ -24,3 +24,5 @@ launcher/replay_pid*.log
 
 tools/venv/
 vpn-evidence/
+# preview/tools/install_preview.py records: hashes and versions only, kept local with the other evidence
+preview-evidence/
