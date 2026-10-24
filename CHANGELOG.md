@@ -39,6 +39,7 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
 - **Your chosen collections only** (P05-05): the library stays inside them, Back returns focus to where you were, and the NAS is found again if its address changes.
 - **Readable titles:** file names such as "The.Film.2019.mkv" show as "The Film 2019"; titles such as "S.W.A.T." are left alone.
 - **Updates that keep your settings:** the preview can be signed with your own durable key through four `UNIFIEDTV_PREVIEW_*` settings. Without them it is signed exactly as before.
+- **Creating the signing key** (`preview/tools/make_preview_key.py`): one command on your own computer makes the key in a private folder outside the repository, never replaces an existing one, and stores the four GitHub secrets through the GitHub CLI when asked.
 - **Safe install tool** (`preview/tools/install_preview.py`): compares the signing certificate and version with the preview on the TV, refuses a mismatch or downgrade, never uninstalls or clears data, and checks the TV's Home is unchanged. Not yet run on a TV.
 - **Release labels:** tagged previews say hardware-unverified, publish the certificate SHA-256, and say "test-signed" when no durable key was used.
 - **Evidence register** ([ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv)) for the P05, RC, HRC (TCL), OI and VPN-01 checks, validated by a unit test.
