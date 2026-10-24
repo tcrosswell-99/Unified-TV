@@ -19,6 +19,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 STOCK_HOME = "com.google.android.tvlauncher/.MainActivity"
+TV_A = "SERIALA0001"
+TV_B = "SERIALB0002"
 
 # Stands in for tools/tv.py: answers the queries recovery.py makes, and records what a batch sends.
 FAKE_TV = r'''
@@ -52,6 +54,11 @@ def answer(command):
     if command.startswith("settings get global "):
         key = command.split()[-1]
         return str(state["settings"].get(key, "null")) + "\n"
+    # The TV's own ids, which tell two TVs behind the same address apart.
+    if command == "getprop ro.serialno":
+        return (state.get("serial") or "") + "\n"
+    if command == "settings get secure android_id":
+        return (state.get("android_id") or "null") + "\n"
     return ""
 
 
@@ -123,13 +130,16 @@ class RecoveryRecordTest(unittest.TestCase):
                          "animator_duration_scale": "1.0"},
             "commands": [],
             "unreachable": False,
+            "serial": TV_A,
+            "android_id": "a1b2c3d4e5f60718",
         }
         state.update(overrides)
         self.state_path.write_text(json.dumps(state))
 
-    def run_script(self, script, *args):
-        env = dict(os.environ, TV_HOST="192.168.1.50", HOME=str(self.home),
-                   FAKE_TV_STATE=str(self.state_path))
+    def run_script(self, script, *args, **extra_env):
+        env = {k: v for k, v in os.environ.items() if k not in ("TV_PORT", "RESTORE_WITHOUT_RECORD")}
+        env.update(TV_HOST="192.168.1.50", HOME=str(self.home), FAKE_TV_STATE=str(self.state_path))
+        env.update(extra_env)
         return subprocess.run(
             ["bash", str(self.repo / "tools" / script), *args],
             cwd=self.repo, env=env, capture_output=True, text=True, timeout=120,
@@ -230,9 +240,19 @@ class RecoveryRecordTest(unittest.TestCase):
         self.assertEqual(sent[-1], "pm list packages -d")
         self.assertIn("leaving com.example.already_off alone", result.stderr)
 
-    def test_restore_without_a_record_says_so_and_falls_back(self):
+    def test_restore_without_a_record_sends_nothing_unless_asked(self):
+        # Enabling the whole list also enables what the owner had switched off before cleanup, so it
+        # is not what restore does on its own.
         self.tv()
         result = self.run_script("restore.sh", str(self.list_path))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no recovery record", result.stderr)
+        self.assertIn("RESTORE_WITHOUT_RECORD=1", result.stderr)
+        self.assertEqual(self.sent(), [], "nothing reached the TV")
+
+    def test_restore_without_a_record_falls_back_when_asked(self):
+        self.tv()
+        result = self.run_script("restore.sh", str(self.list_path), RESTORE_WITHOUT_RECORD="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         sent = self.sent()
         self.assertIn("no recovery record", result.stderr)
@@ -374,6 +394,7 @@ class RecoveryRecordTest(unittest.TestCase):
             "package state": lambda r: r["packages"].update({"com.example.enabled": "on"}),
             "home": lambda r: r.update(home=f"{STOCK_HOME}; settings put global adb_enabled 0"),
             "settings": lambda r: r.update(settings=["window_animation_scale", "0.5"]),
+            "device": lambda r: r.update(device={"serial": "x; settings put global adb_enabled 0"}),
         }
         for field, edit in edits.items():
             for script in ("restore.sh", "disable.sh"):
@@ -394,6 +415,130 @@ class RecoveryRecordTest(unittest.TestCase):
                     self.assertIn("not a usable recovery record", result.stderr)
                     self.assertEqual(self.sent(), [], "nothing reached the TV")
                     self.assertEqual(path.read_bytes(), before, "the file is left for inspection")
+
+    # ---- which TV a record belongs to ---------------------------------------------------------
+
+    def records(self):
+        return sorted((self.home / ".cleanyourtv").glob("recovery-*.json"))
+
+    def test_record_holds_the_tv_id_and_port(self):
+        self.tv()
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        record = self.record()
+        self.assertEqual(record["device"], {"serial": TV_A, "android_id": "a1b2c3d4e5f60718"})
+        self.assertEqual((record["host"], record["port"]), ("192.168.1.50", "5555"))
+
+    def test_two_tvs_behind_relays_get_their_own_records(self):
+        # tools/relay.md: one relay per TV, each on its own port, every TV at 127.0.0.1.
+        relay_a = {"TV_HOST": "127.0.0.1", "TV_PORT": "15555"}
+        relay_b = {"TV_HOST": "127.0.0.1", "TV_PORT": "15556"}
+        self.tv(serial=TV_A, android_id="aaaaaaaaaaaa0001")
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path), **relay_a).returncode, 0)
+        # TV B had com.example.enabled switched off by its owner, and nothing else.
+        self.tv(serial=TV_B, android_id="bbbbbbbbbbbb0002", disabled=["com.example.enabled"])
+        result = self.run_script("disable.sh", str(self.list_path), **relay_b)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("keeping the recovery record", result.stdout, "B must not reuse A's record")
+
+        records = [json.loads(path.read_text()) for path in self.records()]
+        self.assertEqual(len(records), 2, self.records())
+        by_serial = {r["device"]["serial"]: r for r in records}
+        self.assertEqual(by_serial[TV_A]["packages"]["com.example.already_off"], "disabled")
+        self.assertEqual(by_serial[TV_B]["packages"]["com.example.enabled"], "disabled")
+        self.assertEqual(by_serial[TV_B]["packages"]["com.example.already_off"], "enabled")
+
+        # Undo on B replays B's states, not A's.
+        self.clear_sent()
+        result = self.run_script("restore.sh", str(self.list_path), **relay_b)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sent = self.sent()
+        self.assertIn("pm enable com.example.already_off", sent)
+        self.assertNotIn("pm enable com.example.enabled", sent)
+
+    def test_record_from_another_tv_is_refused(self):
+        self.tv(serial=TV_A)
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        path = self.records()[0]
+        before = path.read_bytes()
+        # Another TV now answers at the same address (a new DHCP lease, a relay pointed elsewhere).
+        self.tv(serial=TV_B, android_id="bbbbbbbbbbbb0002")
+        for script in ("restore.sh", "disable.sh"):
+            with self.subTest(script=script):
+                self.clear_sent()
+                result = self.run_script(script, str(self.list_path))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("taken on another TV", result.stderr)
+                self.assertIn(TV_A, result.stderr)
+                self.assertIn(TV_B, result.stderr)
+                self.assertEqual(self.sent(), [], "nothing reached the TV")
+                self.assertEqual(path.read_bytes(), before, "A's record is left as it was")
+                self.assertEqual(self.records(), [path])
+
+    def test_placeholder_serial_is_told_apart_by_android_id(self):
+        # Many cheap boxes all report the same serial; android_id still differs.
+        self.tv(serial="0123456789ABCDEF", android_id="aaaaaaaaaaaa0001")
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        self.assertEqual(self.record()["device"], {"serial": None, "android_id": "aaaaaaaaaaaa0001"})
+        self.tv(serial="0123456789ABCDEF", android_id="bbbbbbbbbbbb0002")
+        result = self.run_script("restore.sh", str(self.list_path))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("taken on another TV", result.stderr)
+        self.assertEqual(self.sent(), [])
+
+    def test_record_is_found_after_the_address_changes(self):
+        self.tv()
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        first = self.record()
+        # The router gave the same TV a new address, and the list is already applied.
+        self.tv(installed=["com.example.already_off", "com.google.android.tvlauncher"],
+                disabled=["com.example.enabled", "com.example.already_off"])
+        result = self.run_script("disable.sh", str(self.list_path), TV_HOST="192.168.1.77")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("keeping the recovery record", result.stdout)
+        self.assertEqual(self.record()["packages"], first["packages"], "still one record, unchanged")
+
+        self.clear_sent()
+        result = self.run_script("restore.sh", str(self.list_path), TV_HOST="192.168.1.77")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("using the record taken on this TV at 192.168.1.50", result.stderr)
+        self.assertIn("pm enable com.example.enabled", self.sent())
+        self.assertNotIn("pm enable com.example.already_off", self.sent())
+
+    def test_record_from_before_the_id_still_restores(self):
+        # A record written by an earlier version: keyed on TV_HOST alone, with no port and no id.
+        self.tv()
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        path = self.records()[0]
+        record = json.loads(path.read_text())
+        for key in ("device", "port"):
+            del record[key]
+        legacy = path.with_name(path.name.replace("-5555-", "-"))
+        legacy.write_text(json.dumps(record))
+        path.unlink()
+
+        self.clear_sent()
+        result = self.run_script("restore.sh", str(self.list_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("does not say which TV it was taken on", result.stderr)
+        sent = self.sent()
+        self.assertIn("pm enable com.example.enabled", sent)
+        self.assertNotIn("pm enable com.example.already_off", sent)
+
+        # disable keeps using it too: no second record that would describe a half-applied TV.
+        self.clear_sent()
+        result = self.run_script("disable.sh", str(self.list_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("keeping the recovery record", result.stdout)
+        self.assertEqual(self.records(), [legacy])
+
+    def test_tv_that_gives_no_id_cannot_use_a_record_that_has_one(self):
+        self.tv()
+        self.assertEqual(self.run_script("disable.sh", str(self.list_path)).returncode, 0)
+        self.tv(serial="", android_id="null")
+        result = self.run_script("restore.sh", str(self.list_path))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not give an id", result.stderr)
+        self.assertEqual(self.sent(), [])
 
 
 if __name__ == "__main__":

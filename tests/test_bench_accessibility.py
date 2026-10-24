@@ -36,7 +36,9 @@ class FakeTV:
         if command.startswith("settings get secure enabled_accessibility_services"):
             return self.setting
         if command.startswith("settings put secure enabled_accessibility_services "):
-            self.setting = command.split(" ", 4)[4]
+            value = command.split(" ", 4)[4]
+            # The TV's shell takes the single quotes off.
+            self.setting = value[1:-1] if value[:1] == value[-1:] == "'" else value
             return ""
         if command.startswith("am force-stop "):
             # This is what the TV does: the stopped package's services leave the list.
@@ -72,6 +74,25 @@ class RestoreAccessibilityTest(unittest.TestCase):
         tv = FakeTV("null")
         bench.restore_accessibility(tv, "com.gathin.tvhome", [OURS])
         self.assertEqual(tv.setting, OURS)
+
+
+class QuotingTest(unittest.TestCase):
+    def test_value_is_single_quoted_for_the_tv_shell(self):
+        """A nested class (`$Inner`) would be expanded by the TV's shell if the value were bare."""
+        inner = "com.gathin.tvhome/.Outer$InnerService"
+        tv = FakeTV(OTHER)
+        bench.restore_accessibility(tv, "com.gathin.tvhome", [inner])
+        put = [c for c in tv.commands if c.startswith("settings put secure enabled_accessibility_services")]
+        self.assertEqual(put, [f"settings put secure enabled_accessibility_services '{OTHER}:{inner}'"])
+        self.assertEqual(tv.setting, f"{OTHER}:{inner}")
+
+    def test_a_part_that_is_not_a_component_is_not_written(self):
+        """Nothing that could carry shell syntax is written, and nothing is dropped from the list."""
+        hostile = "com.evil/.X';reboot;'"
+        tv = FakeTV(hostile)
+        bench.restore_accessibility(tv, "com.gathin.tvhome", [OURS])
+        self.assertFalse([c for c in tv.commands if c.startswith("settings put")], tv.commands)
+        self.assertEqual(tv.setting, hostile)
 
 
 class ColdStartOrderTest(unittest.TestCase):

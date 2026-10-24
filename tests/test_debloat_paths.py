@@ -63,9 +63,10 @@ class DebloatPathsTest(unittest.TestCase):
     def run_script(self, script_path, argument, cwd, base, home):
         capture = base / "commands.txt"
         # No TV_HOST, so recovery.py looks for a record that cannot exist: that is the fallback these
-        # tests exercise. HOME is isolated so a record from a real run cannot answer instead.
-        env = {k: v for k, v in os.environ.items() if k != "TV_HOST"}
-        env.update(CAPTURE=str(capture), HOME=str(home))
+        # tests exercise, which restore only takes when asked to. HOME is isolated so a record from a
+        # real run cannot answer instead.
+        env = {k: v for k, v in os.environ.items() if k not in ("TV_HOST", "TV_PORT")}
+        env.update(CAPTURE=str(capture), HOME=str(home), RESTORE_WITHOUT_RECORD="1")
         # The fake tv.py reads its stdin, so an inherited terminal would leave it waiting.
         result = subprocess.run(
             ["bash", str(script_path), argument], cwd=cwd, env=env,

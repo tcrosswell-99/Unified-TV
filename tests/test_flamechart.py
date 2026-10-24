@@ -24,6 +24,11 @@ spec = importlib.util.spec_from_file_location("cyt_flamechart", ROOT / "tools" /
 flamechart = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(flamechart)
 
+
+def pixels(im):
+    """Every pixel, in order. getdata is deprecated from Pillow 13; older Pillow has only getdata."""
+    return list(im.get_flattened_data() if hasattr(im, "get_flattened_data") else im.getdata())
+
 PKG = "com.gathin.tvhome"
 MS = 1_000_000
 
@@ -142,7 +147,7 @@ class DrawTest(unittest.TestCase):
             from PIL import Image
             im = Image.open(out).convert("RGB")
             self.assertEqual(im.size, size)
-            self.assertIn(flamechart.MAGENTA, set(im.getdata()))
+            self.assertIn(flamechart.MAGENTA, set(pixels(im)))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,16 @@ reaches the TV, and `restore.sh` replays it.
 Records live in ~/.cleanyourtv/, one per TV and list. The first one wins: a retry after a
 half-applied list must not record the broken state as the original. A later run only adds the names
 the list gained since then, with their state before this list disabled them.
+
+A record is filed under the address and port the TV was reached at, and holds the TV's own id
+(ro.serialno, or android_id where the serial is a placeholder). The address alone does not say
+which TV answers: every TV behind tools/relay.py is 127.0.0.1, on its own port, and a router can
+hand a TV a new address. So a record taken on another TV is refused, both for --save and for
+--commands, and a record taken on this TV at another address is still found. Records written
+before the id was stored are used with a warning, at the address they were taken at.
+
+Without a record, --commands can only enable every listed package, including ones that were off
+before cleanup, so it does that only when RESTORE_WITHOUT_RECORD=1 is set.
 """
 import hashlib
 import json
@@ -32,6 +42,16 @@ SETTINGS = ("window_animation_scale", "transition_animation_scale", "animator_du
 # would leave the stock launcher off, so restore goes back to the stock one instead.
 CUSTOM_LAUNCHER = "com.gathin.tvhome"
 VERSION = 1
+DEFAULT_PORT = "5555"
+# Set to restore a TV that has no record by enabling every listed package (the pre-#239 behaviour).
+FALLBACK_ENV = "RESTORE_WITHOUT_RECORD"
+# What tells one TV from another, in the order they are compared: the serial survives a factory
+# reset, android_id does not, but cheap boxes share a placeholder serial.
+DEVICE_KEYS = (("serial", "getprop ro.serialno"), ("android_id", "settings get secure android_id"))
+DEVICE_ID_RE = re.compile(r"[A-Za-z0-9._:-]{4,64}")
+# Answers that are not an id: an unset property or setting, and the serial many MediaTek and Amlogic
+# boxes all ship with.
+PLACEHOLDER_IDS = {"unknown", "null", "none", "0123456789abcdef"}
 # Core Android packages no list may disable: with one of these off, Android itself can stop booting
 # (#884: an original Mi TV Stick that lost its permission controller, package installer, ext services,
 # module metadata and mainline overlays never came back). The content providers in CORE_OK are the
@@ -67,12 +87,144 @@ def read_list(path):
     return names
 
 
-def record_path(list_path, host):
-    """One record per TV and list. The list is identified by its absolute path, so a copy of the
-    same file somewhere else gets its own record."""
-    tag = re.sub(r"[^A-Za-z0-9.-]", "_", host or "no-host")
-    digest = hashlib.sha1(str(Path(list_path).resolve()).encode()).hexdigest()[:8]
-    return Path.home() / ".cleanyourtv" / f"recovery-{tag}-{digest}.json"
+def split_host_port(endpoint):
+    """Split host:port or [ipv6]:port into (host, port_or_none), the way tools/tv.py does."""
+    if endpoint.startswith("["):
+        end = endpoint.find("]")
+        if end != -1:
+            rest = endpoint[end + 1:]
+            return endpoint[1:end], (rest[1:] if rest.startswith(":") else None)
+    elif endpoint.count(":") == 1:
+        host, port = endpoint.split(":", 1)
+        return host, port
+    return endpoint, None
+
+
+def endpoint(raw_host):
+    """(host, port) tools/tv.py connects to for this TV_HOST and TV_PORT."""
+    host, port = split_host_port(raw_host or "")
+    return host, port or os.environ.get("TV_PORT") or DEFAULT_PORT
+
+
+def tag(text):
+    return re.sub(r"[^A-Za-z0-9.-]", "_", text)
+
+
+def list_digest(list_path):
+    """The list is identified by its absolute path, so a copy of the same file somewhere else gets
+    its own record."""
+    return hashlib.sha1(str(Path(list_path).resolve()).encode()).hexdigest()[:8]
+
+
+def record_path(list_path, host, port=DEFAULT_PORT):
+    """One record per TV address, port and list: one relay per TV means one port per TV."""
+    return (Path.home() / ".cleanyourtv"
+            / f"recovery-{tag(host or 'no-host')}-{tag(str(port))}-{list_digest(list_path)}.json")
+
+
+def legacy_record_path(list_path, raw_host):
+    """Where a record taken before the port and the TV's id were stored lives: keyed on the TV_HOST
+    text alone."""
+    return (Path.home() / ".cleanyourtv"
+            / f"recovery-{tag(raw_host or 'no-host')}-{list_digest(list_path)}.json")
+
+
+def records_for(list_path):
+    """Every record taken with this list, at any address."""
+    return sorted((Path.home() / ".cleanyourtv").glob(f"recovery-*-{list_digest(list_path)}.json"))
+
+
+def usable_id(value):
+    return (isinstance(value, str) and bool(DEVICE_ID_RE.fullmatch(value))
+            and value.lower() not in PLACEHOLDER_IDS and set(value) != {"0"})
+
+
+def read_device(dev):
+    """The TV's own ids; one it cannot give (or gives as a placeholder) is None."""
+    device = {}
+    for key, command in DEVICE_KEYS:
+        value = shell(dev, command)
+        device[key] = value if usable_id(value) else None
+    return device
+
+
+def has_device(record):
+    return any((record.get("device") or {}).values())
+
+
+def same_device(recorded, current):
+    """True or False when both sides hold an id to compare, None when they do not."""
+    for key, _ in DEVICE_KEYS:
+        a, b = (recorded or {}).get(key), (current or {}).get(key)
+        if a and b:
+            return a == b
+    return None
+
+
+def describe(device):
+    for key, _ in DEVICE_KEYS:
+        if (device or {}).get(key):
+            return f"{key} {device[key]}"
+    return "no id"
+
+
+def choose_record(list_path, raw_host, current):
+    """The record this TV's undo belongs to, as (path, record), or (None, None) when it has none.
+
+    The record at this address comes first; one taken on this TV at another address (a new DHCP
+    lease, a relay) is next. A record at this address that was taken on another TV stops the run:
+    replaying it would put another TV's states on this one, and replacing it would lose that TV's
+    only copy."""
+    host, port = endpoint(raw_host)
+    own = record_path(list_path, host, port)
+    legacy = legacy_record_path(list_path, raw_host)
+    other_tv = None
+    for path in (own, legacy):
+        if not path.exists():
+            continue
+        record = load_record(path)
+        if not has_device(record):
+            sys.stderr.write(
+                f"warning: {path} does not say which TV it was taken on (it was written before records "
+                f"held the TV's id, or the TV gave none), so it cannot be checked against this one "
+                f"({describe(current)}). Make sure TV_HOST and TV_PORT reach the TV you ran disable on.\n")
+            return path, record
+        verdict = same_device(record.get("device"), current)
+        if verdict:
+            return path, record
+        if verdict is None:
+            raise SystemExit(
+                f"{path} was taken on the TV with {describe(record.get('device'))}, and the TV at "
+                f"{host}:{port} did not give an id to compare it with, so nothing was changed. Check "
+                "the connection (tools/tv.py --probe) and try again.")
+        other_tv = other_tv or (path, record)
+
+    found = []
+    for path in records_for(list_path):
+        if path in (own, legacy):
+            continue
+        record = load_record(path)
+        if same_device(record.get("device"), current):
+            found.append((path, record))
+    if len(found) > 1:
+        raise SystemExit(
+            f"more than one recovery record for this list was taken on this TV ({describe(current)}):\n"
+            + "".join(f"  {path}\n" for path, _ in found)
+            + "Nothing was changed. Keep the oldest one, which holds the state from before the first "
+              "run, and move the others aside deliberately.")
+    if found:
+        path, record = found[0]
+        sys.stderr.write(f"using the record taken on this TV at {record.get('host')}"
+                         f"{':' + str(record['port']) if record.get('port') else ''}: {path}\n")
+        return found[0]
+    if other_tv:
+        path, record = other_tv
+        raise SystemExit(
+            f"{path} was taken on another TV ({describe(record.get('device'))}), but the TV at "
+            f"{host}:{port} is {describe(current)}. Nothing was changed.\n"
+            "Point TV_HOST and TV_PORT at the TV the record was taken on. If that TV is gone and this "
+            "one was never cleaned with this list, move the record aside deliberately and run again.")
+    return None, None
 
 
 def load_record(path):
@@ -100,6 +252,14 @@ def load_record(path):
                          "move it aside deliberately.")
     if not isinstance(record.get("settings", {}), dict):
         raise SystemExit(f"{path}: not a usable recovery record (settings is not a mapping); "
+                         "move it aside deliberately.")
+    # Records written before the TV's id was stored have no "device": they are still usable.
+    device = record.get("device")
+    if device is not None and not (
+            isinstance(device, dict)
+            and all(key in dict(DEVICE_KEYS) for key in device)
+            and all(value is None or usable_id(value) for value in device.values())):
+        raise SystemExit(f"{path}: not a usable recovery record (not a TV id: {device!r}); "
                          "move it aside deliberately.")
     return record
 
@@ -144,8 +304,9 @@ def query_home(dev):
 
 
 def connect():
-    # Imported here so --commands works on a machine where adb_shell is not installed: printing the
-    # restore batch needs no TV. tv.py itself exits with a readable message when TV_HOST is unset.
+    # Imported here so --commands works on a machine where adb_shell is not installed when there is
+    # no record to check against the TV. tv.py itself exits with a readable message when TV_HOST is
+    # unset.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     try:
         import tv
@@ -161,41 +322,41 @@ def package_state(name, installed, disabled):
             else "enabled")
 
 
-def save(list_path, host):
-    path = record_path(list_path, host)
-    if path.exists():
-        record = load_record(path)
-        packages = read_list(list_path)
-        # The list may have been edited since the record was taken. Entries already in the record are
-        # never overwritten (a retry must not record the broken state as the original), but names it
-        # does not hold yet have not been touched by this list, so their state now is their state
-        # before cleanup. Without them, restore would leave those packages disabled for good.
-        added = [name for name in packages if name not in record["packages"]]
-        print(f"keeping the recovery record from {record.get('created')}: {path}")
-        if not added:
-            print("nothing was recorded again: it holds the state from before the first run.")
-            return 0
-        dev = connect()
-        try:
-            installed, disabled = query_packages(dev)
-        finally:
-            dev.close()
-        for name in added:
-            record["packages"][name] = package_state(name, installed, disabled)
-        write_record(path, record)
-        print(f"added {len(added)} names the list gained since then, entries already recorded "
-              f"are unchanged: {', '.join(added)}")
-        return 0
-
+def save(list_path, raw_host):
     packages = read_list(list_path)
     dev = connect()
     try:
+        # Who answers first: a record at this address that another TV wrote stops the run here,
+        # before anything is recorded or disabled.
+        current = read_device(dev)
+        path, record = choose_record(list_path, raw_host, current)
+        if record is not None:
+            # The list may have been edited since the record was taken. Entries already in the
+            # record are never overwritten (a retry must not record the broken state as the
+            # original), but names it does not hold yet have not been touched by this list, so their
+            # state now is their state before cleanup. Without them, restore would leave those
+            # packages disabled for good.
+            added = [name for name in packages if name not in record["packages"]]
+            print(f"keeping the recovery record from {record.get('created')}: {path}")
+            if not added:
+                print("nothing was recorded again: it holds the state from before the first run.")
+                return 0
+            installed, disabled = query_packages(dev)
+            for name in added:
+                record["packages"][name] = package_state(name, installed, disabled)
+            write_record(path, record)
+            print(f"added {len(added)} names the list gained since then, entries already recorded "
+                  f"are unchanged: {', '.join(added)}")
+            return 0
+
         installed, disabled = query_packages(dev)
         home = query_home(dev)
         scales = {key: shell(dev, f"settings get global {key}") for key in SETTINGS}
     finally:
         dev.close()
 
+    host, port = endpoint(raw_host)
+    path = record_path(list_path, host, port)
     # The launcher that owns Home may not be in the list, but it is what undo has to put back.
     home_package = home.split("/", 1)[0] if home else None
     targets = packages + ([home_package] if home_package and home_package not in packages else [])
@@ -203,6 +364,8 @@ def save(list_path, host):
         "version": VERSION,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "host": host,
+        "port": port,
+        "device": current,
         "list": str(Path(list_path).resolve()),
         "home": home,
         "settings": scales,
@@ -211,27 +374,56 @@ def save(list_path, host):
     write_record(path, record)
 
     already = sum(1 for state in record["packages"].values() if state == "disabled")
-    print(f"recorded {len(record['packages'])} packages on {host} "
-          f"({already} already disabled, left alone by undo) -> {path}")
+    print(f"recorded {len(record['packages'])} packages on {host}:{port} ({describe(current)}; "
+          f"{already} already disabled, left alone by undo) -> {path}")
+    if not has_device(record):
+        print("warning: the TV gave no serial or android_id, so restore cannot check that it is "
+              "talking to this TV; keep TV_HOST and TV_PORT pointing at it.", file=sys.stderr)
     print(f"HOME before: {home or 'no component answered'}")
     print("undo with tools/restore.sh <same list>; keep this file, it is the only copy.")
     return 0
 
 
-def restore_commands(list_path, stock, host):
+def current_device():
+    """The connected TV's ids, for --commands, which otherwise needs no TV."""
+    try:
+        dev = connect()
+    except Exception as e:   # adb_shell raises its own types, and OSError for a refused connection
+        raise SystemExit(f"could not reach the TV to check which TV the recovery record belongs to "
+                         f"({e}). Nothing was sent. Check the connection (tools/tv.py --probe) and "
+                         "try again.")
+    try:
+        return read_device(dev)
+    finally:
+        dev.close()
+
+
+def restore_commands(list_path, stock, raw_host):
     """The batch that puts the recorded states back, one command per line."""
     packages = read_list(list_path)
     if stock and not PACKAGE_RE.fullmatch(stock):
         raise SystemExit(f"not a package name: {stock!r}")
-    path = record_path(list_path, host)
     commands = []
+    record = None
+    # Only a record needs the TV: which one applies depends on which TV answers.
+    if records_for(list_path):
+        _, record = choose_record(list_path, raw_host, current_device())
 
-    if not path.exists():
+    if record is None:
+        host, port = endpoint(raw_host)
+        if not os.environ.get(FALLBACK_ENV):
+            raise SystemExit(
+                f"no recovery record for this TV and list ({record_path(list_path, host, port)}), so "
+                "nothing was sent.\n"
+                "Records are found by the TV's id at any address; one written before records held the "
+                f"id is found only at the address it was taken at (see {Path.home() / '.cleanyourtv'}).\n"
+                "Without a record, restore can only enable every listed package, including ones that "
+                "were already disabled before cleanup, and reset Home and the animation scales to "
+                f"their defaults. To do that, check the list and run again with {FALLBACK_ENV}=1.")
         sys.stderr.write(
-            f"no recovery record for this TV and list ({path}).\n"
+            f"no recovery record for this TV and list; {FALLBACK_ENV} is set.\n"
             "Enabling every listed package and resetting Home and the animation scales to their\n"
-            "defaults. Packages that were already disabled before cleanup will be enabled too:\n"
-            "check the list before running this.\n")
+            "defaults. Packages that were already disabled before cleanup will be enabled too.\n")
         for name in packages:
             commands.append(f"pm enable {name}")
         if stock:
@@ -243,7 +435,6 @@ def restore_commands(list_path, stock, host):
         commands.append("pm list packages -d")
         return commands
 
-    record = load_record(path)
     states = record["packages"]
     re_enable = [name for name, state in states.items() if state == "enabled"]
     for name in re_enable:
