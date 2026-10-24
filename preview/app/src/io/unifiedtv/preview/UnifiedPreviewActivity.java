@@ -99,7 +99,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private static final int W = 1920, H = 1080;
         private static final int WHITE = 0xFFFAFAFC;
         private static final int MUTED = 0xFFC8CCD5;
-        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 380, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
+        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 400, DRIFT_FRAME_MS = 33, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
         private Activity activity;
         private final SharedPreferences prefs;
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -115,8 +115,10 @@ public final class UnifiedPreviewActivity extends Activity {
         private boolean apps = false, menu = false, moving = false;
         private boolean okDown, held;
         private long focusAt, fadeAt;
-        // Spec 4.4: the committed scene (an app id, "poster:<id>" or "neutral") follows focus after a short settle.
+        // Spec 32: an app's scene follows focus at once and crossfades in 400 ms; a title's poster scene waits for a short
+        // settle (spec 4.4), because its artwork may still be decoding. The scene is an app id, "poster:<id>" or "neutral".
         private final Backdrops backdrops = new Backdrops();
+        private final AmbientMesh mesh = new AmbientMesh();
         private String scene = "neutral", formerScene = null, sceneTitle = "";
         private long titleAt = 0;
         private boolean titleHidden = false;
@@ -177,16 +179,20 @@ public final class UnifiedPreviewActivity extends Activity {
                 scene = key; fadeAt = fadeMs() == 0 ? 0 : now;
                 if (!key.startsWith("poster:")) prefs.edit().putString("scene", key).apply();
             }
-            sceneTitle = title; titleHidden = false; titleAt = now + (fadeMs() == 0 ? 0 : fadeMs() / 3);
+            // The dock's title, halo and light change together (spec 32.6); a title's name waits for its scene.
+            sceneTitle = title; titleHidden = false; titleAt = now + (fadeMs() == 0 || app(key) ? 0 : fadeMs() / 3);
             invalidate();
         }
         private boolean calm() { return prefs.getBoolean("reduceMotion", false); }
         private boolean light() { return prefs.getBoolean("lightweight", false); }
         private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
+        private static boolean app(String key) { return !key.equals("neutral") && !key.startsWith("poster:"); }
+        /** Slow drifting light (spec 32.1), off with reduced motion, lightweight rendering or a still background. */
+        private boolean drifting() { return !calm() && !light() && !prefs.getBoolean("stillBackground", false); }
         /** A focus move: the tile answers at once, the old title steps back, and the scene follows after the settle. */
         private void moved() {
             focusAt = SystemClock.uptimeMillis(); titleHidden = true;
-            handler.removeCallbacks(commitFocus); handler.postDelayed(commitFocus, BG_WAIT_MS);
+            handler.removeCallbacks(commitFocus); handler.postDelayed(commitFocus, shelf ? BG_WAIT_MS : 0);
         }
 
         Preview(Activity a) {
@@ -485,6 +491,8 @@ public final class UnifiedPreviewActivity extends Activity {
             c.restore();
             boolean animating = (fadeAt != 0 && now - fadeAt < fadeMs()) || (titleAt > now - TITLE_MS) || (shelfAt != 0 && now - shelfAt < SHELF_MS);
             if (animating) postInvalidateDelayed(16);
+            // The light keeps drifting while Home is on screen; with Home hidden nothing draws, so the loop stops by itself.
+            else if (app(scene) && drifting()) postInvalidateDelayed(DRIFT_FRAME_MS);
             if (fadeAt != 0 && now - fadeAt >= fadeMs()) { fadeAt = 0; formerScene = null; }
             if (shelfAt != 0 && now - shelfAt >= SHELF_MS) shelfAt = 0;
         }
@@ -497,18 +505,24 @@ public final class UnifiedPreviewActivity extends Activity {
             return shelf ? t : 1 - t;
         }
 
-        /** Two cached bitmaps per dissolve, never a full-screen layer of gradients each frame (spec 4.12). */
+        /**
+         * One crossfade at a time (spec 4.12): the outgoing scene, then the incoming one over it. Apps draw their live mesh
+         * (a few moved radial shaders, nothing allocated per frame); titles draw one cached bitmap.
+         */
         private void drawBackground(Canvas c, long now) {
             long fade = fadeMs();
             float t = fadeAt == 0 || fade == 0 ? 1 : Math.min(1, (now - fadeAt) / (float) fade);
-            if (t < 1) drawScene(c, formerScene == null ? "neutral" : formerScene, 255, 0);
-            float e = ease(t);
-            drawScene(c, scene, t < 1 ? Math.round(e * 255) : 255, t < 1 && !calm() && !light() ? .02f * (1 - e) : 0);
+            String former = formerScene == null ? "neutral" : formerScene;
+            if (t < 1) drawScene(c, former, 255, 0, now);
+            float e = t * t * (3 - 2 * t);   // ease in and out (spec 32.1)
+            drawScene(c, scene, t < 1 ? Math.round(e * 255) : 255, t < 1 && !calm() && !light() && !app(scene) ? .02f * (1 - e) : 0, now);
+            if (!light() && (app(scene) || (t < 1 && app(former)))) mesh.protect(c, W, H);
         }
 
         private final RectF sceneRect = new RectF();
         /** An app's own branded atmosphere, a title's own poster expanded, or the neutral scene; never another item's image. */
-        private void drawScene(Canvas c, String key, int alpha, float drift) {
+        private void drawScene(Canvas c, String key, int alpha, float drift, long now) {
+            if (app(key) && !light()) { mesh.draw(c, key, W, H, alpha, now / 1000.0, drifting()); return; }
             Bitmap b = key.equals("neutral") ? null : key.startsWith("poster:") ? backdrops.get(key) : backdrops.app(key);
             if (b == null) {
                 drawNeutral(c, alpha);
@@ -605,6 +619,10 @@ public final class UnifiedPreviewActivity extends Activity {
                 c.save();
                 c.scale(scale, scale, x + cellWidth / 2, y + 80);
                 if(selected){
+                    // A soft halo in the app's own colour behind the lifted tile (spec 32.3).
+                    int glow=AmbientMesh.accent(item.id)&0x00FFFFFF;
+                    paint.setShader(new android.graphics.RadialGradient(x+cellWidth/2,y+80,170,new int[]{0x5A000000|glow,0x00000000|glow},null,Shader.TileMode.CLAMP));
+                    c.drawCircle(x+cellWidth/2,y+80,170,paint);paint.setShader(null);
                     c.save();c.translate(x+cellWidth/2,y+177);c.scale(1,.27f);
                     paint.setShader(new android.graphics.RadialGradient(0,0,155,new int[]{0x68000000,0x00000000},null,Shader.TileMode.CLAMP));
                     c.drawCircle(0,0,155,paint);c.restore();paint.setShader(null);c.translate(0,-12);
@@ -625,9 +643,12 @@ public final class UnifiedPreviewActivity extends Activity {
                     text(c, symbol, x + cellWidth / 2, y + 105, symbol.length() > 2 ? 53 : 80,
                             WHITE, true, Paint.Align.CENTER);
                 }
-                if (selected && prefs.getBoolean("highContrast",false)) {
-                    outline.setColor(0x55FFFFFF);
-                    c.drawRoundRect(x - 3, y - 3, x + cellWidth + 3, y + 164, 30, 30, outline);
+                if (selected) {
+                    // A crisp, luminous outline on the focused tile, brighter still with high contrast.
+                    boolean strong = prefs.getBoolean("highContrast",false);
+                    outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3);
+                    c.drawRoundRect(x - 5, y - 5, x + cellWidth + 5, y + 166, 31, 31, outline);
+                    outline.setStrokeWidth(2);
                 }
                 c.restore();
                 text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);

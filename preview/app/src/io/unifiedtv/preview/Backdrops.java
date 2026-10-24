@@ -11,10 +11,10 @@ final class Backdrops {
     private final LinkedHashMap<String,Bitmap> cache=new LinkedHashMap<String,Bitmap>(8,.75f,true){
         @Override protected boolean removeEldestEntry(Map.Entry<String,Bitmap> e){return size()>6;}
     };
-    /** The focused app's own branded atmosphere (spec 4.5 fallback: original, clearly app-related). */
+    /** A still frame of the focused app's ambient mesh, for the lightweight mode (spec 32.5 fallback). */
     synchronized Bitmap app(String id){
         Bitmap b=cache.get("app:"+id);if(b!=null)return b;
-        b=Bitmap.createBitmap(SW,SH,Bitmap.Config.ARGB_8888);Canvas c=new Canvas(b);MaterialScene.mesh(c,SW,SH,id);vignette(c);cache.put("app:"+id,b);return b;
+        b=Bitmap.createBitmap(SW,SH,Bitmap.Config.ARGB_8888);Canvas c=new Canvas(b);MaterialScene.mesh(c,SW,SH,id);cache.put("app:"+id,b);return b;
     }
     synchronized Bitmap get(String key){return cache.get(key);}
     synchronized void put(String key,Bitmap b){cache.put(key,b);}

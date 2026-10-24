@@ -108,16 +108,26 @@ These checks cover only what the status *says*. They are not a protection test. 
 - Start it with nothing set up.
   - **Pass:** Home stays responsive while the search runs, and nothing appears on screen because of it.
 
-## Home: scenes and focus (P05-02)
+## Home: animated light and focus (P05-02, AM-01 to AM-12)
 
-1. Move slowly along the dock.
-   - **Pass:** after each move the background settles briefly, then dissolves into that app's own scene. No flash of an unrelated picture.
-2. Hold Right to move quickly along the dock.
-   - **Pass:** focus keeps up with the remote; the background waits until you stop, then changes once.
-3. Leave Home on screen for a minute.
-   - **Pass:** the dock rests lower and quieter; the first press brings it back without being lost.
-4. Turn on reduced graphics and repeat 1 and 2.
-   - **Pass:** the same journey, with simpler scenes and no slower focus.
+1. Move slowly along the dock. (AM-01, AM-02)
+   - **Pass:** each app's light (crimson, dark red, navy with cyan, magenta, violet, peach and pink) crossfades in about half a second from the moment focus moves, with no flash or hard cut; the name and the tile's outline and glow change with it.
+2. Hold Right, then tap quickly across the dock. (AM-03)
+   - **Pass:** focus keeps up with the remote; the background ends on the last app; nothing launches.
+3. Leave one app focused for a minute. (AM-04)
+   - **Pass:** the light drifts gently, with no visible loop, jump or pulsing; text stays still and readable.
+4. Settings → Appearance → **Keep the Home background still**, then **Reduce motion**. (AM-05)
+   - **Pass:** with "still", the drift stops but focus changes still crossfade; with Reduce motion, changes are instant.
+5. Look at each of the six apps. (AM-06)
+   - **Pass:** clock, status, name, labels and focus outline are readable; record any visible banding (stepped rings in the light).
+6. Open an app, return Home; open Settings; open Live TV's locked sheet. (AM-08)
+   - **Pass:** the right light for the focused app each time.
+7. Turn on **Lightweight rendering**. (AM-10)
+   - **Pass:** still light in each app's colours, everything usable.
+8. Move an app on the dock. (AM-11)
+   - **Pass:** its light follows the app, not the position.
+9. Compare with the mockups you supplied. (AM-12)
+   - **Record:** what differs.
 
 ## Films & TV from Home (P05-02, spec 4.6)
 
