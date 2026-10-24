@@ -12,7 +12,7 @@ readme_card.py had the second half of the same problem: its own usage line said 
 the repo does not ship and no page links, while the front page displays `docs/card.jpg` - so a
 contributor who ran the command the script documents wrote a stray file and left the README card stale.
 The picture every card script names is checked against the files in the repo, and readme_card.py's
-against the one README.md shows.
+against the one the inherited front page (README.cleanyourtv.md) shows.
 
 Run from the repository root: python3 -m unittest discover -s tests -v
 """
@@ -28,6 +28,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
 PRESS = ROOT / "docs" / "workflows" / "press.md"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
+UPSTREAM_README = ROOT / "README.cleanyourtv.md"
 PERF = TOOLS / "requirements-perf.txt"
 
 # The scripts press.md sends a reader to, with the two arguments each takes: the font, then the file.
@@ -108,14 +111,14 @@ class CardScriptOutputTest(unittest.TestCase):
                                     "a reader who follows it writes a new file that nothing links")
 
     def test_the_card_script_writes_the_picture_the_front_page_shows(self):
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme = UPSTREAM_README.read_text(encoding="utf-8")
         shown = set(re.findall(r'<img src="(docs/[^"]*card[^"]*)"', readme))
-        self.assertTrue(shown, "README.md no longer displays a card image, so this check would prove nothing")
+        self.assertTrue(shown, "README.cleanyourtv.md no longer displays a card image, so this check would prove nothing")
         named = set(DOCS_PICTURE.findall(docstring_of(TOOLS / "readme_card.py")))
         for rel in sorted(shown):
             with self.subTest(picture=rel):
                 self.assertIn(rel, named,
-                              f"README.md displays {rel} but readme_card.py's usage line writes {sorted(named)}")
+                              f"README.cleanyourtv.md displays {rel} but readme_card.py's usage line writes {sorted(named)}")
 
     def test_the_docstring_reader_reads_a_script_and_not_its_comments(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,9 +1,11 @@
+> **Unified TV note (English):** this page is a translation of the original [CleanYourTV guide](README.cleanyourtv.md), kept for reference with its credits. It does not describe Unified TV, an independent fork in early development whose front page is [README.md](README.md) (English). Do not run the inherited cleanup steps on a household TV without the recovery-first process in [docs/INSTALLATION_AND_RECOVERY.md](docs/INSTALLATION_AND_RECOVERY.md).
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="docs/banner.png" alt="CleanYourTV：テレビのホーム画面をすっきりと" width="800"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.vi.md">Tiếng Việt</a> · 日本語
+  <a href="README.cleanyourtv.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.vi.md">Tiếng Việt</a> · 日本語
 </p>
 
 <p align="center">
@@ -21,7 +23,7 @@
 せず、復元用のスクリプトも用意されています。
 
 この文書では共通の機能と使い方を紹介します。機種、地域、ファームウェアによってアプリの構成や制限は異なるため、
-まずお使いのテレビと照らし合わせてください。変更があった場合は[英語版 README](README.md) が正となります。
+まずお使いのテレビと照らし合わせてください。変更があった場合は[英語版 README](README.cleanyourtv.md) が正となります。
 機種ごとの記録は[機種リスト](examples/README.md)にあります。
 
 ![標準の Google TV ホームと CleanYourTV ランチャーの比較](docs/stock-vs-new-side.jpg)
@@ -336,13 +338,13 @@ TV_HOST=192.168.1.50 tools/restore.sh "examples/your-model/debloat.txt" com.goog
 
 はい。ツールが使う TCP 経由の ADB 接続（デフォルトはポート 5555）は暗号化されておらず、ファームウェアによっては許可すら
 求められません。作業が終わったら USB デバッグとネットワーク / ADB デバッグをオフにし、付与したデバッグの許可を取り消して、
-[英語版 README の手順](README.md#questions-people-ask)に従ってポートが閉じていることを確認してください。
+[英語版 README の手順](README.cleanyourtv.md#questions-people-ask)に従ってポートが閉じていることを確認してください。
 
 **プライベート DNS や AirPlay には対応していますか？**
 
 プライベート DNS は一部のバージョンの Android システムの機能で、ランチャーの広告ブロック機能ではなく、動画内のすべての広告を
 ブロックできるわけでもありません。AirPlay はランチャーには含まれておらず、別途インストールと設定が必要です。その他の選択肢は
-[英語版のよくある質問](README.md#questions-people-ask)を参照してください。
+[英語版のよくある質問](README.cleanyourtv.md#questions-people-ask)を参照してください。
 
 **ビルド済みの APK はありますか？**
 
@@ -360,7 +362,7 @@ TV_HOST=192.168.1.50 tools/restore.sh "examples/your-model/debloat.txt" com.goog
 ## 連絡先とセキュリティの報告
 
 テレビの使い方に関する質問は [GitHub Discussions](https://github.com/Gathin23/cleanyourtv/discussions) でどうぞ。
-取材や提携については[英語版の連絡先](README.md#contact)を参照してください。セキュリティの脆弱性は、リポジトリの
+取材や提携については[英語版の連絡先](README.cleanyourtv.md#contact)を参照してください。セキュリティの脆弱性は、リポジトリの
 [Security ページ](https://github.com/Gathin23/cleanyourtv/security)から非公開で報告してください。[`SECURITY.md`](SECURITY.md) を参照してください。
 
 ## ライセンス

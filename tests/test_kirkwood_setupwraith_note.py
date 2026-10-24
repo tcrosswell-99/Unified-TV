@@ -17,7 +17,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = (ROOT / "docs" / "TROUBLESHOOTING.md").read_text(encoding="utf-8")
-README = (ROOT / "README.md").read_text(encoding="utf-8")
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
+README = (ROOT / "README.cleanyourtv.md").read_text(encoding="utf-8")
 PROMPT = (ROOT / "PROMPT.md").read_text(encoding="utf-8")
 KIRKWOOD = "UTTK.260317.003"
 

@@ -333,7 +333,8 @@ class CatalogueTest(unittest.TestCase):
 
 class DocumentationTest(unittest.TestCase):
     def test_readme_lists_the_tool_and_what_it_cannot_say(self):
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        # Unified TV: the inherited Tools table lives in README.cleanyourtv.md, not the fork's README.md.
+        readme = (ROOT / "README.cleanyourtv.md").read_text(encoding="utf-8")
         self.assertIn("[`tools/privacy.py`](tools/privacy.py)", readme)
         self.assertIn("What the audit cannot do is prove intent", readme)
 

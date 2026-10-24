@@ -1,6 +1,6 @@
 # Upstream CleanYourTV UI README (archived snapshot)
 
-The content below was the parent repository's top-level README at the moment the independent Unified TV documentation was introduced (24 October 2026). It is retained for **credit, feature provenance and historical context**; some relative links were written for its original repository root and might not work from this archive path.
+The content below was the parent repository's top-level README at the moment the independent Unified TV documentation was introduced (24 October 2026). It is retained for **credit, feature provenance and historical context**; its relative links have been adjusted so they open from this archive folder. Statements about the parent fork (for example, the daily `sync-upstream.yml` merge) describe CleanYourTV UI, not Unified TV: in this fork that workflow only prints manual-review guidance. The Portuguese translation is [README.pt-BR.md](../../README.pt-BR.md); Unified TV's own front page is [README.md](../../README.md).
 
 Original and updated source: https://github.com/matheus-caldeira/cleanyourtv-ui
 
@@ -8,18 +8,18 @@ Original and updated source: https://github.com/matheus-caldeira/cleanyourtv-ui
 
 # CleanYourTV UI
 
-**English** · [Português](README.pt-BR.md)
+**English** · [Português](../../README.pt-BR.md)
 
 An Apple TV-style home screen for Android TV, built on **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)**
 (which strips the factory bloat off your TV) with the look of **[Free My TV](https://github.com/simbasjungles/free-my-tv)**.
 Browse movies and shows with TMDB, see where each one streams, and open it right in the app.
 
-![Home screen](docs/ui/screenshots/en/home.jpg)
+![Home screen](../../docs/ui/screenshots/en/home.jpg)
 
 This repository is a **fork of CleanYourTV**: everything the original has is still here, unchanged (the per-model
 debloat lists in `examples/`, the scripts in `tools/`, the minimal launcher in `launcher/`). CleanYourTV's README is
-**[`README.cleanyourtv.md`](README.cleanyourtv.md)**, kept current with the rest. The fork only **adds** files, and
-a workflow brings in CleanYourTV's changes every day ([`sync-upstream.yml`](.github/workflows/sync-upstream.yml)).
+**[`README.cleanyourtv.md`](../../README.cleanyourtv.md)**, kept current with the rest. The fork only **adds** files, and
+a workflow brings in CleanYourTV's changes every day ([`sync-upstream.yml`](../../.github/workflows/sync-upstream.yml)).
 
 ## How it differs
 
@@ -80,10 +80,10 @@ Free My TV. This project is for people who want both and a full Explore.
 
 | | |
 |---|---|
-| ![Explore](docs/ui/screenshots/en/explore.jpg) | ![Explore's menu](docs/ui/screenshots/en/explore-menu.jpg) |
-| ![Anime catalog](docs/ui/screenshots/en/explore-anime.jpg) | ![Today's top 10](docs/ui/screenshots/en/explore-top10.jpg) |
-| ![Filters](docs/ui/screenshots/en/explore-filters.jpg) | ![Top 10 movies](docs/ui/screenshots/en/explore-top10-grid.jpg) |
-| ![Title page](docs/ui/screenshots/en/title.jpg) | ![An app's menu on the home screen](docs/ui/screenshots/home-app-menu.jpg) |
+| ![Explore](../../docs/ui/screenshots/en/explore.jpg) | ![Explore's menu](../../docs/ui/screenshots/en/explore-menu.jpg) |
+| ![Anime catalog](../../docs/ui/screenshots/en/explore-anime.jpg) | ![Today's top 10](../../docs/ui/screenshots/en/explore-top10.jpg) |
+| ![Filters](../../docs/ui/screenshots/en/explore-filters.jpg) | ![Top 10 movies](../../docs/ui/screenshots/en/explore-top10-grid.jpg) |
+| ![Title page](../../docs/ui/screenshots/en/title.jpg) | ![An app's menu on the home screen](../../docs/ui/screenshots/home-app-menu.jpg) |
 
 ## Quick start
 
@@ -93,27 +93,34 @@ Gemini CLI), as with CleanYourTV.
 | Where | What to do |
 |---|---|
 | **1. On the TV** | Settings → Device Preferences → About → press OK on **Build** seven times → back → Developer options → **USB debugging** on (and **Network/ADB debugging** if there is one). Keep the TV on. |
-| **2. On your computer** | Paste [`PROMPT.md`](PROMPT.md) into your assistant with your TV model, and ask for this fork's home screen in `launcher-ui/` instead of `launcher/`. |
+| **2. On your computer** | Paste [`PROMPT.md`](../../PROMPT.md) into your assistant with your TV model, and ask for this fork's home screen in `launcher-ui/` instead of `launcher/`. |
 | **3. Follow along** | Accept "Allow USB debugging?" on the TV and answer the checklist: the apps you use, the shelf order, the voice assistant, Chromecast and updates. |
 
 The assistant backs up, debloats, builds and installs the home screen, and checks each step with screenshots from the
-TV. The debloat, the supported TVs and how to go back are in [CleanYourTV's README](README.cleanyourtv.md).
+TV. The debloat, the supported TVs and how to go back are in [CleanYourTV's README](../../README.cleanyourtv.md).
 
 ## Installing by hand
 
-1. Follow [CleanYourTV's Quick start](README.cleanyourtv.md#quick-start) up to applying your TV's debloat list.
+1. Follow [CleanYourTV's Quick start](../../README.cleanyourtv.md#quick-start) up to applying your TV's debloat list.
 2. Create the settings with your TMDB key (free, at themoviedb.org → Settings → API) and your city:
    ```bash
    cp launcher-ui/config.example.properties launcher-ui/config.properties
    ```
    `config.properties` stays out of git. The key belongs to the app and is still needed with the QR sign-in: signing in
    only tells TMDB who you are, for your list and ratings. `language=auto` follows the TV's language.
+   *(Unified TV note: the example settings default to region `US`, New York weather and `USD`; change them for
+   your household. Never commit `config.properties`.)*
 3. Build and install (JDK 17 and the Android SDK with build-tools 34+ and platform android-34; no Gradle):
    ```bash
    TV_HOST=192.168.1.50 KEY_SERVICE=1 launcher-ui/build-and-install.sh
    ```
    `KEY_SERVICE=1` turns on the remote-button service, once: reinstalls keep it on. `SCREENSAVER=0` keeps the
    current screensaver.
+   *(Unified TV note: `launcher-ui/build.sh` signs with `launcher-ui/cleanyourtv-ui.keystore`, created on the first
+   build. It reads the keystore password from `KEYSTORE_PASSWORD`; unset, it uses the old public default
+   `cleanyourtv-ui`, so keystores made by earlier builds still work. Set your own password before the first build,
+   and back up the keystore and its password: an update must be signed with the same key, otherwise the TV refuses
+   it and you have to uninstall, losing the app's settings.)*
 4. Optional: `TV_HOST=… launcher-ui/config.sh my-config.json` (see `launcher-ui/config.example.json`) and
    `launcher-ui/config.sh --remote examples/<model>/remote.json`.
 
@@ -124,19 +131,19 @@ old one, and undoes the switch if it doesn't take. To open Explore from the comp
 ## Going back
 
 - To CleanYourTV's launcher: install `launcher/` as in its README.
-- To the factory TV: `tools/restore.sh`, as in [CleanYourTV's README](README.cleanyourtv.md#restoring-your-tv).
+- To the factory TV: `tools/restore.sh`, as in [CleanYourTV's README](../../README.cleanyourtv.md#restoring-your-tv).
 
 ## CleanYourTV updates
 
-The [`sync-upstream.yml`](.github/workflows/sync-upstream.yml) workflow runs every day and merges CleanYourTV's `main`.
+The [`sync-upstream.yml`](../../.github/workflows/sync-upstream.yml) workflow runs every day and merges CleanYourTV's `main`.
 This fork leaves the original's files alone, with one exception: `README.md` is this fork's. On every sync the workflow
-copies CleanYourTV's new README to [`README.cleanyourtv.md`](README.cleanyourtv.md) and keeps this fork's. Any other
+copies CleanYourTV's new README to [`README.cleanyourtv.md`](../../README.cleanyourtv.md) and keeps this fork's. Any other
 conflict becomes an issue with the commands to solve it by hand.
 
 ## Credits and contact
 
 - [CleanYourTV](https://github.com/Gathin23/cleanyourtv), by Gathin, and [Free My TV](https://github.com/simbasjungles/free-my-tv),
-  by its authors, both under the MIT License. Details in [`launcher-ui/NOTICE`](launcher-ui/NOTICE).
+  by its authors, both under the MIT License. Details in [`launcher-ui/NOTICE`](../../launcher-ui/NOTICE).
 - This product uses the TMDB API but is not endorsed or certified by TMDB. Service ids from Wikidata. Weather by
   Open-Meteo.com.
 - Matheus Caldeira, [github.com/matheus-caldeira](https://github.com/matheus-caldeira). Questions and problems in the

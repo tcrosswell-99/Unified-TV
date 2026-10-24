@@ -36,8 +36,9 @@ Remote interaction outranks animation and network imagery on the Sony and low-me
 
 ## Interactions that remain hidden until needed
 
-- **Ring live view:** interrupt artwork automatically on doorbell press or detected person, restore prior state afterward; show true loading state, never call a static preview live. Highest priority.
+- **Ring live view:** interrupt artwork automatically on doorbell press or detected person, restore prior state afterward; show true loading state, never call a static preview live. Highest priority, below only an opted-in smoke/CO safety alarm.
 - **Alexa reminder:** brief text toast over viewing, without stealing playback focus; lower priority than Ring.
+- **Home view:** optional Home Assistant glances and alerts, one at a time in the order set in [Home view](HOME_VIEW.md#alert-priority); nothing appears when disconnected.
 - **VPN:** tiny truthful status/exit country when connected; show a Connect/Retry/Back choice only when opening guarded Live TV without verified VPN.
 - **Tottenham:** fixture card only on matchday, no scores.
 - **ChatGPT:** tiny glyph at rest; short-lived waveform and spoken/visual answer only when activated.

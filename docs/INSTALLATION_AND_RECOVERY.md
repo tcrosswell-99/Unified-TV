@@ -29,6 +29,8 @@ On Samsung Frame/Tizen, the Android APK **cannot** be installed natively. A comp
 
 ## Failure and rollback
 
+**How the inherited tools record and restore (Android only).** `tools/disable.sh` writes a recovery record before its first change: each listed package's previous state, the component that owned Home and the animation scales. The record is kept on the computer, outside this repository, filed under the TV's address and port and holding the TV's own identity (`ro.serialno`, or `android_id`). `tools/restore.sh` replays it. A record taken on a different TV is refused; if the TV's address has changed, restore still finds the record taken on that same TV. With **no record**, restore stops rather than re-enabling the whole list, unless `RESTORE_WITHOUT_RECORD=1` is set deliberately. Keep the list you applied, and test a restore on a spare device before relying on it.
+
 Do not change system packages until the factory Home and previous app state can be restored using a separate channel or the TV settings. Keep the original device settings/package-state backup off the public repository. If a device fails to boot, **stop** and use manufacturer-supported recovery guidance rather than applying more untested commands.
 
 Future public releases will include checksums, signed-versus-debug build labelling, compatible firmware lists, a short install process, model-specific rollback instructions and precise status of optional features.

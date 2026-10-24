@@ -3,7 +3,7 @@
 
 # Household TV Experience: Product and Technical Specification
 
-**Version:** 1.8 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
+**Version:** 1.9 draft | **Date:** 24 October 2026 | **Status:** Requirements agreed; technical feasibility tests outstanding
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -716,6 +716,7 @@ No mandatory removal of bloatware, no promise that every manufacturer permits fa
 
 ## 22. Change log
 
+- **v1.9 (24 October 2026):** Added harmonised-house positioning (the same apps, in the same order, on every TV, with per-room extras), the [Home view design note](HOME_VIEW.md) for optional Home Assistant alerts and its alert priority order, and the [feature ideas catalogue](IDEAS.md). An opted-in smoke or carbon monoxide alarm ranks above Ring; Ring still takes precedence over Alexa reminders, voice, VPN prompts and background transitions. No requirements weakened.
 - **v1.8 (24 October 2026):** Consolidated the short v1.7 architecture proposal into the complete requirements without removing v1.5 functions; confirmed TCL Android TV 11 and AirPin LITE, added remote-based private Connections UI, secure local settings, separate Windows-to-TCL Stage 0.5 with Android 11-specific debugging constraints, player comparison, honest VPN routing tests, optional AirPin and hybrid voice, nine new tests (AT-62..70). No household network identifiers belong in public GitHub.
 
 

@@ -38,6 +38,7 @@
 - Include a remote-only installed Apps library, pin/unpin Home shortcuts and hold OK to Move with persistence per TV, sensible dock overflow and optional child edit protection.
 - Render the same layout with high/balanced/lightweight graphics profiles. Benchmark TCL and ageing Sony.
 - Add opt-in shared/room-specific app ordering, BBC shortcut, Sony Xbox action and Samsung TV Plus bridge.
+- **Harmonised house:** one shared app order that every TV in the household follows by default, with per-room extras (console, Samsung TV Plus) and a simple way to copy one TV's layout to another. Measure that a family member can find the same app with the same presses on every TV.
 - Build NAS poster strip and `View All` browse, then prove direct VLC playback. Do not claim continue-watching without actual playback progress tracking.
 - Add personal artwork gallery with a completely uncluttered native Frame Art Mode.
 
@@ -45,12 +46,15 @@
 
 ## 3. Optional household modules
 
+- **Home view:** optional Home Assistant glance strip and alerts with the strict priority order in [Home view](HOME_VIEW.md): safety alarm, doorbell, baby monitor, reminders, deliveries/arrivals, sport, everything else. Connected on the TV under Settings > Connections; nothing on screen when disconnected.
 - Ring and Alexa reminders via trusted Home Assistant events, with clear overlay priority.
 - Tottenham matchday widget without scores, hidden on other days.
 - NordVPN truthful status and strict Live TV launch restrictions.
 - Permission-based TV Performance & Cleanup. Android disables must be reversible; native Tizen changes only where independently supported.
 - Spotify-like/Amazon Music album view as permitted by the service's playback API and devices; do not promise full Amazon catalogue integration yet.
 - Optional ChatGPT live voice with UK voice, microphone indicator, scoped device actions and server-side credentials.
+
+- Further optional ideas are catalogued, not scheduled, in [Feature ideas](IDEAS.md).
 
 **Completion:** each module has a disable switch, explicit test matrix, documented privacy and failure state.
 

@@ -11,6 +11,21 @@
 | Other Android TV / Google TV | Possible, model dependent | Configurable standard launcher | Do not assume manufacturer services or ADB permissions identical |
 | LG webOS / other non-Android TVs | Not supported by inherited APK | Future platform-adapter investigation | Separate OS implementation or external streamer required |
 
+## Recent fixes to inherited code: verification status
+
+These changes are checked by code review, unit tests and CI only. **None has been tested on real TCL, Sony or Samsung hardware yet**, so none is a compatibility claim.
+
+| Change | Verified | Not yet verified |
+| --- | --- | --- |
+| `launcher-ui/` memory bounding and crash-path fixes | Code review, CI build | Behaviour and memory on TCL and Sony |
+| Add-on fixes (for example `addons/frigate-glance`) | Code review, unit tests where the add-on has them | On any real TV |
+| Launcher on Android 10 only applies a theme written by the theme tools | Code review, unit tests | On a real Android 10 TV |
+| Recovery records tied to the TV's identity; restore stops without a record unless `RESTORE_WITHOUT_RECORD=1` | Python tests against a fake TV | A full disable and restore on real hardware |
+
+## Planned household modules
+
+The [Home view](HOME_VIEW.md) (optional Home Assistant alerts: doorbell, reminders, deliveries, sport, bins) is **Planned** on every platform. On native Samsung Tizen, no overlay or Art Mode interruption is claimed.
+
 ## Household-specific capability flags
 
 A room profile describes **capabilities**, not a different visual design. Reference examples:

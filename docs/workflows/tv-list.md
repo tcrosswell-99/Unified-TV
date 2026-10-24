@@ -14,7 +14,7 @@
 3. List only packages you actually disabled and lived with for a few days. Note anything you re-enabled.
    Mark untested entries as comments.
 4. Add one row to the table in `examples/README.md` (`` | `<folder>/` | TV | OS | Notes | ``) and one to the
-   TV table in `README.md` (`| TV | OS |`). The TV cell must be the same text in both; `tests/test_examples.py`
+   TV table in `README.cleanyourtv.md` (`| TV | OS |`), the inherited front page. The TV cell must be the same text in both; `tests/test_examples.py`
    compares them.
 5. Leave the counts alone (the `TV models` number in the card's alt text, the brand line): CI checks them only
    on `main`, and they are fixed up on merge.

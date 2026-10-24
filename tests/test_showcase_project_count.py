@@ -3,7 +3,8 @@
 The line was right at 70 rows. Then four projects landed in three separate merges - the HAAM HDMI
 visibility fork, the Bluetooth pill fork and Tellyscope - and one of the three bumped the number
 (70 -> 71) while the others did not, so the page offered a reader four projects fewer than it holds.
-README.md's "Built something on top?" row spells the same number and had drifted on its own: it said
+The "Built something on top?" row of the inherited front page (now README.cleanyourtv.md) spells the same
+number and had drifted on its own: it said
 seventy while the page said 71.
 
 These tests read the number out of the page rather than copying it into the test, count the project
@@ -20,7 +21,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SHOWCASE = ROOT / "SHOWCASE.md"
-README = ROOT / "README.md"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
+README = ROOT / "README.cleanyourtv.md"
 
 # The page held 50+ rows when this test landed. A parser that silently matches nothing (a changed
 # row layout, a reordered page) must not read as "0 == 0, all good".
@@ -101,7 +104,7 @@ def audit(showcase_lines):
     if stated != counted:
         return stated, counted, (
             f"SHOWCASE.md says {stated} projects and its tables hold {counted} rows: bump the number "
-            "(and README.md's spelled one) when you add a project"
+            "(and README.cleanyourtv.md's spelled one) when you add a project"
         )
     return stated, counted, None
 
@@ -126,12 +129,12 @@ class ShowcaseProjectCount(unittest.TestCase):
 
     def test_readme_spells_the_same_number(self):
         number, word = readme_spelled(self.readme)
-        self.assertIsNotNone(number, "README.md's 'Built something on top?' row lost its spelled count")
+        self.assertIsNotNone(number, "README.cleanyourtv.md's 'Built something on top?' row lost its spelled count")
         counted = len(project_rows(self.showcase))
         self.assertEqual(
             number,
             counted,
-            f"README.md says '{word} projects' and SHOWCASE.md holds {counted} rows",
+            f"README.cleanyourtv.md says '{word} projects' and SHOWCASE.md holds {counted} rows",
         )
 
 

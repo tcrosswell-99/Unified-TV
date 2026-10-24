@@ -1,5 +1,13 @@
 # The prompt
 
+> [!WARNING]
+> **Unified TV note: this is the inherited upstream CleanYourTV prompt, not a Unified TV procedure.**
+> Do not run it on a household TV without the recovery-first process in
+> [docs/INSTALLATION_AND_RECOVERY.md](docs/INSTALLATION_AND_RECOVERY.md) and [AGENTS.md](AGENTS.md) rule 9: read the
+> model, firmware and package states first, get explicit consent for every change, record backups and verify that
+> rollback works. Never use it for a blanket debloat. It installs the inherited CleanYourTV launcher, not Unified TV.
+
+
 Paste this into Claude Code (or another coding assistant with shell access) on a computer that is
 on the same Wi-Fi as the TV. Works on Android TV / Google TV sets (Xiaomi, TCL, Hisense, Sony,
 OnePlus, Realme, Nvidia Shield and most others). It will not work on Samsung Tizen, LG webOS or
@@ -41,7 +49,10 @@ Connect
 
 Back up first
 - Save the full package list, disabled-package list, getprop output and all settings to a backup folder
-  before changing anything, and write a restore script that re-enables everything you disable.
+  before changing anything. Disable with `tools/disable.sh` (or `disable.ps1`), which saves each package's
+  original state in a recovery record (`tools/recovery.py`) before the first change; undo with
+  `tools/restore.sh` (or `restore.ps1`), which puts back exactly what was recorded instead of re-enabling
+  everything. If you cannot use those tools, write a restore script that returns each package to its recorded state.
 - Ask me what is plugged into the TV's USB ports, and ask separately whether the TV's network comes
   through a USB Ethernet adapter: "nothing plugged in" can be true while the network itself is on that
   port. Some devices cut their power while USB debugging is on, so warn me, and remind me to switch
@@ -189,7 +200,7 @@ Verify
 - If a remote button relies on an accessibility helper, check that the service is enabled and bound
   for the current user, then ask me to press the real button; an injected key is not proof (see
   `docs/TROUBLESHOOTING.md`).
-- When done, give me a restore script, a build-and-install script, and a README that explains how to
+- When done, give me the restore command for this TV (`tools/restore.sh` with the list you applied), a build-and-install script, and a README that explains how to
   re-enable any app and how to change the dock order or the wallpaper.
 
 ---

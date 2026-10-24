@@ -10,6 +10,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "examples"
+# Unified TV: README.md is now the fork's own front page. The inherited CleanYourTV front page,
+# with the tables and wording this test checks, is kept as README.cleanyourtv.md.
+FRONT = ROOT / "README.cleanyourtv.md"
 PACKAGE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
 
 
@@ -68,17 +71,17 @@ class ExampleListsTest(unittest.TestCase):
         self.assertEqual(len(listed), len(set(listed)), "a folder is listed twice")
 
     def test_readme_table_has_one_row_per_list(self):
-        readme_rows = table_rows(ROOT / "README.md", "| TV | OS |")
+        readme_rows = table_rows(FRONT, "| TV | OS |")
         example_rows = table_rows(EXAMPLES / "README.md", "| Folder |")
         self.assertEqual(len(readme_rows), len(example_rows),
-                         "README.md TV table and examples/README.md have a different number of rows")
+                         "README.cleanyourtv.md TV table and examples/README.md have a different number of rows")
         readme_tvs = sorted(r.split("|")[1].strip() for r in readme_rows)
         example_tvs = sorted(r.split("|")[2].strip() for r in example_rows)
         self.assertEqual(readme_tvs, example_tvs, "the TV column differs between the two tables")
 
     @unittest.skipUnless(os.environ.get("CLEANYOURTV_STRICT"), "counts are fixed up on merge; strict on main only")
     def test_readme_counts(self):
-        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        text = FRONT.read_text(encoding="utf-8")
         n = len(folders())
         self.assertIn(f"{n} TV models", text, "stat strip alt text is stale (regenerate docs/stats.png too)")
 
