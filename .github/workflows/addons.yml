@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build changed add-ons
+    name: Build and test changed add-ons
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,16 +27,24 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platforms;android-34 build-tools;34.0.0
-      - name: Build each add-on that changed
+      - name: Build and unit-test each add-on that changed
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          changed=$(git diff --name-only "$BASE" HEAD -- addons | awk -F/ 'NF>2 {print $2}' | sort -u)
+          # A new branch has no "before" (all zeros) and a force-push can leave it unreachable:
+          # build every add-on then, rather than failing on a bad diff base.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed=$(ls addons | while read -r a; do [ -d "addons/$a" ] && echo "$a"; done)
+          else
+            changed=$(git diff --name-only "$BASE" HEAD -- addons | awk -F/ 'NF>2 {print $2}' | sort -u)
+          fi
           [ -z "$changed" ] && { echo "no add-on changed"; exit 0; }
           for a in $changed; do
             [ -d "addons/$a" ] || continue
             [ -f "addons/$a/gradlew" ] || { echo "addons/$a has no gradlew"; exit 1; }
             echo "::group::addons/$a"
-            (cd "addons/$a" && chmod +x gradlew && ./gradlew --no-daemon assembleRelease)
+            tasks=assembleRelease
+            [ -d "addons/$a/app/src/test" ] && tasks="testReleaseUnitTest assembleRelease"
+            (cd "addons/$a" && chmod +x gradlew && ./gradlew --no-daemon $tasks)
             echo "::endgroup::"
           done
