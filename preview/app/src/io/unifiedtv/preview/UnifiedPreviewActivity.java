@@ -243,14 +243,14 @@ public final class UnifiedPreviewActivity extends Activity {
         private Item defaultItem(String id) {
             switch (id) {
                 case "smartutube": return favourite(id, "SmartTube",
-                        new String[]{"com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"}, "smarttube",
+                        new String[]{"org.smarttube.beta", "com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"}, "smarttube",
                         0xFF45434A, 0xFF1E1E27);
                 case "netflix": return favourite(id, "Netflix",
                         new String[]{"com.netflix.ninja"}, "netflix", 0xFF28242B, 0xFF07090C);
                 case "disney": return favourite(id, "Disney+",
                         new String[]{"com.disney.disneyplus"}, "disney", 0xFF15356F, 0xFF071128);
                 case "bbc": return favourite(id, "BBC",
-                        new String[]{"bbc.iplayer.android", "bbc.iplayer.android.tv"}, "iplayer",
+                        new String[]{"uk.co.freeview.bbc", "bbc.iplayer.android", "bbc.iplayer.android.tv"}, "iplayer",
                         0xFF494A51, 0xFF25262A);
                 case "live": return new Item(id, "Live TV", null, 0xFF6D45A3, 0xFF27194F, null);
                 case "music": return favourite(id, "Music",
@@ -387,6 +387,7 @@ public final class UnifiedPreviewActivity extends Activity {
             }).show();
         }
         private void launch(Item item) {
+            if("music".equals(item.id)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
             if ("live".equals(item.id) || Endpoint.protectedApp(item.pkg == null ? "" : item.pkg, item.name, prefs.getString("livePackage",""))) {
                 VpnGate.show(activity);
                 return;
@@ -487,7 +488,7 @@ public final class UnifiedPreviewActivity extends Activity {
             df.setTimeZone(TimeZone.getTimeZone("Europe/London"));
             text(c, df.format(System.currentTimeMillis()), 96, 142, 66, WHITE, false, Paint.Align.LEFT);
             glass(c, 1498, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
-            text(c, VpnGate.label(activity), 1525, 114, 25, WHITE, false, Paint.Align.LEFT);
+            text(c, VpnGate.label(activity), 1450, 114, 22, WHITE, false, Paint.Align.LEFT);
             text(c, "○", 1696, 115, 43, WHITE, false, Paint.Align.CENTER);
             text(c, "⚙", 1773, 114, 43, WHITE, false, Paint.Align.CENTER);
         }

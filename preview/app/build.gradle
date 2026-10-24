@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'io.unifiedtv.preview'
     compileSdk 35
-    defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 3; versionName '0.3-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 4; versionName '0.4-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     sourceSets { main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }; test { java.srcDirs = ['test'] } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {

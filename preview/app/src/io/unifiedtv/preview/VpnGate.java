@@ -8,15 +8,17 @@ import android.widget.*;
 
 /** A tunnel signal is not proof of provider ownership, app routing or a kill switch. */
 final class VpnGate {
-    private static long sampledAt;
-    private static boolean sampledTunnel;
-    static void invalidate(){sampledAt=0;}
-    static boolean tunnel(Context c){
-        try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);
-            for(Network n:cm.getAllNetworks()){NetworkCapabilities caps=cm.getNetworkCapabilities(n);if(caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))return true;}
-        }catch(RuntimeException ignored){}return false;
+    enum State {CONNECTED,DISCONNECTED,CHECKING,UNKNOWN}
+    private static volatile long sampledAt;private static volatile State sampled=State.CHECKING;private static boolean checking;
+    static synchronized void invalidate(){sampledAt=0;sampled=State.CHECKING;}
+    static State inspect(Context c){
+        try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);if(cm==null)return State.UNKNOWN;
+            for(Network n:cm.getAllNetworks()){NetworkCapabilities caps=cm.getNetworkCapabilities(n);if(caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))return State.CONNECTED;}return State.DISCONNECTED;
+        }catch(RuntimeException e){return State.UNKNOWN;}
     }
-    static String label(Context c){long now=android.os.SystemClock.elapsedRealtime();if(sampledAt==0||now-sampledAt>2000){sampledTunnel=tunnel(c);sampledAt=now;}return sampledTunnel?"VPN seen":"VPN off";}
+    static boolean tunnel(Context c){return inspect(c)==State.CONNECTED;}
+    static String statusLabel(State state){switch(state){case CONNECTED:return "VPN ● Connected";case DISCONNECTED:return "VPN ○ Disconnected";case CHECKING:return "VPN ◌ Checking";default:return "VPN ◇ Unknown";}}
+    static synchronized String label(Context c){long now=android.os.SystemClock.elapsedRealtime();if(!checking&&(sampledAt==0||now-sampledAt>2000)){checking=true;Context app=c.getApplicationContext();new Thread(()->{sampled=inspect(app);sampledAt=android.os.SystemClock.elapsedRealtime();synchronized(VpnGate.class){checking=false;}},"vpn-status").start();}return statusLabel(sampled);}
     static ConnectivityManager.NetworkCallback watch(Activity a,Runnable changed){
         ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback(){
             private void refresh(){a.runOnUiThread(()->{invalidate();changed.run();});}
@@ -47,7 +49,7 @@ final class VpnGate {
             android.graphics.drawable.GradientDrawable rest=new android.graphics.drawable.GradientDrawable();rest.setColor(0x70445a74);rest.setCornerRadius(16);rest.setStroke(1,0x55cee0f5);
             bg.addState(new int[]{android.R.attr.state_focused},focus);bg.addState(new int[]{},rest);b.setBackground(bg);
             b.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{0xff101827,-1}));
-            LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(0,-2,1);size.setMargins(4,0,4,0);actions.addView(b,size);b.setOnClickListener(v->{if(action==0){dialog.dismiss();connect(a);}else if(action==1)state.setText(explanation(tunnel(a)));else dialog.dismiss();});}
+            LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(0,-2,1);size.setMargins(4,0,4,0);actions.addView(b,size);b.setOnClickListener(v->{if(action==0){dialog.dismiss();connect(a);}else if(action==1)state.setText(statusLabel(inspect(a))+" · "+explanation(tunnel(a)));else dialog.dismiss();});}
         dialog.setContentView(panel);Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);WindowManager.LayoutParams p=w.getAttributes();p.dimAmount=.12f;w.setAttributes(p);w.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);}
         dialog.show();if(w!=null){w.setLayout(Math.min(1100,a.getResources().getDisplayMetrics().widthPixels-80),-2);WindowManager.LayoutParams p=w.getAttributes();p.y=36;w.setAttributes(p);w.getDecorView().setSystemUiVisibility(5894);}actions.getChildAt(0).requestFocus();
     }

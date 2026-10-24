@@ -34,3 +34,6 @@ The project is **not affiliated with the upstream maintainers**, and Unified TV 
 New contributors retain credit in Git history. To contribute third-party code or assets, provide source, exact licence, authorship and redistribution evidence in the pull request. Only original or appropriately licensed screenshots/imagery belong in a public release.
 
 Preview embedded playback uses AndroidX Media3 (Apache-2.0) and its transitive libraries. Gradle retains packaged third-party licence notices. Original Unified TV preview components do not import proprietary mockup assets or fonts. See `preview/THIRD_PARTY.md`.
+
+
+Preview 0.4 includes five AI-generated gallery JPGs supplied by the owner, who expressly authorised public inclusion as example artwork on 24 October 2026. They are preserved unedited at `preview/app/src/main/assets/gallery/example-1.jpg` through `example-5.jpg`; they are not third-party film stills or private household photographs. Source filenames identify Gemini-generated images, as supplied by the owner. Original gallery/discovery/settings code follows the project licence; no new runtime dependency was added.

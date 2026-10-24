@@ -1,5 +1,8 @@
 # Unified TV design system
 
+**Current Android candidate: Preview 0.4.** Two-column Settings, automatic local media-server discovery, encrypted selected folders, embedded DLNA playback trial, five authorised gallery examples and four VPN states. See [feature status](FEATURE_STATUS.md), [complete v2.2 specification](PRODUCT_SPEC.md) and [AI handover](AI_HANDOVER.md). Local Android checks passed; new TCL/Frame hardware acceptance remains outstanding. The latest Apps request allows owner pin/unpin, but that menu is not implemented in this build. It supersedes older fixed-membership requirement text below.
+
+
 **Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
 
 **North star:** Content first, underlying technology hidden.
