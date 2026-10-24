@@ -50,10 +50,12 @@ final class VpnGate {
         if(launch!=null){try{a.startActivity(launch);return;}catch(RuntimeException ignored){}}
         Toast.makeText(a,"NordVPN is not available on this TV",Toast.LENGTH_LONG).show();
     }
-    static void show(Activity a){
+    static void show(Activity a){show(a,null);}
+    /** The Live TV sheet; a reason from the protection decision replaces the connection explanation. */
+    static void show(Activity a,String reason){
         Dialog dialog=new Dialog(a);LinearLayout panel=new LinearLayout(a);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(40,24,40,24);panel.setBackground(MaterialScene.panel(a));
         TextView title=new TextView(a);title.setText("Live TV");title.setTextColor(-1);title.setTextSize(24);panel.addView(title);
-        TextView state=new TextView(a);state.setText(explanation(tunnel(a),routed(a)));state.setTextColor(0xffe1e9f2);state.setTextSize(18);state.setPadding(0,12,0,18);panel.addView(state);
+        TextView state=new TextView(a);state.setText(reason!=null&&!reason.isEmpty()?reason:explanation(tunnel(a),routed(a)));state.setTextColor(0xffe1e9f2);state.setTextSize(18);state.setPadding(0,12,0,18);panel.addView(state);
         LinearLayout actions=new LinearLayout(a);panel.addView(actions);
         String[] names={"Connect","Retry","Cancel"};
         for(int i=0;i<names.length;i++){final int action=i;Button b=new Button(a);b.setAllCaps(false);b.setText(names[i]);b.setTextSize(18);

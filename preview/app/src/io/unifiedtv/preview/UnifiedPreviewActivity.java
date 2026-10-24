@@ -54,7 +54,11 @@ public final class UnifiedPreviewActivity extends Activity {
             startActivity(new Intent(this, GalleryActivity.class)); } catch (Exception ignored) {}
     };
     @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery); idleHandler.postDelayed(gallery,300000); }
-    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null)surface.refresh(); }
+    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null)surface.refresh();
+        LiveTvGuard.stop(this);
+        if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
+    }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); }
     @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
 
 
@@ -389,7 +393,16 @@ public final class UnifiedPreviewActivity extends Activity {
         private void launch(Item item) {
             if("music".equals(item.id)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
             if ("live".equals(item.id) || Endpoint.protectedApp(item.pkg == null ? "" : item.pkg, item.name, prefs.getString("livePackage",""))) {
-                VpnGate.show(activity);
+                // Protection, not appearance: only a network-verified, unchanged setup opens Live TV (docs/VPN_PROTECTION.md).
+                String target = item.pkg != null ? item.pkg : LiveTvProtection.livePackage(activity);
+                LiveTvProtection.Decision decision = LiveTvProtection.now(activity, target);
+                if (decision != LiveTvProtection.Decision.ALLOW) { VpnGate.show(activity, LiveTvProtection.message(decision)); return; }
+                PackageManager pm = activity.getPackageManager();
+                Intent live = pm.getLeanbackLaunchIntentForPackage(target);
+                if (live == null) live = pm.getLaunchIntentForPackage(target);
+                if (live == null) { info("Live TV is not installed"); return; }
+                try { LiveTvGuard.start(activity); activity.startActivity(live); }
+                catch (RuntimeException e) { LiveTvGuard.stop(activity); info("Unable to open Live TV"); }
                 return;
             }
             if ("xbox".equals(item.id)) {

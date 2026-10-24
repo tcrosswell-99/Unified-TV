@@ -49,6 +49,7 @@ public final class SettingsActivity extends Screen {
             text("No automatic cleanup or factory package changes are performed.",16);break;
         case 5:
             button("Manage private connections",()->show(0));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
+            button("Live TV protection",()->EditLock.ask(this,this::protection));
             text("Credentials are encrypted locally and excluded from backup. Speech uses the TV's installed provider only after activation and may use its cloud service. General OpenAI discovery is not connected.",16);
             button("Integration readiness",()->new AlertDialog.Builder(this).setTitle("Preview limitations").setMessage("VPN tunnel visibility does not verify protected playback. NAS, Ring, reminders, microphone and manufacturer controls need their own acceptance tests. The Android APK cannot run on native Tizen.").setPositiveButton("Close",null).show());break;
         }
@@ -56,6 +57,14 @@ public final class SettingsActivity extends Screen {
     private void services(){detail="services";heading("Connected services","Available services on this Android TV");button("NordVPN",()->VpnGate.show(this));button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));button("AirPlay receiver",this::airplay);}
     private void airplay(){android.content.pm.PackageManager pm=getPackageManager();Intent q=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(q,0))if(ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT).contains("airpin")){Intent i=pm.getLeanbackLaunchIntentForPackage(ri.activityInfo.packageName);if(i!=null){startActivity(i);return;}}note("No supported receiver found");}
     private void toggle(String name,String key){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,false));c.setOnCheckedChangeListener((v,on)->getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply());c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
+    /** Recording is an adult's statement that the network-level check passed on this TV; versions are captured automatically. */
+    private void protection(){
+        String live=LiveTvProtection.livePackage(this);org.json.JSONObject saved=LiveTvProtection.saved(this);
+        String state=saved!=null&&!saved.optString("live").isEmpty()?"Checked on "+java.text.DateFormat.getDateInstance().format(new java.util.Date(saved.optLong("checkedAt")))+". "+(LiveTvProtection.now(this,live)==LiveTvProtection.Decision.ALLOW?"Live TV can open while NordVPN is on.":LiveTvProtection.message(LiveTvProtection.now(this,live))):"Not checked. Live TV is locked.";
+        new AlertDialog.Builder(this).setTitle("Live TV protection").setMessage(state+"\n\nRecord a check only after the Live TV protection check in the Unified TV guide has passed on this TV, with NordVPN set to block connections when it disconnects.")
+            .setPositiveButton("Record a passed check",(d,w)->{try{LiveTvProtection.save(this,LiveTvProtection.record(live,LiveTvProtection.version(this,live),LiveTvProtection.version(this,LiveTvProtection.NORDVPN),System.currentTimeMillis()));note("Recorded. Live TV can open while NordVPN is on.");}catch(Exception e){note("Live TV and NordVPN must both be installed, and only one Live TV app");}})
+            .setNeutralButton("Lock Live TV",(d,w)->{LiveTvProtection.save(this,null);note("Live TV is locked");}).setNegativeButton("Close",null).show();
+    }
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}
     @Override public void onBackPressed(){if(!detail.isEmpty())show(category);else if(!navigation[category].hasFocus())navigation[category].requestFocus();else super.onBackPressed();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putInt("category",category);}

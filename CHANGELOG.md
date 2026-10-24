@@ -10,10 +10,16 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ## [0.5.0] - 2026-10-24
 
-Android Preview **0.5** (`0.5-preview`, versionCode 5). The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only (49 preview tests). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).
+Android Preview **0.5** (`0.5-preview`, versionCode 5). The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only (54 preview tests, 9 protection-check tests). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).
 
 ### Added
 
+- **Live TV protection, separate from VPN appearance** ([VPN_PROTECTION.md](docs/VPN_PROTECTION.md)):
+  - **The protection:** Android's always-on NordVPN with *Block connections without VPN* stops traffic whenever NordVPN drops. Only Unified TV is exempt, so it can still reach the home network.
+  - **The check:** `preview/tools/vpn_check.py` proves it on each TV at network level. It reads the Live TV app's own connections during playback and through a NordVPN disconnect, and writes a record with no addresses in it. The settings change asks first, saves a backup and can be rolled back.
+  - **Opening Live TV:** an adult records a passed check in Settings. Live TV then opens from the dock only while that setup is unchanged.
+  - **If NordVPN drops during playback:** the viewer is brought back with "Live TV paused".
+  - **Not yet run on any TV:** Live TV stays locked until a check passes.
 - **No addresses to type.**
   - The NAS, Home Assistant and Jellyfin are looked for quietly in the background when Unified TV starts, only for what isn't set up yet.
   - If exactly one is found, it is chosen for you; a list appears only if there are several.
