@@ -46,7 +46,11 @@ public final class SettingsActivity extends Screen {
         case 4:
             button("Picture, sound, network & Bluetooth",()->{try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception e){note("Use the TV's own Settings");}});
             button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
-            text("No automatic cleanup or factory package changes are performed.",16);break;
+            text(DefaultHome.isDefault(this)?"The Home button opens Unified TV.":"The Home button opens the original TV interface.",17);
+            if(!DefaultHome.isDefault(this))button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            text("No automatic cleanup or factory package changes are performed.",16);
+            // Spec 30: deliberately small and last; adult only; plain words.
+            Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(14);original.setMinHeight(0);original.setAlpha(.8f);break;
         case 5:
             button("Manage private connections",()->show(0));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
             button("Live TV protection",()->EditLock.ask(this,this::protection));
@@ -64,6 +68,30 @@ public final class SettingsActivity extends Screen {
         new AlertDialog.Builder(this).setTitle("Live TV protection").setMessage(state+"\n\nRecord a check only after the Live TV protection check in the Unified TV guide has passed on this TV, with NordVPN set to block connections when it disconnects.")
             .setPositiveButton("Record a passed check",(d,w)->{try{LiveTvProtection.save(this,LiveTvProtection.record(live,LiveTvProtection.version(this,live),LiveTvProtection.version(this,LiveTvProtection.NORDVPN),System.currentTimeMillis()));note("Recorded. Live TV can open while NordVPN is on.");}catch(Exception e){note("Live TV and NordVPN must both be installed, and only one Live TV app");}})
             .setNeutralButton("Lock Live TV",(d,w)->{LiveTvProtection.save(this,null);note("Live TV is locked");}).setNegativeButton("Close",null).show();
+    }
+    /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
+    private void homeSetup(){
+        new AlertDialog.Builder(this).setTitle("Make Unified TV the Home screen").setMessage("Pressing Home will open Unified TV instead of the original TV interface. The original interface stays on the TV, and you can switch back at any time from this screen.\n\nYour TV will ask you to choose: pick Unified TV.")
+            .setPositiveButton("Continue",(d,w)->{homeAsked=true;DefaultHome.offer(this);}).setNegativeButton("Cancel",null).show();
+    }
+    private boolean homeAsked;
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
+    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();}
+    private void homeChecked(){
+        homeAsked=false;boolean yes=DefaultHome.isDefault(this);
+        // Not chosen: leave the TV exactly as it was, with no stray Home entry.
+        if(!yes&&DefaultHome.offered(this))DefaultHome.withdraw(this);
+        note(yes?"Done. The Home button now opens Unified TV.":"Nothing changed. The Home button still opens the original TV interface.");if(category==4)show(4);
+    }
+    private void original(){
+        boolean ours=DefaultHome.isDefault(this);
+        java.util.List<String> choices=new java.util.ArrayList<>();choices.add("Open original interface for now");if(ours)choices.add("Make original interface the default");choices.add("Cancel");
+        new AlertDialog.Builder(this).setTitle("Original TV interface").setItems(choices.toArray(new String[0]),(d,n)->{
+            String pick=choices.get(n);
+            if(pick.startsWith("Open")){if(!DefaultHome.openOriginal(this))new AlertDialog.Builder(this).setMessage("This TV doesn't let Unified TV open the original interface directly."+(ours?" Choose 'Make original interface the default' instead.":" Press the Home button on your remote to get there.")).setPositiveButton("OK",null).show();}
+            else if(pick.startsWith("Make"))new AlertDialog.Builder(this).setTitle("Make original interface the default").setMessage("From now on, pressing Home will open the original TV interface until you choose Unified TV again in Settings > TV & performance.")
+                .setPositiveButton("Make it the default",(d2,w2)->{DefaultHome.withdraw(this);note("The Home button now opens the original TV interface.");show(4);}).setNegativeButton("Cancel",null).show();
+        }).show();
     }
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}
     @Override public void onBackPressed(){if(!detail.isEmpty())show(category);else if(!navigation[category].hasFocus())navigation[category].requestFocus();else super.onBackPressed();}

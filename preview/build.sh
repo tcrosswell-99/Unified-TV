@@ -9,5 +9,6 @@ BT="${ANDROID_HOME:?Set ANDROID_HOME}/build-tools/35.0.0"
 "$BT/apksigner" verify --verbose out/UnifiedTV-Preview.apk
 "$BT/aapt2" dump badging out/UnifiedTV-Preview.apk | grep "^package: name='io.unifiedtv.preview'"
 "$BT/aapt2" dump xmltree out/UnifiedTV-Preview.apk --file AndroidManifest.xml > out/manifest.txt
-if grep -q 'android.intent.category.HOME' out/manifest.txt; then echo 'Preview must not declare HOME' >&2; exit 3; fi
+# HOME only on the switched-off, owner-opt-in entry (spec 29.3); a fresh install must never take over Home.
+python3 tools/home_check.py out/manifest.txt
 (cd out && sha256sum UnifiedTV-Preview.apk > SHA256SUMS.txt)

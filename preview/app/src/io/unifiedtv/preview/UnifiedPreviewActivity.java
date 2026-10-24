@@ -58,7 +58,9 @@ public final class UnifiedPreviewActivity extends Activity {
         LiveTvGuard.stop(this);
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
     }
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent);
+        // As the chosen Home: the Home button lands on the main screen with the same app still in focus (spec 28.3).
+        if (intent.hasCategory(Intent.CATEGORY_HOME) && surface != null) surface.home(); }
     @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
 
 
@@ -97,7 +99,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private static final int W = 1920, H = 1080;
         private static final int WHITE = 0xFFFAFAFC;
         private static final int MUTED = 0xFFC8CCD5;
-        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 380;
+        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 380, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
         private Activity activity;
         private final SharedPreferences prefs;
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -113,7 +115,18 @@ public final class UnifiedPreviewActivity extends Activity {
         private boolean apps = false, menu = false, moving = false;
         private boolean okDown, held;
         private long focusAt, fadeAt;
-        private Item atmosphere, former;
+        // Spec 4.4: the committed scene (an app id, "poster:<id>" or "neutral") follows focus after a short settle.
+        private final Backdrops backdrops = new Backdrops();
+        private String scene = "neutral", formerScene = null, sceneTitle = "";
+        private long titleAt = 0;
+        private boolean titleHidden = false;
+        // Spec 4.6: Down raises a row of the household's own titles within Home; Up/Back return to the same app.
+        private boolean shelf = false, postersLoading = false, libraryReady = false;
+        private long shelfAt = 0, postersAt = 0;
+        private int posterIndex = 0;
+        private List<HomeShelf.Poster> posters = new ArrayList<>();
+        private final java.util.Map<String, Bitmap> posterArt = java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+        private final java.util.concurrent.ExecutorService shelfWorker = java.util.concurrent.Executors.newSingleThreadExecutor();
         private String message = "";
         private long messageUntil = 0;
         private long inputEvent;
@@ -147,14 +160,34 @@ public final class UnifiedPreviewActivity extends Activity {
             }
         };
         private final Runnable commitFocus = () -> {
-            if (apps || menu || moving || index < 0 || index >= dock.size()) return;
-            Item next = dock.get(index);
-            if (next == atmosphere) return;
-            former = atmosphere;
-            atmosphere = next;
-            fadeAt = SystemClock.uptimeMillis();
-            invalidate();
+            if (apps || menu || moving) return;
+            if (shelf) {
+                if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); }
+                else commitScene("neutral", libraryReady ? "View all your films and TV" : "Set up Your Films & TV");
+            } else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
+            else commitScene("neutral", "");
         };
+
+        /** One dissolve at a time; a new commit mid-dissolve keeps whichever scene is most visible, so nothing jumps. */
+        private void commitScene(String key, String title) {
+            long now = SystemClock.uptimeMillis();
+            boolean fading = fadeAt != 0 && now - fadeAt < fadeMs();
+            if (!key.equals(scene)) {
+                if (!(fading && (now - fadeAt) < fadeMs() / 2 && formerScene != null)) formerScene = scene;
+                scene = key; fadeAt = fadeMs() == 0 ? 0 : now;
+                if (!key.startsWith("poster:")) prefs.edit().putString("scene", key).apply();
+            }
+            sceneTitle = title; titleHidden = false; titleAt = now + (fadeMs() == 0 ? 0 : fadeMs() / 3);
+            invalidate();
+        }
+        private boolean calm() { return prefs.getBoolean("reduceMotion", false); }
+        private boolean light() { return prefs.getBoolean("lightweight", false); }
+        private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
+        /** A focus move: the tile answers at once, the old title steps back, and the scene follows after the settle. */
+        private void moved() {
+            focusAt = SystemClock.uptimeMillis(); titleHidden = true;
+            handler.removeCallbacks(commitFocus); handler.postDelayed(commitFocus, BG_WAIT_MS);
+        }
 
         Preview(Activity a) {
             super(a);
@@ -173,8 +206,8 @@ public final class UnifiedPreviewActivity extends Activity {
             } catch (Exception ignored) { /* Original illustrated gradient is the safe offline fallback. */ }
             int saved = prefs.getInt("focus", 0);
             index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
-            if(index>=0) atmosphere=dock.get(index);
-            prefs.edit().putString("scene",atmosphere==null?"neutral":atmosphere.id).apply();
+            if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
+            prefs.edit().putString("scene",scene).apply();
             setContentDescription("Unified TV Home. Left and Right choose apps. Up opens controls. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(2);
@@ -186,7 +219,14 @@ public final class UnifiedPreviewActivity extends Activity {
             if(moving)goBack();
             installed.clear();dock.clear();scanInstalled();loadDock();
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
-            atmosphere=index<0?null:dock.get(index);former=null;fadeAt=0;invalidate();
+            if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
+            formerScene=null;fadeAt=0;if(shelf)loadPosters();invalidate();
+        }
+        void home() {
+            handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false;
+            if (moving) goBack();
+            if (shelf) { shelf = false; shelfAt = 0; }
+            messageUntil = 0; moved(); invalidate();
         }
         void pause() {
             handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);
@@ -195,7 +235,7 @@ public final class UnifiedPreviewActivity extends Activity {
             prefs.edit().putInt("focus",Math.max(0,index)).apply();
         }
         void close() {
-            fixtureWorker.shutdownNow();
+            fixtureWorker.shutdownNow();shelfWorker.shutdownNow();
             handler.removeCallbacksAndMessages(null);
             handler.removeCallbacks(hold);
             handler.removeCallbacks(commitFocus);
@@ -247,18 +287,18 @@ public final class UnifiedPreviewActivity extends Activity {
         private Item defaultItem(String id) {
             switch (id) {
                 case "smartutube": return favourite(id, "SmartTube",
-                        new String[]{"org.smarttube.beta", "com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"}, "smarttube",
+                        DockPolicy.packages("smartutube"), "smarttube",
                         0xFF45434A, 0xFF1E1E27);
                 case "netflix": return favourite(id, "Netflix",
-                        new String[]{"com.netflix.ninja"}, "netflix", 0xFF28242B, 0xFF07090C);
+                        DockPolicy.packages("netflix"), "netflix", 0xFF28242B, 0xFF07090C);
                 case "disney": return favourite(id, "Disney+",
-                        new String[]{"com.disney.disneyplus"}, "disney", 0xFF15356F, 0xFF071128);
+                        DockPolicy.packages("disney"), "disney", 0xFF15356F, 0xFF071128);
                 case "bbc": return favourite(id, "BBC",
-                        new String[]{"uk.co.freeview.bbc", "bbc.iplayer.android", "bbc.iplayer.android.tv"}, "iplayer",
+                        DockPolicy.packages("bbc"), "iplayer",
                         0xFF494A51, 0xFF25262A);
                 case "live": return new Item(id, "Live TV", null, 0xFF6D45A3, 0xFF27194F, null);
                 case "music": return favourite(id, "Music",
-                        new String[]{"com.amazon.mp3", "com.amazon.music.tv"}, "amazon music",
+                        DockPolicy.packages("music"), "amazon music",
                         0xFFE85C75, 0xFF8E2548);
                 case "xbox": return new Item(id, "Xbox", null, 0xFF14783F, 0xFF07351E, null);
                 case "tvplus": return new Item(id, "Samsung TV Plus", null, 0xFF154477, 0xFF07192F, null);
@@ -269,11 +309,9 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void loadDock() {
-            String defaults = "smartutube,netflix,disney,bbc,live,music";
             String room = prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl");
-            if(room.equals("sony")) defaults += ",xbox";
-            if(room.equals("frame")) defaults += ",tvplus";
-            for(String id:DockPolicy.order(room,prefs.getString("dock", defaults))) {
+            // Never edited: the curated defaults. Edited: exactly the owner's list (an app no longer installed is skipped).
+            for(String id:DockPolicy.order(room,prefs.contains("dock")?prefs.getString("dock",""):null)) {
                 Item item=defaultItem(id);if(item!=null)dock.add(item);
             }
         }
@@ -300,7 +338,7 @@ public final class UnifiedPreviewActivity extends Activity {
                     okDown = true;
                     held = false;
                     handler.removeCallbacks(hold);
-                    if (!moving && !menu) handler.postDelayed(hold, HOLD_MS);
+                    if (!moving && !menu && !shelf) handler.postDelayed(hold, HOLD_MS);
                 } else if (!down) {
                     handler.removeCallbacks(hold);
                     if (okDown && !held && !e.isCanceled()) confirm();
@@ -311,10 +349,19 @@ public final class UnifiedPreviewActivity extends Activity {
             }
             if (!down) return true;
             handler.removeCallbacks(hold);
+            if (shelf) {
+                if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) closeShelf();
+                else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    int next = Math.max(0, Math.min(posters.size(), posterIndex + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));
+                    if (next != posterIndex) { posterIndex = next; moved(); announceForAccessibility(posterIndex < posters.size() ? posters.get(posterIndex).title : "View all"); }
+                }
+                invalidate(); return true;
+            }
             if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
             if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) controls(); return true; }
-            if (menu) { if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + 1) % 2;
-                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % 2;
+            if (menu) { int n = MENU.length;
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + n - 1) % n;
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % n;
                 invalidate(); return true; }
             if (moving) {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) shift(-1);
@@ -322,17 +369,13 @@ public final class UnifiedPreviewActivity extends Activity {
                 return true;
             }
             if (code == KeyEvent.KEYCODE_DPAD_UP) controls();
-            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) activity.startActivity(new Intent(activity,LibraryActivity.class).putExtra("shelf",true));
+            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) openShelf();
             else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (!dock.isEmpty()) {
                     int delta = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
                     index = index < 0 ? 0 : Math.max(0, Math.min(dock.size() - 1, index + delta));
-                    focusAt = SystemClock.uptimeMillis();
-                    handler.removeCallbacks(commitFocus);
-                    // Never leave a different selected service behind the current focus.
-                    former=atmosphere;atmosphere=dock.get(index);fadeAt=SystemClock.uptimeMillis();prefs.edit().putString("scene",atmosphere.id).apply();
-                    announceForAccessibility(atmosphere.name);
-                    handler.postDelayed(commitFocus, BG_WAIT_MS);
+                    announceForAccessibility(dock.get(index).name);
+                    moved();
                 }
             }
             invalidate();
@@ -340,9 +383,17 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void confirm() {
+            if (shelf) { openEntry(); return; }
             if (menu) {
                 menu = false;
                 if (menuIndex == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
+                else if (menuIndex == 1 && index >= 0 && index < dock.size()) {
+                    // Removing never uninstalls; the app stays in Apps and can be added back.
+                    String name = dock.get(index).name; dock.remove(index); saveDock();
+                    index = dock.isEmpty() ? -1 : Math.min(index, dock.size() - 1); moved(); info(name + " removed from Home");
+                } else if (menuIndex == 2 && index >= 0 && index < dock.size()) {
+                    Item item = dock.get(index); if (item.pkg != null) Launch.info(activity, item.pkg); else info(item.name + " is a Unified TV shortcut");
+                }
 
             } else if (moving) {
                 moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
@@ -373,16 +424,16 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 beforeMove = null;
             } else if (apps) apps = false;
-            else { index = -1; atmosphere = null; former = null; fadeAt = 0; prefs.edit().putString("scene","neutral").apply(); }
+            else { index = -1; commitScene("neutral", ""); }
             invalidate();
         }
 
         private void controls() {
-            java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Arrange Home", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
+            java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Apps", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
             if(!fixture.isEmpty())actions.add("Matchday Live TV - protection required");
             new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
                 actions.toArray(new String[0]), (dialog,which) -> {
-                if(which==0) EditLock.ask(activity,()->{if(index<0)index=0;menu=true;menuIndex=0;invalidate();});
+                if(which==0) activity.startActivity(new Intent(activity,AppsActivity.class));
                 if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
                 if(which==2) SettingsActivity.chooseProfile(activity);
                 if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
@@ -392,31 +443,12 @@ public final class UnifiedPreviewActivity extends Activity {
         }
         private void launch(Item item) {
             if("music".equals(item.id)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
-            if ("live".equals(item.id) || Endpoint.protectedApp(item.pkg == null ? "" : item.pkg, item.name, prefs.getString("livePackage",""))) {
-                // Protection, not appearance: only a network-verified, unchanged setup opens Live TV (docs/VPN_PROTECTION.md).
-                String target = item.pkg != null ? item.pkg : LiveTvProtection.livePackage(activity);
-                LiveTvProtection.Decision decision = LiveTvProtection.now(activity, target);
-                if (decision != LiveTvProtection.Decision.ALLOW) { VpnGate.show(activity, LiveTvProtection.message(decision)); return; }
-                PackageManager pm = activity.getPackageManager();
-                Intent live = pm.getLeanbackLaunchIntentForPackage(target);
-                if (live == null) live = pm.getLaunchIntentForPackage(target);
-                if (live == null) { info("Live TV is not installed"); return; }
-                try { LiveTvGuard.start(activity); activity.startActivity(live); }
-                catch (RuntimeException e) { LiveTvGuard.stop(activity); info("Unable to open Live TV"); }
-                return;
-            }
-            if ("xbox".equals(item.id)) {
-                HouseholdActivity.action(activity,"xbox");
-                return;
-            }
-            if ("tvplus".equals(item.id)) { HouseholdActivity.action(activity,"tvplus");return; }
-            if (item.pkg == null) { info(item.name + " is not installed or configured"); return; }
-            PackageManager pm = activity.getPackageManager();
-            Intent intent = pm.getLeanbackLaunchIntentForPackage(item.pkg);
-            if (intent == null) intent = pm.getLaunchIntentForPackage(item.pkg);
-            if (intent == null) { info("This app has no supported launch action"); return; }
-            try { activity.startActivity(intent); }
-            catch (RuntimeException e) { info("Unable to open " + item.name); }
+            if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { HouseholdActivity.action(activity, item.id); return; }
+            // Live TV and every other app go through one gate (Launch.open): protection, not appearance (docs/VPN_PROTECTION.md).
+            boolean live = "live".equals(item.id);
+            String pkg = live && item.pkg == null ? LiveTvProtection.livePackage(activity) : item.pkg;
+            String why = Launch.open(activity, pkg, live ? "Live TV" : item.name);
+            if (why != null && !why.isEmpty()) info(why);
         }
 
         private void info(String text) {
@@ -437,24 +469,65 @@ public final class UnifiedPreviewActivity extends Activity {
             if(!fixture.isEmpty()) {
                 text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
             }
-            drawDock(c, now);
+            float reveal = reveal(now);
+            if (reveal > 0) {
+                // The dock steps back and up, staying on the same plane, while the titles rise into view.
+                int layer = c.saveLayerAlpha(0, 380, W, H, Math.round(255 - 150 * reveal));
+                c.translate(0, -300 * reveal); c.scale(1 - .18f * reveal, 1 - .18f * reveal, 960, 876);
+                drawDock(c, now, false); c.restoreToCount(layer);
+                drawShelf(c, now, reveal);
+            } else drawDock(c, now, true);
+            drawTitle(c, now, reveal);
             if (menu) drawMenu(c);
             if (moving) drawHint(c, "Left / Right: move     OK: save     Back: cancel");
 
             if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
             c.restore();
-            if (fadeAt != 0 && now - fadeAt < BG_FADE_MS) postInvalidateDelayed(16);
-            else if (fadeAt != 0) { fadeAt = 0; former = null; }
+            boolean animating = (fadeAt != 0 && now - fadeAt < fadeMs()) || (titleAt > now - TITLE_MS) || (shelfAt != 0 && now - shelfAt < SHELF_MS);
+            if (animating) postInvalidateDelayed(16);
+            if (fadeAt != 0 && now - fadeAt >= fadeMs()) { fadeAt = 0; formerScene = null; }
+            if (shelfAt != 0 && now - shelfAt >= SHELF_MS) shelfAt = 0;
         }
 
+        private static float ease(float t) { t = Math.max(0, Math.min(1, t)); return t * (2 - t); }
+        /** 0 with the dock at rest, 1 with the titles fully raised. */
+        private float reveal(long now) {
+            if (shelfAt == 0 || calm()) return shelf ? 1 : 0;
+            float t = ease((now - shelfAt) / (float) SHELF_MS);
+            return shelf ? t : 1 - t;
+        }
+
+        /** Two cached bitmaps per dissolve, never a full-screen layer of gradients each frame (spec 4.12). */
         private void drawBackground(Canvas c, long now) {
-            if (atmosphere == null) { drawNeutral(c, 255); return; }
-            if (fadeAt > 0 && now - fadeAt < BG_FADE_MS) {
-                float progress = Math.max(0, Math.min(1, (now - fadeAt) / (float) BG_FADE_MS));
-                if (former == null) drawNeutral(c, 255);
-                else drawAtmosphere(c, former, 255);
-                drawAtmosphere(c, atmosphere, (int) (progress * 255));
-            } else drawAtmosphere(c, atmosphere, 255);
+            long fade = fadeMs();
+            float t = fadeAt == 0 || fade == 0 ? 1 : Math.min(1, (now - fadeAt) / (float) fade);
+            if (t < 1) drawScene(c, formerScene == null ? "neutral" : formerScene, 255, 0);
+            float e = ease(t);
+            drawScene(c, scene, t < 1 ? Math.round(e * 255) : 255, t < 1 && !calm() && !light() ? .02f * (1 - e) : 0);
+        }
+
+        private final RectF sceneRect = new RectF();
+        /** An app's own branded atmosphere, a title's own poster expanded, or the neutral scene; never another item's image. */
+        private void drawScene(Canvas c, String key, int alpha, float drift) {
+            Bitmap b = key.equals("neutral") ? null : key.startsWith("poster:") ? backdrops.get(key) : backdrops.app(key);
+            if (b == null) {
+                drawNeutral(c, alpha);
+                // Spec 4.6 source order, last step: the neutral scene, dimmed, while the title itself stays named on screen.
+                if (key.startsWith("poster:")) { paint.setShader(null); paint.setColor(0x66060a12); paint.setAlpha(alpha * 0x66 / 255); c.drawRect(0, 0, W, H, paint); paint.setAlpha(255); }
+                return;
+            }
+            sceneRect.set(-W * drift / 2, -H * drift / 2, W + W * drift / 2, H + H * drift / 2);
+            paint.setShader(null); paint.setColor(Color.WHITE); paint.setAlpha(alpha);
+            c.drawBitmap(b, null, sceneRect, paint); paint.setAlpha(255);
+        }
+
+        /** The focused item's name, faded in once its scene has settled; hidden while focus is still moving. */
+        private void drawTitle(Canvas c, long now, float reveal) {
+            if (titleHidden || sceneTitle.isEmpty() || menu || moving) return;
+            int alpha = titleAt <= now - TITLE_MS ? 255 : titleAt > now ? 0 : Math.round(255 * (now - titleAt) / (float) TITLE_MS);
+            if (alpha <= 0) { postInvalidateDelayed(16); return; }
+            float y = 714 - 60 * reveal;
+            text(c, sceneTitle.length() > 60 ? sceneTitle.substring(0, 57) + "…" : sceneTitle, 960, y, 48, (alpha << 24) | (WHITE & 0xFFFFFF), false, Paint.Align.CENTER);
         }
 
         private void drawNeutral(Canvas c, int alpha) {
@@ -482,11 +555,6 @@ public final class UnifiedPreviewActivity extends Activity {
             paint.setStyle(Paint.Style.FILL);
         }
 
-        private void drawAtmosphere(Canvas c, Item item, int alpha) {
-            int layer=c.saveLayerAlpha(0,0,W,H,alpha);
-            MaterialScene.mesh(c,W,H,item.id);c.restoreToCount(layer);
-        }
-
         private void gradient(Canvas c, int top, int middle, int bottom, int alpha) {
             paint.setColor(Color.WHITE);
             paint.setShader(new LinearGradient(0, 0, W * .78f, H,
@@ -506,7 +574,7 @@ public final class UnifiedPreviewActivity extends Activity {
             text(c, "⚙", 1773, 114, 43, WHITE, false, Paint.Align.CENTER);
         }
 
-        private void drawDock(Canvas c, long now) {
+        private void drawDock(Canvas c, long now, boolean resting) {
             final int count = dock.size();
             if (count == 0) {
                 glass(c, 230, 795, 1690, 1000, 36, 0x92434B57, 0x70FFFFFF);
@@ -529,7 +597,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 boolean selected = i == index;
                 float scale = selected ? 1.07f : 1;
                 if (selected && focusAt > 0 && !prefs.getBoolean("reduceMotion",false) && !prefs.getBoolean("lightweight",false)) {
-                    float t = Math.min(1, (now - focusAt) / 185f);
+                    float t = shelf ? 1 : Math.min(1, (now - focusAt) / (float) TILE_MS);
                     scale = 1 + .07f * (t * (2 - t));
                     if (t < 1) postInvalidateDelayed(16);
                 }
@@ -564,16 +632,118 @@ public final class UnifiedPreviewActivity extends Activity {
                 c.restore();
                 text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
             }
-            if (index >= 0 && index < dock.size()) text(c, dock.get(index).name, 960, 714, 48, WHITE, false, Paint.Align.CENTER);
+            if (!resting) return;
             Path down=new Path();down.moveTo(947,1035);down.lineTo(960,1046);down.lineTo(973,1035);
             outline.setColor(0x9acbd8e7);outline.setStrokeWidth(2);c.drawPath(down,outline);
         }
 
+        private final Path cardClip = new Path();
+        /** One row of the household's own titles. The focused poster lifts; the rest recede but never vanish (spec 4.6). */
+        private void drawShelf(Canvas c, long now, float reveal) {
+            int entries = posters.size() + 1;
+            float w = 186, h = 279, gap = 30, top = 735 + (1 - reveal) * 380;
+            int focus = Math.min(posterIndex, entries - 1);
+            for (int i = 0; i < entries; i++) {
+                float x = 960 - w / 2 + (i - focus) * (w + gap);
+                if (x + w < -40 || x > W + 40) continue;
+                boolean selected = shelf && i == focus;
+                float scale = 1;
+                if (selected) {
+                    float t = calm() ? 1 : Math.min(1, (now - focusAt) / (float) TILE_MS);
+                    scale = 1 + .08f * ease(t);
+                    if (t < 1) postInvalidateDelayed(16);
+                }
+                c.save(); c.scale(scale, scale, x + w / 2, top + h);
+                if (selected) {
+                    c.save(); c.translate(x + w / 2, top + h + 8); c.scale(1, .22f);
+                    paint.setShader(new android.graphics.RadialGradient(0, 0, 150, new int[]{0x70000000, 0x00000000}, null, Shader.TileMode.CLAMP));
+                    c.drawCircle(0, 0, 150, paint); c.restore(); paint.setShader(null); c.translate(0, -14);
+                }
+                if (i < posters.size()) poster(c, posters.get(i), x, top, w, h);
+                else {
+                    glass(c, x, top, x + w, top + h, 22, 0, 0);
+                    text(c, libraryReady ? "View All" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
+                    text(c, "Films & TV", x + w / 2, top + h / 2 + 32, 24, MUTED, false, Paint.Align.CENTER);
+                }
+                if (!selected && shelf) { paint.setShader(null); paint.setColor(0x52000000); rect.set(x, top, x + w, top + h); c.drawRoundRect(rect, 22, 22, paint); }
+                if (selected && prefs.getBoolean("highContrast", false)) { outline.setColor(0xCCFFFFFF); outline.setStrokeWidth(3); c.drawRoundRect(x - 3, top - 3, x + w + 3, top + h + 3, 24, 24, outline); }
+                c.restore();
+            }
+            if (posters.isEmpty() && postersLoading) text(c, "Finding your films and TV…", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
+        }
+
+        /** A title's own server artwork, or a plain titled card: never another title's picture. */
+        private void poster(Canvas c, HomeShelf.Poster p, float x, float top, float w, float h) {
+            Bitmap art = posterArt.get(p.id);
+            rect.set(x, top, x + w, top + h);
+            if (art == null) {
+                card(c, x, top, x + w, top + h, 22, 0xFF2B3446, 0xFF141A26);
+                String t = p.title.length() > 34 ? p.title.substring(0, 32) + "…" : p.title;
+                int split = t.length() > 16 ? Math.max(t.lastIndexOf(' ', 16), 8) : -1;
+                if (split > 0) { text(c, t.substring(0, split), x + w / 2, top + h / 2 - 4, 24, WHITE, false, Paint.Align.CENTER); text(c, t.substring(split).trim(), x + w / 2, top + h / 2 + 26, 24, WHITE, false, Paint.Align.CENTER); }
+                else text(c, t, x + w / 2, top + h / 2 + 8, 24, WHITE, false, Paint.Align.CENTER);
+                return;
+            }
+            cardClip.reset(); cardClip.addRoundRect(rect, 22, 22, Path.Direction.CW);
+            c.save(); c.clipPath(cardClip);
+            float scale = Math.max(w / art.getWidth(), h / art.getHeight()), aw = art.getWidth() * scale, ah = art.getHeight() * scale;
+            paint.setShader(null); paint.setColor(Color.WHITE);
+            c.drawBitmap(art, null, new RectF(x + (w - aw) / 2, top + (h - ah) / 2, x + (w + aw) / 2, top + (h + ah) / 2), paint);
+            c.restore();
+        }
+
+        private void openShelf() {
+            if (menu || moving) return;
+            shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis();
+            libraryReady = HomeShelf.configured(activity);   // once per opening, never per frame (it reads the encrypted store)
+            posterIndex = Math.min(posterIndex, posters.size());
+            moved(); loadPosters(); invalidate();
+        }
+        private void closeShelf() {
+            shelf = false; shelfAt = calm() ? 0 : SystemClock.uptimeMillis();
+            moved(); invalidate();
+        }
+        /** The saved collections' first titles, then each title's own artwork. Memory stays bounded: 18 posters at most. */
+        private void loadPosters() {
+            long now = SystemClock.uptimeMillis();
+            if (postersLoading || (!posters.isEmpty() && now - postersAt < 10 * 60_000L)) return;
+            postersLoading = true; invalidate();
+            try { shelfWorker.execute(() -> {
+                List<HomeShelf.Poster> found;
+                try { found = HomeShelf.load(activity); } catch (Exception e) { found = new ArrayList<>(); }
+                final List<HomeShelf.Poster> ready = found;
+                handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis();
+                    posterIndex = Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate(); });
+                for (HomeShelf.Poster p : ready) {
+                    if (p.art.isEmpty() || posterArt.containsKey(p.id) || Thread.currentThread().isInterrupted()) continue;
+                    try {
+                        Bitmap b = Images.decode(DlnaClient.request(p.art, null, null), 240, 360);
+                        if (b == null) continue;
+                        posterArt.put(p.id, b); backdrops.put("poster:" + p.id, Backdrops.fromPoster(b));
+                        // A title already in focus gets its own backdrop with a dissolve, not a pop.
+                        handler.post(() -> { if (scene.equals("poster:" + p.id)) { formerScene = "neutral"; fadeAt = fadeMs() == 0 ? 0 : SystemClock.uptimeMillis(); } invalidate(); });
+                    } catch (Exception ignored) {}
+                }
+            }); } catch (java.util.concurrent.RejectedExecutionException e) { postersLoading = false; }
+        }
+        /** OK on a title plays it or opens its collection; the last card opens the full library or setup. A fade, never a flash. */
+        private void openEntry() {
+            Intent next;
+            if (posterIndex < posters.size()) {
+                HomeShelf.Poster p = posters.get(posterIndex);
+                if (!p.folder && !p.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", p.url).putExtra("title", p.title);
+                else next = new Intent(activity, DlnaLibraryActivity.class).putExtra("folder", p.id).putExtra("name", p.title).putExtra("fromShelf", true).putExtra("root", p.root);
+            } else next = libraryReady ? new Intent(activity, LibraryActivity.class) : new Intent(activity, DlnaLibraryActivity.class).putExtra("setup", true);
+            try { activity.startActivity(next); activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out); }
+            catch (RuntimeException e) { info("Unable to open Films & TV"); }
+        }
+
+        private static final String[] MENU = {"Move", "Remove from Home", "App information", "Cancel"};
         private void drawMenu(Canvas c) {
             paint.setShader(null); paint.setColor(0x92000000); c.drawRect(0, 0, W, H, paint);
-            glass(c, 625, 380, 1295, 690, 35, 0xEB242B37, 0x70FFFFFF);
-            text(c, "Edit Home", 960, 465, 48, WHITE, false, Paint.Align.CENTER);
-            String[] actions = {"Move", "Cancel"};
+            glass(c, 625, 330, 1295, 790, 35, 0xEB242B37, 0x70FFFFFF);
+            text(c, index >= 0 && index < dock.size() ? dock.get(index).name : "Edit Home", 960, 415, 48, WHITE, false, Paint.Align.CENTER);
+            String[] actions = MENU;
             for (int j = 0; j < actions.length; j++) {
                 if (j == menuIndex) glass(c, 695, 497 + 58 * j, 1225, 550 + 58 * j, 17, 0x928A98AA, 0xAAFFFFFF);
                 text(c, actions[j], 960, 534 + 58 * j, 31, WHITE, false, Paint.Align.CENTER);
@@ -600,7 +770,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void glass(Canvas c, float l, float t, float r, float b, float radius, int colour, int stroke) {
             rect.set(l,t,r,b);
-            String key=atmosphere==null?"neutral":atmosphere.id;
+            String key=scene.startsWith("poster:")?"neutral":scene;
             MaterialScene.glass(c,rect,radius,key,prefs.getBoolean("opaque",false)||prefs.getBoolean("highContrast",false));
         }
 

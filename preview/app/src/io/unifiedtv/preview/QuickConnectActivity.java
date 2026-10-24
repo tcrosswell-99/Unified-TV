@@ -1,7 +1,7 @@
 package io.unifiedtv.preview;
 import android.content.Intent;
 import android.os.*;
-import android.widget.TextView;
+import android.widget.*;
 import org.json.JSONObject;
 import java.util.concurrent.*;
 
@@ -14,10 +14,15 @@ public final class QuickConnectActivity extends Screen {
         page(name==null||name.isEmpty()?"Your Films & TV":name);
         code=text("",64);code.setLetterSpacing(.25f);
         state=text("One moment...",21);
-        if(base.startsWith("http:"))text("This server is on your home network. Only continue if you trust your home network.",16);
         button("Sign in another way (advanced)",()->{startActivity(new Intent(this,ConnectionsActivity.class).putExtra("key",key).putExtra("discoveredBase",base).putExtra("discoveredName",name));finish();});
         button("Cancel",this::finish);
         try{pending=QuickConnect.pending(base,QuickConnect.device(this));}catch(Exception e){finish();return;}
+        // Spec 27.4: trusted-HTTP consent is never implied. An unencrypted home server needs an explicit Continue first.
+        if(base.startsWith("http:")){state.setText("This server is on your home network and doesn't use encryption. Continue only if you trust your home network.");Button go=button("Continue",()->{});go.setOnClickListener(v->{go.setVisibility(android.view.View.GONE);ask();});go.requestFocus();return;}
+        ask();
+    }
+    private void ask(){
+        state.setText("One moment...");
         worker.execute(()->{try{QuickConnect.Start s=QuickConnect.initiate(pending);runOnUiThread(()->{if(!active)return;start=s;code.setText(s.code);
                 state.setText("On your phone, open the Jellyfin app, go to Quick Connect and enter this code.");until=SystemClock.elapsedRealtime()+5*60_000;poll();});}
             catch(Exception e){runOnUiThread(()->{if(active)state.setText("Signing in with your phone isn't switched on for this server. Ask whoever looks after it to turn on Quick Connect, or sign in another way.");});}});
