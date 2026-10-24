@@ -1,12 +1,14 @@
 plugins { id 'com.android.application' }
 
-// Optional durable preview key (spec P05-01), the same pattern as launcher/app/build.gradle: each of these four as a
-// Gradle property (-PUNIFIEDTV_PREVIEW_KEYSTORE=... or ~/.gradle/gradle.properties) or an environment variable.
-// Used only when all four are set, for the debug APK installed on the TV (preview/build.sh) and for release.
-// Otherwise both are signed with the debug key exactly as before, so CI and a plain build need no secrets.
-// UNIFIEDTV_PREVIEW_KEYSTORE is an absolute path or one relative to preview/app; never commit the keystore itself.
-// Android refuses an update signed with another key. Never uninstall a configured preview to get round that:
-// preview/tools/install_preview.py compares certificates first and refuses a mismatch.
+// Two separately installed apps from one codebase (owner decision, 25 October 2026; docs/SIGNING.md):
+//   preview  = io.unifiedtv.preview, no HOME entry, signed exactly as before. It stays installed and is never replaced.
+//   launcher = io.unifiedtv.launcher, an opt-in HOME entry (launcher/AndroidManifest.xml), signed with the owner's
+//              durable key from its first install, so every later version updates in place and keeps its settings.
+// The durable key: each of these four as a Gradle property (-PUNIFIEDTV_PREVIEW_KEYSTORE=... or
+// ~/.gradle/gradle.properties) or an environment variable; the names predate the split and are kept so existing
+// GitHub secrets still work. Used only when all four are set; otherwise the launcher is test-signed with the debug key,
+// so CI and a plain build need no secrets. Never commit the keystore. Android refuses an update signed with another
+// key: never uninstall a configured app to get round that; preview/tools/install_preview.py refuses a mismatch.
 def previewKey = ['UNIFIEDTV_PREVIEW_KEYSTORE', 'UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD', 'UNIFIEDTV_PREVIEW_KEY_ALIAS', 'UNIFIEDTV_PREVIEW_KEY_PASSWORD']
         .collectEntries { name -> [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse('')] }
 def hasPreviewKey = previewKey.values().every { !it.trim().isEmpty() }
@@ -14,8 +16,12 @@ def hasPreviewKey = previewKey.values().every { !it.trim().isEmpty() }
 android {
     namespace 'io.unifiedtv.preview'
     compileSdk 35
-    defaultConfig { applicationId 'io.unifiedtv.preview'; minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
-    sourceSets { main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }; test { java.srcDirs = ['test'] } }
+    defaultConfig { minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    sourceSets {
+        main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }
+        launcher { manifest.srcFile 'launcher/AndroidManifest.xml'; res.srcDirs = ['launcher/res'] }
+        test { java.srcDirs = ['test'] }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     signingConfigs {
         if (hasPreviewKey) {
@@ -27,11 +33,17 @@ android {
             }
         }
     }
+    flavorDimensions = ['app']
+    productFlavors {
+        preview { dimension 'app'; applicationId 'io.unifiedtv.preview'; signingConfig signingConfigs.debug }
+        launcher { dimension 'app'; applicationId 'io.unifiedtv.launcher'; signingConfig hasPreviewKey ? signingConfigs.release : signingConfigs.debug }
+    }
     buildTypes {
-        // The debug APK is the one installed on the TV: with the durable key it updates over earlier durable builds.
-        debug { if (hasPreviewKey) { signingConfig signingConfigs.release } }
-        release { minifyEnabled false; signingConfig hasPreviewKey ? signingConfigs.release : signingConfigs.debug }
-        // Local hardware checks coexist with CI previews signed by another key: own identity, always the local debug key.
+        // Signing comes from the app (flavour above): the build type's own default would override it.
+        debug { signingConfig = null }
+        release { minifyEnabled false; signingConfig = null }
+        // Review and hardware-check builds: their own identity (.devicecheck), always the local debug key, so they
+        // install beside the real apps and can be removed without touching them.
         deviceCheck { initWith debug; signingConfig signingConfigs.debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
     }
     lint { abortOnError true; disable 'MissingTranslation' }

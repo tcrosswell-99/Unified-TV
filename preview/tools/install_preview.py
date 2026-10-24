@@ -32,7 +32,8 @@ import tempfile
 import time
 import zipfile
 
-PREVIEW_PACKAGES = ("io.unifiedtv.preview", "io.unifiedtv.preview.devicecheck")
+PREVIEW_PACKAGES = ("io.unifiedtv.preview", "io.unifiedtv.preview.devicecheck",
+                    "io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck")
 REMOTE_APK = "/data/local/tmp/unifiedtv-preview-install.apk"
 EVIDENCE = "preview-evidence"
 HOME_QUERY = "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"

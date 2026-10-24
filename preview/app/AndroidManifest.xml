@@ -43,16 +43,7 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
-    <!-- Spec 29.3: the Home entry ships switched off, so installing never changes the TV's Home. Only the owner's
-         guided choice in Settings > TV & performance switches it on, and Android's own Home selection decides;
-         switching it off hands Home straight back to the original interface. -->
-    <activity-alias android:name=".HomeEntry" android:targetActivity=".UnifiedPreviewActivity"
-        android:enabled="false" android:exported="true">
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN"/>
-        <category android:name="android.intent.category.HOME"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-      </intent-filter>
-    </activity-alias>
+    <!-- No HOME entry here: the preview never becomes a Home candidate. The separate launcher app adds one
+         (launcher/AndroidManifest.xml), switched off until the owner chooses it. -->
   </application>
 </manifest>

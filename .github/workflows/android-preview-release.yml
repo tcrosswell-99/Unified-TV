@@ -20,9 +20,11 @@ jobs:
         with:
           packages: platforms;android-35 build-tools;35.0.0
       - uses: gradle/actions/setup-gradle@v4
-      # Durable signing (spec P05-01): used only when all four repository secrets exist. The keystore is stored
-      # base64-encoded, decoded to the runner's temp folder for this job and deleted afterwards. Secrets are passed
-      # through the environment and never printed. Without them the APK is test-signed with the runner's debug key.
+      # Durable signing (spec P05-01, docs/SIGNING.md): the launcher app (io.unifiedtv.launcher) is signed with the
+      # owner's key when all four repository secrets exist. The keystore is stored base64-encoded, decoded to the
+      # runner's temp folder for this job and deleted afterwards. Secrets are passed through the environment and never
+      # printed. Without them the launcher is test-signed with the runner's debug key. The preview app is never
+      # signed with the durable key: it stays exactly as it was.
       - name: Tests, lint, APK and manifest verification
         id: build
         env:
@@ -39,7 +41,7 @@ jobs:
             printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 -d > "$keystore"
             export UNIFIEDTV_PREVIEW_KEYSTORE="$keystore"
             echo "signing=durable" >> "$GITHUB_OUTPUT"
-            echo "Signing with the durable preview key."
+            echo "Signing the launcher with the durable key."
           else
             unset UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD UNIFIEDTV_PREVIEW_KEY_ALIAS UNIFIEDTV_PREVIEW_KEY_PASSWORD
             echo "signing=test" >> "$GITHUB_OUTPUT"
@@ -51,20 +53,21 @@ jobs:
           SIGNING: ${{ steps.build.outputs.signing }}
         run: |
           set -euo pipefail
-          digest=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs preview/out/UnifiedTV-Preview.apk \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          test -n "$digest"
+          cert() { "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+          launcher=$(cert preview/out/UnifiedTV-Launcher.apk); preview=$(cert preview/out/UnifiedTV-Preview.apk)
+          test -n "$launcher" && test -n "$preview"
           {
             if [ "$SIGNING" = durable ]; then
-              echo "Signing: durable Unified TV preview key."
-              echo "Updates install over earlier builds signed with this same certificate, keeping settings."
+              echo "Signing: durable Unified TV launcher key (UnifiedTV-Launcher.apk)."
+              echo "Launcher updates install over earlier launchers signed with this same certificate, keeping settings."
             else
               echo "Signing: TEST-SIGNED: may not update over a differently signed install."
-              echo "This APK is signed with a CI runner's debug key. If the TV already has a configured preview signed"
-              echo "with another key, do not install it: never uninstall or clear a configured preview to make it fit."
+              echo "The launcher is signed with a CI runner's debug key. Do not install it as the household launcher:"
+              echo "a later durably signed launcher could not update it. Never uninstall or clear a configured app to make it fit."
             fi
-            echo "Certificate SHA-256: $digest"
-            echo "Check before installing: python3 preview/tools/install_preview.py UnifiedTV-Preview.apk --check"
+            echo "Launcher certificate SHA-256: $launcher"
+            echo "Preview (UnifiedTV-Preview.apk, never durably signed) certificate SHA-256: $preview"
+            echo "Check before installing: python3 preview/tools/install_preview.py UnifiedTV-Launcher.apk --check"
           } > preview/out/SIGNING.txt
           cat preview/out/SIGNING.txt
       - uses: actions/upload-artifact@v4
@@ -78,11 +81,14 @@ jobs:
       - name: Assemble versioned release files
         run: |
           mkdir release
-          cp preview/out/UnifiedTV-Preview.apk release/
+          cp preview/out/UnifiedTV-Launcher.apk preview/out/UnifiedTV-Preview.apk release/
           cp preview/out/SHA256SUMS.txt release/
-          cp preview/out/manifest.txt release/
+          cp preview/out/manifest.txt release/manifest-preview.txt
+          cp preview/out/manifest-launcher.txt release/
+          cp docs/SIGNING.md release/Signing-and-key-custody.md
           cp preview/out/SIGNING.txt release/
-          cp docs/PRODUCT_SPEC.md release/Unified-TV-Specification.md
+          cp docs/SPEC.md release/Unified-TV-Specification.md
+          cp docs/PRODUCT_SPEC.md release/Unified-TV-Detailed-Requirements.md
           cp docs/FEATURE_STATUS.md release/Unified-TV-Feature-Status.md
           cp docs/AI_HANDOVER.md release/Unified-TV-AI-Handover.md
           # Signing label first; trailing double spaces keep its lines apart in Markdown.

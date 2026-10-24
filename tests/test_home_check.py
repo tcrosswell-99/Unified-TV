@@ -45,6 +45,10 @@ class HomeCheck(unittest.TestCase):
         self.assertEqual([], hc.problems(alias("        A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=false")))
         self.assertEqual([], hc.problems(alias("        A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=(type 0x12)0x0")))
 
+    def test_the_preview_may_not_carry_any_home_entry(self):
+        self.assertEqual([], hc.problems(QUERIES, no_home=True))
+        self.assertTrue(hc.problems(alias("        A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=false"), no_home=True))
+
     def test_alias_shipped_switched_on_fails(self):
         self.assertTrue(hc.problems(alias("        A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=true")))
         self.assertTrue(hc.problems(alias("")))

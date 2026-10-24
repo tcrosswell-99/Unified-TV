@@ -13,6 +13,10 @@ final class DefaultHome {
     static final int REQUEST=71;
     /** The Home entry ships switched off, so a fresh install is never a Home candidate. */
     static ComponentName entry(Context c){return new ComponentName(c.getPackageName(),"io.unifiedtv.preview.HomeEntry");}
+    /** Only the launcher app carries the Home entry; the preview never does. */
+    static boolean available(Context c){
+        try{c.getPackageManager().getActivityInfo(entry(c),PackageManager.MATCH_DISABLED_COMPONENTS);return true;}catch(PackageManager.NameNotFoundException|RuntimeException e){return false;}
+    }
     static Intent homeIntent(){return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);}
     static boolean offered(Context c){return c.getPackageManager().getComponentEnabledSetting(entry(c))==PackageManager.COMPONENT_ENABLED_STATE_ENABLED;}
     static boolean isDefault(Context c){

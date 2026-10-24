@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher app (io.unifiedtv.launcher) only. Merged over the shared manifest.
+     Spec 29.3: the Home entry ships switched off, so installing never changes the TV's Home. Only the owner's guided
+     choice in Settings > TV & performance switches it on, and Android's own Home selection decides; switching it off
+     hands Home straight back to the original interface. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity-alias android:name="io.unifiedtv.preview.HomeEntry" android:targetActivity="io.unifiedtv.preview.UnifiedPreviewActivity"
+        android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.HOME"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
+    </activity-alias>
+  </application>
+</manifest>

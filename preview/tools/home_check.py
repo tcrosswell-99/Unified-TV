@@ -3,14 +3,15 @@
 
 Reads `aapt2 dump xmltree --file AndroidManifest.xml` output. HOME may appear only:
   - inside <queries> (package visibility, not a component), or
-  - on an <activity-alias> that ships with android:enabled=false (switched on only by the owner's guided choice).
-Usage: home_check.py out/manifest.txt
+  - on an <activity-alias> that ships with android:enabled=false (switched on only by the owner's guided choice),
+    and only in the launcher app: with --no-home (the preview) any HOME component at all fails.
+Usage: home_check.py [--no-home] out/manifest.txt
 """
 import re
 import sys
 
 
-def problems(xmltree):
+def problems(xmltree, no_home=False):
     """List of reasons the manifest is unsafe; empty when every HOME filter is opt-in only."""
     stack, out = [], []  # stack of (indent, tag, attrs)
     for line in xmltree.splitlines():
@@ -30,7 +31,9 @@ def problems(xmltree):
                 if "queries" in tags:
                     continue
                 owner = next((s for s in reversed(stack) if s[1] in ("activity", "activity-alias")), None)
-                if owner is None:
+                if no_home:
+                    out.append("HOME declared in the preview: only the separate launcher app may offer Home")
+                elif owner is None:
                     out.append("HOME category outside any component")
                 elif owner[1] != "activity-alias":
                     out.append("HOME declared on an activity: a fresh install would become a Home candidate")
@@ -40,7 +43,8 @@ def problems(xmltree):
 
 
 if __name__ == "__main__":
-    found = problems(open(sys.argv[1], encoding="utf-8").read())
+    args = [a for a in sys.argv[1:] if a]
+    found = problems(open(args[-1], encoding="utf-8").read(), no_home="--no-home" in args)
     for p in found:
         print("Preview Home safety:", p, file=sys.stderr)
     sys.exit(3 if found else 0)

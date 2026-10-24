@@ -46,11 +46,14 @@ public final class SettingsActivity extends Screen {
         case 4:
             button("Picture, sound, network & Bluetooth",()->{try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception e){note("Use the TV's own Settings");}});
             button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
-            text(DefaultHome.isDefault(this)?"The Home button opens Unified TV.":"The Home button opens the original TV interface.",17);
-            if(!DefaultHome.isDefault(this))button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            if(DefaultHome.available(this)){
+                text(DefaultHome.isDefault(this)?"The Home button opens Unified TV.":"The Home button opens the original TV interface.",17);
+                if(!DefaultHome.isDefault(this))button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            }else text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",17);
             text("No automatic cleanup or factory package changes are performed.",16);
-            // Spec 30: deliberately small and last; adult only; plain words.
-            Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(14);original.setMinHeight(0);original.setAlpha(.8f);break;
+            // Spec 30: deliberately small and last; adult only; plain words. Only in the app that can be Home.
+            if(DefaultHome.available(this)){Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(14);original.setMinHeight(0);original.setAlpha(.8f);}
+            break;
         case 5:
             button("Manage private connections",()->show(0));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
             button("Live TV protection",()->EditLock.ask(this,this::protection));
