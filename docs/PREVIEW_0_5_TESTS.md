@@ -174,24 +174,29 @@ These checks cover only what the status *says*. They are not a protection test. 
 3. Try an APK signed with a different key.
    - **Pass:** the tool refuses and changes nothing on the TV.
 
-## Smoke and carbon monoxide alarm (ALERT-01)
+## Smoke and carbon monoxide alarm (SAFE-01 to SAFE-10)
 
-Use a test helper in Home Assistant (a template binary sensor with device class smoke, and another with carbon monoxide), never a real alarm. Household alerts must be running, with overlay permission granted.
+No detectors are connected yet, so start with the built-in test. Household alerts need overlay permission (**Settings → Notifications → Doorbell, reminders & room setup → Grant optional alert overlay permission**). The test buttons are in the same screen, under **Test the alarm screen**. Every test entry is labelled TEST.
 
-1. Turn the smoke test sensor on while Home is showing.
-   - **Pass:** the alarm screen takes over within a few seconds, with "Smoke alarm", the sensor's name and "Get everyone out, stay out, and call the fire service." Focus is on "OK, I've seen it".
-2. Repeat during Netflix or NAS playback.
-   - **Pass:** the alarm screen appears over the film, and the film pauses or its sound stops. Write down which.
-3. Trigger the doorbell while the alarm screen is showing.
-   - **Pass:** no camera card; the alarm screen shows "Someone is at the door."
-4. With the doorbell card showing, turn the carbon monoxide sensor on.
-   - **Pass:** the doorbell card goes and the carbon monoxide alarm screen replaces it.
-5. Press "OK, I've seen it", then turn the second sensor on.
-   - **Pass:** the screen goes, then returns for the second sensor.
-6. Turn both sensors off.
-   - **Pass:** the screen goes, and the film's sound can be resumed.
-7. Turn a sensor on, stop Unified TV's alerts, start them again.
-   - **Pass:** the alarm screen reappears on connecting.
-8. Switch alarms off in household setup and repeat step 1.
-   - **Pass:** nothing appears.
+1. **Test: smoke alarm in the kitchen**, while Home is showing. (SAFE-01)
+   - **Pass:** a full red screen shows "TEST · SMOKE ALARM — Kitchen", "Since HH:mm", "Get everyone out, stay out, and call the fire service." and an **Acknowledge** button with focus.
+2. Press Back. (SAFE-09)
+   - **Pass:** nothing is acknowledged; focus returns to Acknowledge.
+3. **Test: carbon monoxide alarm in the hallway** without acknowledging the first. (SAFE-04)
+   - **Pass:** two separate entries, oldest first, each with its own Acknowledge.
+4. Acknowledge the smoke entry only.
+   - **Pass:** the carbon monoxide entry stays, with its Acknowledge.
+5. Acknowledge the carbon monoxide entry.
+   - **Pass:** the full screen goes; a red banner at the top stays: "… still active". It never takes focus.
+6. **Test: someone rings the doorbell** while the banner shows. (SAFE-03)
+   - **Pass:** no camera card. The banner adds "Doorbell rang at HH:mm: shown when the alarm ends".
+7. **Test: a smoke detector goes offline**. (SAFE-05)
+   - **Pass:** a separate amber notice "TEST · Smoke detector offline: Landing", never styled as an alarm.
+8. **End the alarm test**.
+   - **Pass:** banner and screen go. If the doorbell test was under 45 seconds ago the doorbell card appears; otherwise a note "Doorbell rang at HH:mm during the alarm."
+9. Repeat step 1 while Netflix (or another app) is playing. (SAFE-06)
+   - **Record:** whether the alarm screen appeared over the app, and whether the app paused, lowered its sound or carried on. Either is acceptable to record; only a missing alarm screen is a failure.
+10. Repeat step 1, then put the TV in standby and wake it. (SAFE-07)
+    - **Record:** what is on screen after waking.
 
+**With Home Assistant (optional, no detector needed):** add a template binary sensor with `device_class: smoke` driven by a helper toggle, start household alerts, and turn the helper on and off. **Pass:** the same screens without the TEST label, and the time shown matches Home Assistant's. Turning Home Assistant off during an alarm must show "Connection to Home Assistant lost: alarm status unknown", never clear the alarm. (SAFE-08, SAFE-10)

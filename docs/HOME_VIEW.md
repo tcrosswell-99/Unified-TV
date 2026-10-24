@@ -38,7 +38,7 @@ One alert is on screen at a time. A higher alert replaces a lower one; the lower
 
 Priorities 1 and 2 are the Product Spec's own order: **Ring is priority 1 among everyday alerts, then Alexa reminders**; only a smoke or carbon monoxide alarm ranks above Ring (spec section 4.10; [AGENTS.md](../AGENTS.md) rule 7). An Alexa reminder that arrives during a Ring alert is queued briefly, then dropped once stale. Priorities 3 to 5 are proposed glances from the [ideas catalogue](IDEAS.md). VPN prompts (priority 3 in the spec, only when Live TV is activated) and voice (priority 4) are not Home view alerts and keep the spec's order.
 
-**Owner decision, 24 October 2026: smoke and carbon monoxide come first.** A smoke or carbon monoxide alarm ranks above the doorbell (priority 0). Among everyday alerts, the spec's order is unchanged: Ring first, then reminders. The alarm screen adds to the home's alarms and never replaces them; it only reaches a TV that is on with household alerts running. Not yet tested on a TV.
+**Owner decision OD-07, 25 October 2026: smoke and carbon monoxide come first.** A smoke or carbon monoxide alarm ranks above the doorbell (priority 0). Among everyday alerts, the spec's order is unchanged: Ring first, then reminders. The alarm screen adds to the home's alarms and never replaces them; it only reaches a TV that is on with household alerts running. Not yet tested on a TV.
 
 **Proposal awaiting an owner decision:** a **baby monitor** picture-in-picture. Until then it is not part of the design.
 

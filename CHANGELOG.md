@@ -24,11 +24,14 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
   - As Home, the Home button returns to the main screen; Back at the main screen never leaves it.
 - **Open original TV interface** (spec 30): a small adult-only row offers the manufacturer's interface for now, or as the default again after a second confirmation.
 - **Apps, and a Home you can change** (P05-03): a grid of every installed app plus Unified TV's shortcuts. Hold OK to open, add to or remove from Home, or see app information. Each room keeps its own dock.
-- **Smoke and carbon monoxide alarms on the TV, above the doorbell** (owner decision, 24 October 2026):
-  - Any Home Assistant smoke or carbon monoxide sensor is used automatically, from its own device class; there is nothing to type. It can be switched off in household setup.
-  - The alarm takes over the screen with plain instructions and where it is, and asks the TV to pause other sound so the alarm can be heard.
-  - An alarm already sounding when the TV connects is shown straight away. A doorbell press during an alarm becomes one line on the alarm screen; reminders are dropped.
-  - It clears only when the sensor says "off", never because a sensor goes quiet.
+- **Smoke and carbon monoxide alarms on the TV, above the doorbell** (owner decision OD-07, 25 October 2026):
+  - Home Assistant smoke and carbon monoxide detectors are used automatically, from their own device class; nothing to type. It can be switched off in household setup. No detectors are assumed: the household currently has none connected.
+  - Each alarm is listed separately with its room and the time it started, and is acknowledged on its own. Acknowledging never changes the detector.
+  - After acknowledgement a banner stays on screen while any alarm is still active. A new alarm brings the full screen back.
+  - A detector that goes offline is shown as a separate warning, never as an alarm and never as "safe". An alarm whose detector stops answering stays an alarm.
+  - The doorbell never covers an alarm: a visit during one is shown once every alarm has cleared (or noted, if it was more than 45 seconds ago). Reminders are dropped.
+  - The TV asks other apps to step back so the alarm can be heard; whether they pause is up to each app.
+  - **Test the alarm screen** in household setup simulates smoke, carbon monoxide, an offline detector and the doorbell, all labelled TEST.
   - It adds to your alarms and never replaces them. Not yet tested on a TV.
 - **Watching films from your NAS** (P05-07, P05-08):
   - Pause, resume and skip with the remote; hold Left or Right to skip faster.

@@ -49,9 +49,20 @@ public final class HouseholdActivity extends Screen {
             startForegroundService(new Intent(this,HouseholdService.class));note("Alert service requested. Check its notification for actual connection state.");
         });
         button("Stop household alerts",()->{stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");});
+        // OD-07: no detectors are assumed. These test events are labelled TEST on screen and never reach Home Assistant.
+        text("Test the alarm screen. Each step shows exactly what a real alarm would, marked TEST.",17);
+        button("Test: smoke alarm in the kitchen",()->simulate("smoke","on","Kitchen"));
+        button("Test: carbon monoxide alarm in the hallway",()->simulate("carbon_monoxide","on","Hallway"));
+        button("Test: a smoke detector goes offline",()->simulate("smoke","unavailable","Landing"));
+        button("Test: someone rings the doorbell",()->simulate("door",null,null));
+        button("End the alarm test",()->simulate("end",null,null));
         button("Request native Frame Art Mode",()->{if(getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))action(this,"art");else note("This action belongs to the Frame room profile");});
         button("Forget household setup",()->{stopService(new Intent(this,HouseholdService.class));new Vault(this).forget("household");show();});
         button("Back",this::finish);
+    }
+    private void simulate(String kind,String state,String name){
+        if(!Settings.canDrawOverlays(this)){note("Grant overlay permission first, so the alarm screen can appear over other apps.");return;}
+        startForegroundService(new Intent(this,HouseholdService.class).setAction("simulate").putExtra("kind",kind).putExtra("state",state).putExtra("name",name));
     }
     static void action(android.app.Activity activity,String name){
         java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();executor.execute(()->{
