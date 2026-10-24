@@ -1,0 +1,577 @@
+package io.cleanyourtv.ui;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import android.view.View;
+
+import java.io.InputStream;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.TimeZone;
+
+/**
+ * Unified TV visual preview, deliberately NOT registered as Android's HOME activity.
+ *
+ * First milestone: neutral/coastal Home, brand-aware focus atmosphere, readable glass dock,
+ * installed-app picker, remote-only pin/reorder/remove and saved per-device shortcuts.
+ * No Ring, VPN tunnel control, cleanup, NAS or voice capabilities are claimed by this preview.
+ */
+public final class UnifiedPreviewActivity extends Activity {
+    private Preview surface;
+
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        surface = new Preview(this);
+        setContentView(surface);
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (surface != null && surface.key(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override protected void onDestroy() {
+        if (surface != null) surface.close();
+        super.onDestroy();
+    }
+
+    private static final class Item {
+        final String id, name, pkg;
+        final int top, bottom;
+        final Drawable icon;
+        Item(String id, String name, String pkg, int top, int bottom, Drawable icon) {
+            this.id = id; this.name = name; this.pkg = pkg;
+            this.top = top; this.bottom = bottom; this.icon = icon;
+        }
+    }
+
+    private static final class Preview extends View {
+        private static final int W = 1920, H = 1080;
+        private static final int WHITE = 0xFFFAFAFC;
+        private static final int MUTED = 0xFFC8CCD5;
+        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 380;
+        private final Activity activity;
+        private final SharedPreferences prefs;
+        private final Handler handler = new Handler(Looper.getMainLooper());
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint type = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        private final RectF rect = new RectF();
+        private final List<Item> installed = new ArrayList<>();
+        private final List<Item> dock = new ArrayList<>();
+        private List<Item> beforeMove;
+        private Bitmap coast;
+        private int index = -1, appIndex = 0, menuIndex = 0, lifted = -1;
+        private boolean apps = false, menu = false, moving = false;
+        private boolean okDown, held;
+        private long focusAt, fadeAt;
+        private Item atmosphere, former;
+        private String message = "";
+        private long messageUntil = 0;
+        private final Runnable hold = () -> {
+            if (okDown && !held) {
+                held = true;
+                if (apps) removeOrPin();
+                else if (index >= 0 && index < dock.size()) { menu = true; menuIndex = 0; invalidate(); }
+            }
+        };
+        private final Runnable commitFocus = () -> {
+            if (apps || menu || moving || index < 0 || index >= dock.size()) return;
+            Item next = dock.get(index);
+            if (next == atmosphere) return;
+            former = atmosphere;
+            atmosphere = next;
+            fadeAt = SystemClock.uptimeMillis();
+            invalidate();
+        };
+
+        Preview(Activity a) {
+            super(a);
+            activity = a;
+            prefs = a.getSharedPreferences("unified-tv-preview", Context.MODE_PRIVATE);
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+            scanInstalled();
+            loadDock();
+            try (InputStream in = a.getAssets().open("unified-preview-coast.jpg")) {
+                BitmapFactory.Options opt = new BitmapFactory.Options();
+                opt.inSampleSize = 2;
+                coast = BitmapFactory.decodeStream(in, null, opt);
+            } catch (Exception ignored) { /* Original illustrated gradient is the safe offline fallback. */ }
+            outline.setStyle(Paint.Style.STROKE);
+            outline.setStrokeWidth(2);
+        }
+
+        void close() {
+            handler.removeCallbacks(hold);
+            handler.removeCallbacks(commitFocus);
+            if (coast != null) { coast.recycle(); coast = null; }
+        }
+
+        private void scanInstalled() {
+            PackageManager pm = activity.getPackageManager();
+            List<ResolveInfo> all = new ArrayList<>();
+            for (String category : new String[] {Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER}) {
+                Intent q = new Intent(Intent.ACTION_MAIN);
+                q.addCategory(category);
+                try { all.addAll(pm.queryIntentActivities(q, 0)); } catch (RuntimeException ignored) {}
+            }
+            Set<String> seen = new HashSet<>();
+            for (ResolveInfo ri : all) {
+                if (ri.activityInfo == null) continue;
+                String pkg = ri.activityInfo.packageName;
+                if (pkg.equals(activity.getPackageName()) || !seen.add(pkg)) continue;
+                String label;
+                Drawable icon;
+                try { label = String.valueOf(ri.loadLabel(pm)); icon = pm.getApplicationIcon(pkg); }
+                catch (Exception e) { continue; }
+                if (label.trim().isEmpty()) label = pkg;
+                installed.add(new Item(pkg, label, pkg, 0xFF323E53, 0xFF161D2D, icon));
+            }
+            Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.UK)));
+        }
+
+        private Item installedMatch(String[] exact, String query) {
+            for (String pkg : exact) for (Item x : installed) if (pkg.equals(x.pkg)) return x;
+            for (Item x : installed) if (x.name.toLowerCase(Locale.UK).contains(query)) return x;
+            return null;
+        }
+
+        private Item favourite(String id, String label, String[] packages, String query, int c1, int c2) {
+            Item found = installedMatch(packages, query);
+            return new Item(id, label, found == null ? null : found.pkg, c1, c2,
+                    found == null ? null : found.icon);
+        }
+
+        private Item defaultItem(String id) {
+            switch (id) {
+                case "smartutube": return favourite(id, "SmartTube",
+                        new String[]{"com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"}, "smarttube",
+                        0xFF45434A, 0xFF1E1E27);
+                case "netflix": return favourite(id, "Netflix",
+                        new String[]{"com.netflix.ninja"}, "netflix", 0xFF28242B, 0xFF07090C);
+                case "disney": return favourite(id, "Disney+",
+                        new String[]{"com.disney.disneyplus"}, "disney", 0xFF15356F, 0xFF071128);
+                case "bbc": return favourite(id, "BBC",
+                        new String[]{"bbc.iplayer.android", "bbc.iplayer.android.tv"}, "iplayer",
+                        0xFF494A51, 0xFF25262A);
+                case "live": return new Item(id, "Live TV", null, 0xFF6D45A3, 0xFF27194F, null);
+                case "music": return favourite(id, "Music",
+                        new String[]{"com.amazon.mp3", "com.amazon.music.tv"}, "amazon music",
+                        0xFFE85C75, 0xFF8E2548);
+                case "xbox": return new Item(id, "Xbox", null, 0xFF14783F, 0xFF07351E, null);
+                default:
+                    for (Item x : installed) if (x.id.equals(id)) return x;
+                    return null;
+            }
+        }
+
+        private void loadDock() {
+            String defaults = "smartutube,netflix,disney,bbc,live,music";
+            if (Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults += ",xbox";
+            String chosen = prefs.getString("dock", defaults);
+            Set<String> seen = new HashSet<>();
+            for (String id : chosen.split(",")) {
+                if (id.isEmpty() || !seen.add(id)) continue;
+                Item item = defaultItem(id);
+                if (item != null) dock.add(item);
+            }
+            if (dock.isEmpty() && !prefs.contains("dock")) dock.add(defaultItem("netflix"));
+        }
+
+        private void saveDock() {
+            StringBuilder out = new StringBuilder();
+            for (Item item : dock) {
+                if (out.length() != 0) out.append(',');
+                out.append(item.id);
+            }
+            prefs.edit().putString("dock", out.toString()).apply();
+        }
+
+        boolean key(KeyEvent e) {
+            int code = e.getKeyCode();
+            if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT &&
+                code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN &&
+                code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER &&
+                code != KeyEvent.KEYCODE_BACK && code != KeyEvent.KEYCODE_MENU) return false;
+            boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+            if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
+                if (down && e.getRepeatCount() == 0) {
+                    okDown = true;
+                    held = false;
+                    handler.removeCallbacks(hold);
+                    if (!moving && !menu) handler.postDelayed(hold, HOLD_MS);
+                } else if (!down) {
+                    handler.removeCallbacks(hold);
+                    if (okDown && !held && !e.isCanceled()) confirm();
+                    okDown = false;
+                    held = false;
+                }
+                return true;
+            }
+            if (!down || e.getRepeatCount() > 0) return true;
+            handler.removeCallbacks(hold);
+            if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
+            if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) openApps(); return true; }
+            if (menu) { if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + 2) % 3;
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % 3;
+                invalidate(); return true; }
+            if (moving) {
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT) shift(-1);
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) shift(1);
+                return true;
+            }
+            if (apps) {
+                int next = appIndex;
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT) next--;
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) next++;
+                else if (code == KeyEvent.KEYCODE_DPAD_UP) next -= 5;
+                else if (code == KeyEvent.KEYCODE_DPAD_DOWN) next += 5;
+                appIndex = Math.max(0, Math.min(installed.size() - 1, next));
+            } else if (code == KeyEvent.KEYCODE_DPAD_UP) openApps();
+            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) info("Your Films & TV will appear here once a NAS is connected");
+            else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (!dock.isEmpty()) {
+                    int delta = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
+                    index = index < 0 ? 0 : Math.max(0, Math.min(dock.size() - 1, index + delta));
+                    focusAt = SystemClock.uptimeMillis();
+                    handler.removeCallbacks(commitFocus);
+                    handler.postDelayed(commitFocus, BG_WAIT_MS);
+                }
+            }
+            invalidate();
+            return true;
+        }
+
+        private void confirm() {
+            if (menu) {
+                menu = false;
+                if (menuIndex == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
+                else if (menuIndex == 1 && index >= 0 && index < dock.size()) {
+                    dock.remove(index);
+                    index = Math.min(index, dock.size() - 1);
+                    saveDock();
+                    atmosphere = null; former = null; fadeAt = 0;
+                    info("Shortcut removed. The app remains installed.");
+                }
+            } else if (moving) {
+                moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
+            } else if (apps) {
+                removeOrPin();
+            } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
+            else info("Use Left or Right to choose an app, or Up to find apps");
+            invalidate();
+        }
+
+        private void removeOrPin() {
+            if (!apps || installed.isEmpty()) return;
+            Item item = installed.get(appIndex);
+            for (int j = 0; j < dock.size(); j++) if (dock.get(j).id.equals(item.id)) {
+                dock.remove(j);
+                index = Math.min(index, dock.size() - 1);
+                saveDock(); info("Removed from Home, not uninstalled"); invalidate(); return;
+            }
+            dock.add(item);
+            saveDock(); apps = false; index = dock.size() - 1;
+            handler.removeCallbacks(commitFocus); handler.postDelayed(commitFocus, BG_WAIT_MS);
+            info("Added to Home"); invalidate();
+        }
+
+        private void shift(int delta) {
+            int other = index + delta;
+            if (other < 0 || other >= dock.size()) return;
+            Collections.swap(dock, index, other);
+            index = lifted = other;
+            invalidate();
+        }
+
+        private void goBack() {
+            handler.removeCallbacks(hold);
+            if (menu) menu = false;
+            else if (moving) {
+                moving = false; lifted = -1;
+                if (beforeMove != null) {
+                    String currentId = dock.get(index).id;
+                    dock.clear(); dock.addAll(beforeMove);
+                    index = 0;
+                    for (int i = 0; i < dock.size(); i++) if (dock.get(i).id.equals(currentId)) index = i;
+                }
+                beforeMove = null;
+            } else if (apps) apps = false;
+            else { index = -1; atmosphere = null; former = null; fadeAt = 0; }
+            invalidate();
+        }
+
+        private void openApps() {
+            apps = true; menu = false; appIndex = 0; invalidate();
+        }
+
+        private void launch(Item item) {
+            if ("live".equals(item.id)) {
+                info("Live TV locked: NordVPN protection has not been verified");
+                return;
+            }
+            if ("xbox".equals(item.id)) {
+                info("Xbox wake and HDMI switching need Home Assistant setup");
+                return;
+            }
+            if (item.pkg == null) { info(item.name + " is not installed or configured"); return; }
+            PackageManager pm = activity.getPackageManager();
+            Intent intent = pm.getLeanbackLaunchIntentForPackage(item.pkg);
+            if (intent == null) intent = pm.getLaunchIntentForPackage(item.pkg);
+            if (intent == null) { info("This app has no supported launch action"); return; }
+            try { activity.startActivity(intent); }
+            catch (RuntimeException e) { info("Unable to open " + item.name); }
+        }
+
+        private void info(String text) {
+            message = text;
+            messageUntil = SystemClock.uptimeMillis() + 3500L;
+            invalidate();
+            handler.postDelayed(this::invalidate, 3500);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            c.save();
+            c.scale(getWidth() / (float) W, getHeight() / (float) H);
+            long now = SystemClock.uptimeMillis();
+            drawBackground(c, now);
+            drawHeader(c);
+            if (apps) drawApps(c);
+            else drawDock(c, now);
+            if (menu) drawMenu(c);
+            if (moving) drawHint(c, "Left / Right: move     OK: save     Back: cancel");
+            else if (apps) drawHint(c, "OK: add/remove Home shortcut     Back: return");
+            if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
+            c.restore();
+            if (fadeAt != 0 && now - fadeAt < BG_FADE_MS) postInvalidateDelayed(16);
+            else if (fadeAt != 0) { fadeAt = 0; former = null; }
+        }
+
+        private void drawBackground(Canvas c, long now) {
+            if (atmosphere == null) { drawNeutral(c, 255); return; }
+            if (fadeAt > 0 && now - fadeAt < BG_FADE_MS) {
+                float progress = Math.max(0, Math.min(1, (now - fadeAt) / (float) BG_FADE_MS));
+                if (former == null) drawNeutral(c, 255);
+                else drawAtmosphere(c, former, 255);
+                drawAtmosphere(c, atmosphere, (int) (progress * 255));
+            } else drawAtmosphere(c, atmosphere, 255);
+        }
+
+        private void drawNeutral(Canvas c, int alpha) {
+            if (coast != null) {
+                paint.setShader(null); paint.setColor(Color.WHITE); paint.setAlpha(alpha);
+                c.drawBitmap(coast, null, new RectF(0, 0, W, H), paint);
+                paint.setAlpha(255);
+                return;
+            }
+            gradient(c, 0xFF788DA7, 0xFFD4ACA1, 0xFF384C61, alpha);
+            paint.setShader(null);
+            paint.setColor(0x907991A5);
+            c.drawRect(0, 475, W, H, paint);
+            Path surf = new Path();
+            for (int j = 0; j < 6; j++) {
+                surf.reset();
+                int y = 530 + j * 95;
+                surf.moveTo(0, y);
+                for (int x = 0; x <= W; x += 40)
+                    surf.lineTo(x, (float) (y + 13 * Math.sin(x / 160.0 + j)));
+                paint.setColor(Color.argb(Math.min(170, alpha), 200, 220, 232));
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3 + j);
+                c.drawPath(surf, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawAtmosphere(Canvas c, Item item, int alpha) {
+            int base = item.bottom, glow = item.top;
+            if ("netflix".equals(item.id)) { base = 0xFF080B13; glow = 0xFF68202D; }
+            if ("bbc".equals(item.id)) { base = 0xFF1C2431; glow = 0xFF596273; }
+            if ("disney".equals(item.id)) { base = 0xFF091329; glow = 0xFF1D477B; }
+            if ("smartutube".equals(item.id)) { base = 0xFF171A24; glow = 0xFF62232D; }
+            if ("live".equals(item.id)) { base = 0xFF0D112B; glow = 0xFF4B328B; }
+            if ("music".equals(item.id)) { base = 0xFF211827; glow = 0xFF963E72; }
+            if ("xbox".equals(item.id)) { base = 0xFF061C14; glow = 0xFF217A50; }
+            gradient(c, base, glow, base, alpha);
+        }
+
+        private void gradient(Canvas c, int top, int middle, int bottom, int alpha) {
+            paint.setColor(Color.WHITE);
+            paint.setShader(new LinearGradient(0, 0, W * .78f, H,
+                    new int[]{top, middle, bottom}, new float[]{0, .7f, 1}, Shader.TileMode.CLAMP));
+            paint.setAlpha(alpha);
+            c.drawRect(0, 0, W, H, paint);
+            paint.setAlpha(255); paint.setShader(null);
+        }
+
+        private void drawHeader(Canvas c) {
+            SimpleDateFormat df = new SimpleDateFormat("HH:mm", Locale.UK);
+            df.setTimeZone(TimeZone.getTimeZone("Europe/London"));
+            text(c, df.format(System.currentTimeMillis()), 96, 144, 76, WHITE, false, Paint.Align.LEFT);
+            glass(c, 1498, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
+            text(c, "VPN ?", 1530, 114, 29, WHITE, false, Paint.Align.LEFT);
+            text(c, "○", 1696, 115, 43, WHITE, false, Paint.Align.CENTER);
+            text(c, "⚙", 1773, 114, 43, WHITE, false, Paint.Align.CENTER);
+            if (!apps) text(c, "Preview · VPN not verified · Voice not connected", 1810, 188, 18, 0xB4FFFFFF, false, Paint.Align.RIGHT);
+        }
+
+        private void drawDock(Canvas c, long now) {
+            final int count = dock.size();
+            if (count == 0) {
+                glass(c, 230, 795, 1690, 1000, 36, 0x92434B57, 0x70FFFFFF);
+                text(c, "No Home apps. Press Up to choose some.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
+                return;
+            }
+            float full = Math.min(1550, count * 190 + Math.max(0, count - 1) * 24 + 70);
+            float left = (W - full) / 2;
+            float top = 747, bottom = 1005;
+            glass(c, left, top, left + full, bottom, 37, 0x8A3C4758, 0x81FFFFFF);
+            float gap = 24, cellWidth = (full - 66 - (count - 1) * gap) / count;
+            cellWidth = Math.min(190, cellWidth);
+            float total = count * cellWidth + (count - 1) * gap;
+            float start = (W - total) / 2;
+            for (int i = 0; i < count; i++) {
+                float x = start + i * (cellWidth + gap);
+                float y = top + 31;
+                boolean selected = i == index;
+                float scale = selected ? 1.07f : 1;
+                if (selected && focusAt > 0) {
+                    float t = Math.min(1, (now - focusAt) / 185f);
+                    scale = 1 + .07f * (t * (2 - t));
+                    if (t < 1) postInvalidateDelayed(16);
+                }
+                Item item = dock.get(i);
+                c.save();
+                c.scale(scale, scale, x + cellWidth / 2, y + 80);
+                card(c, x, y, x + cellWidth, y + 161, 27, item.top, item.bottom);
+                if (item.icon != null && item.pkg != null) {
+                    int size = Math.round(Math.min(98, cellWidth - 60));
+                    int cx = Math.round(x + cellWidth / 2), cy = Math.round(y + 82);
+                    item.icon.setBounds(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
+                    item.icon.draw(c);
+                } else {
+                    String symbol = item.id.equals("smartutube") ? "▶" : item.id.equals("netflix") ? "N" :
+                            item.id.equals("disney") ? "D+" : item.id.equals("bbc") ? "BBC" :
+                            item.id.equals("live") ? "TV" : item.id.equals("music") ? "♫" :
+                            item.id.equals("xbox") ? "X" : item.name.substring(0, Math.min(2, item.name.length()));
+                    text(c, symbol, x + cellWidth / 2, y + 105, symbol.length() > 2 ? 53 : 80,
+                            WHITE, true, Paint.Align.CENTER);
+                }
+                if (selected) {
+                    outline.setColor(0xC9FFFFFF);
+                    c.drawRoundRect(x - 3, y - 3, x + cellWidth + 3, y + 164, 30, 30, outline);
+                }
+                c.restore();
+                text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
+            }
+            if (index >= 0 && index < dock.size()) text(c, dock.get(index).name, 960, 714, 48, WHITE, false, Paint.Align.CENTER);
+            text(c, "↑ Apps", left + 30, 1050, 23, 0xB6FFFFFF, false, Paint.Align.LEFT);
+        }
+
+        private void drawApps(Canvas c) {
+            paint.setShader(null); paint.setColor(0xD8070C17); c.drawRect(0, 0, W, H, paint);
+            text(c, "Apps", 130, 215, 64, WHITE, false, Paint.Align.LEFT);
+            text(c, "Choose an installed app to add or remove from Home", 130, 270, 30, MUTED, false, Paint.Align.LEFT);
+            int start = (appIndex / 20) * 20, end = Math.min(installed.size(), start + 20);
+            for (int i = start; i < end; i++) {
+                int n = i - start, col = n % 5, row = n / 5;
+                float x = 130 + col * 337, y = 322 + row * 168;
+                Item item = installed.get(i);
+                card(c, x, y, x + 307, y + 140, 20, item.top, item.bottom);
+                if (item.icon != null) {
+                    item.icon.setBounds((int)x + 17, (int)y + 28, (int)x + 95, (int)y + 106);
+                    item.icon.draw(c);
+                }
+                String label = item.name.length() > 15 ? item.name.substring(0, 14) + "…" : item.name;
+                text(c, label, x + 108, y + 70, 23, WHITE, false, Paint.Align.LEFT);
+                boolean pinned = false;
+                for (Item entry : dock) if (entry.id.equals(item.id)) { pinned = true; break; }
+                text(c, pinned ? "On Home" : "Add to Home", x + 110, y + 110, 18, MUTED, false, Paint.Align.LEFT);
+                if (i == appIndex) {
+                    outline.setColor(WHITE);
+                    c.drawRoundRect(x - 3, y - 3, x + 310, y + 143, 23, 23, outline);
+                }
+            }
+            if (installed.isEmpty()) text(c, "No accessible installed apps found", 960, 600, 40, WHITE, false, Paint.Align.CENTER);
+        }
+
+        private void drawMenu(Canvas c) {
+            paint.setShader(null); paint.setColor(0x92000000); c.drawRect(0, 0, W, H, paint);
+            glass(c, 625, 380, 1295, 690, 35, 0xEB242B37, 0x70FFFFFF);
+            text(c, "Edit Home", 960, 465, 48, WHITE, false, Paint.Align.CENTER);
+            String[] actions = {"Move", "Remove from Home", "Cancel"};
+            for (int j = 0; j < actions.length; j++) {
+                if (j == menuIndex) glass(c, 695, 497 + 58 * j, 1225, 550 + 58 * j, 17, 0x928A98AA, 0xAAFFFFFF);
+                text(c, actions[j], 960, 534 + 58 * j, 31, WHITE, false, Paint.Align.CENTER);
+            }
+        }
+
+        private void drawHint(Canvas c, String s) {
+            text(c, s, 960, 1057, 21, 0xEEFFFFFF, false, Paint.Align.CENTER);
+        }
+
+        private void drawNotice(Canvas c, String s) {
+            glass(c, 365, 230, 1555, 320, 24, 0xDF111A2B, 0x88FFFFFF);
+            text(c, s.length() > 65 ? s.substring(0, 62) + "…" : s, 960, 287, 27,
+                    WHITE, false, Paint.Align.CENTER);
+        }
+
+        private void card(Canvas c, float x, float y, float right, float bottom, float radius, int start, int end) {
+            rect.set(x, y, right, bottom);
+            paint.setShader(new LinearGradient(x, y, right, bottom, start, end, Shader.TileMode.CLAMP));
+            paint.setColor(Color.WHITE);
+            c.drawRoundRect(rect, radius, radius, paint);
+            paint.setShader(null);
+        }
+
+        private void glass(Canvas c, float l, float t, float r, float b, float radius, int colour, int stroke) {
+            rect.set(l, t, r, b);
+            paint.setShader(null); paint.setColor(colour);
+            c.drawRoundRect(rect, radius, radius, paint);
+            outline.setColor(stroke);
+            c.drawRoundRect(rect, radius, radius, outline);
+        }
+
+        private void text(Canvas c, String s, float x, float y, int size, int color, boolean bold, Paint.Align align) {
+            type.setShader(null); type.setColor(color);
+            type.setTextSize(size);
+            type.setTypeface(Typeface.create(bold ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+            type.setTextAlign(align);
+            type.setShadowLayer(3, 0, 1, 0x52000000);
+            c.drawText(s, x, y, type);
+            type.clearShadowLayer();
+        }
+    }
+}

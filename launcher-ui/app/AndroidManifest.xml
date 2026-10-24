@@ -53,6 +53,20 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false">
 
+        <!-- Safe proof of concept: not Android HOME; test from the launcher like a normal app. -->
+        <activity
+            android:name=".UnifiedPreviewActivity"
+            android:exported="true"
+            android:label="Unified TV Preview"
+            android:screenOrientation="landscape"
+            android:theme="@style/CleanYourTV.Home">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- The app's icon opens the settings. -->
         <activity
             android:name=".SettingsActivity"

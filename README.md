@@ -57,6 +57,10 @@ Our intent is no advertising, no sale of household data and no mandatory analyti
 
 The optional **TV Performance & Cleanup** journey is separate from installation. On supported Android models, it must inspect the device, explain every proposed change, save original package states and offer independent rollback. **Never automatically debloat a user's television.** Tizen has different limits; native Samsung package removal is not promised.
 
+## First Android TV preview (experimental)
+
+An early, non-default **Unified TV Preview** activity is being developed to test the glass dock, neutral artwork, contextual focus and D-pad app personalisation before modifying any TV's existing Home. See [prototype details and test limitations](docs/FIRST_ANDROID_PREVIEW.md). This is not yet a supported Unified TV release or an operational Ring/NAS/VPN integration.
+
 ## Starting today
 
 This is a **development fork**, not a finished installer. For now, see the [original CleanYourTV UI instructions](docs/upstream/CLEANYOURTV_UI_README.md) if you are evaluating the *inherited* Android code. Those instructions and scripts are inherited from their authors and do not install the future Unified TV experience.
