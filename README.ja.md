@@ -366,3 +366,5 @@ TV_HOST=192.168.1.50 tools/restore.sh "examples/your-model/debloat.txt" com.goog
 ## ライセンス
 
 このプロジェクトは [MIT ライセンス](LICENSE)です。Outfit フォントは [SIL Open Font License](launcher/FONT-LICENSE-OFL.txt) です。
+
+Inherited documentation: [Unified TV](README.md) · [CleanYourTV English](README.cleanyourtv.md) · [Português](README.pt-BR.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md). These translations describe inherited projects, not the current Unified TV specification.

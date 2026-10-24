@@ -1,5 +1,7 @@
 # Unified TV design system
 
+**Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
+
 **North star:** Content first, underlying technology hidden.
 
 The intended experience is a personal cinema with the calm of a gallery. This document is a shorter development entry point to the detailed [Product Spec, section 4](PRODUCT_SPEC.md#4-premium-interface-and-interaction-system-p0-design-release-gate).
@@ -10,17 +12,13 @@ Use a single, centred translucent dock near the bottom of a **full-screen releva
 
 Six default choices in the reference deployment: **SmartTube, Netflix, Disney+, BBC, Live TV, Music**. Sony adds an Xbox shortcut; Samsung Frame adds native Samsung TV Plus access, pending the relevant bridge. Keep the layout and remote controls consistent, not the exact same set of tiles in every room.
 
-**Press Down** to reveal a curated personal NAS films/TV poster row. The end of this row contains **View All**, which opens a custom library with films, shows, seasons, episodes and search. Selecting media should play through VLC without showing a VLC launcher tile.
+**Press Down** to reveal a curated personal NAS films/TV poster row. The end of this row contains **View All**, which opens a custom library with films, shows, seasons, episodes and search. Media plays through embedded Media3 on Android and AVPlay on native Tizen; VLC is excluded.
 
-## Add and rearrange favourites
+## Rearrange approved services
 
-The resting dock is editable without a phone or developer tool. Open the subtle **Apps** grid icon to find installed apps and select **Add to Home**. **Remove from Home** hides the shortcut but leaves the app installed.
+Only the approved six or platform-specific seven services belong to Home. Hold OK offers Move and Cancel; arrows move, OK saves and Back restores. No Add, Remove or arbitrary Apps picker. Migrate old layouts through DockPolicy so missing approved entries return and arbitrary packages disappear.
 
-On Home, **hold OK** over a tile for **Move**, **Remove from Home** and optional **App info**. **Move** lifts the tile; Left/Right adjusts its position, OK saves and Back cancels. Keep the movement restrained and remote response immediate. Short OK always launches.
-
-Retain one horizontally scrollable dock when more apps are pinned than fit. Persist order per room without changing the other TVs' layouts; Sony Xbox and Frame Samsung TV Plus remain device-only actions. Optionally lock editing with a PIN for children. All supported apps remain recoverable from the Apps library.
-
-See [full app personalisation requirements](APP_CUSTOMISATION.md).
+Use cached low-resolution backdrop blur, a translucent vertical tint and fine top highlight for the dock. The selected tile lifts with a feathered contact shadow and subtle lens material; reserve strong outlines for High Contrast. Brand ambience uses original overlapping radial light fields without unrelated scenery. Neutral Home uses the bundled original AI-generated coastal landscape. Administrative pages use darkened blurred scene continuity; keep setup text readable. Replace permanent directional text with a quiet downward chevron.
 
 ## Every selection changes the atmosphere
 

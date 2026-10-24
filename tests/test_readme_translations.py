@@ -24,7 +24,7 @@ LINK = re.compile(r"\]\(([^)\s]+)\)|href=\"([^\"]+)\"")
 
 
 def translations():
-    return sorted(p.name for p in ROOT.iterdir() if p.is_file() and TRANSLATION.match(p.name))
+    return sorted(p.name for p in ROOT.iterdir() if p.is_file() and TRANSLATION.match(p.name) and p.name != "README.cleanyourtv.md")
 
 
 def links(text):
