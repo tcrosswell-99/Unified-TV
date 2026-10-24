@@ -24,6 +24,14 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
   - As Home, the Home button returns to the main screen; Back at the main screen never leaves it.
 - **Open original TV interface** (spec 30): a small adult-only row offers the manufacturer's interface for now, or as the default again after a second confirmation.
 - **Apps, and a Home you can change** (P05-03): a grid of every installed app plus Unified TV's shortcuts. Hold OK to open, add to or remove from Home, or see app information. Each room keeps its own dock.
+- **Watching films from your NAS** (P05-07, P05-08):
+  - Pause, resume and skip with the remote; hold Left or Right to skip faster.
+  - Choose a film's soundtrack and subtitles with Down or Menu.
+  - Films remember where you stopped, on this TV only, and offer to resume.
+  - Plain messages with Try again replace endless spinners when the NAS stops answering or a file can't be played. A file the TV can't show fails plainly instead of playing sound over a black screen.
+  - Standby and switching apps pause the film and keep its place.
+- **Your chosen collections only** (P05-05): the library stays inside them, Back returns focus to where you were, and the NAS is found again if its address changes.
+- **Readable titles:** file names such as "The.Film.2019.mkv" show as "The Film 2019"; titles such as "S.W.A.T." are left alone.
 - **Updates that keep your settings:** the preview can be signed with your own durable key through four `UNIFIEDTV_PREVIEW_*` settings. Without them it is signed exactly as before.
 - **Safe install tool** (`preview/tools/install_preview.py`): compares the signing certificate and version with the preview on the TV, refuses a mismatch or downgrade, never uninstalls or clears data, and checks the TV's Home is unchanged. Not yet run on a TV.
 - **Release labels:** tagged previews say hardware-unverified, publish the certificate SHA-256, and say "test-signed" when no durable key was used.
@@ -46,6 +54,7 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
 ### Changed
 
 - **Searches use the home network under a VPN:** they go over the home Wi-Fi or Ethernet even while NordVPN is on, where NordVPN allows it.
+- **NAS search messages:** the screen now says whether no server was found, a server didn't let the TV see its library, it isn't answering, it refused the TV, or a chosen folder has gone, each with Try again.
 - **The NAS search tries harder:** if the usual network-wide search gets no reply, the same request is sent to each address on the home network.
 - **Plain language on screen:** setup and status screens show server names, not IP addresses, ports or network terms.
 - **Every app opens the same way,** so the Live TV protection check applies whether Live TV is opened from Home or Apps.
