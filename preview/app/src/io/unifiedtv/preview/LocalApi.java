@@ -40,6 +40,17 @@ final class LocalApi {
             int code=c.getResponseCode(); if (code<200 || code>=300) throw new ApiError(code);
         } finally { c.disconnect(); }
     }
+    static JSONObject postJson(JSONObject config,String path,JSONObject body)throws Exception{
+        HttpURLConnection c=open(config,path,"POST");
+        try{
+            c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
+            try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            int code=c.getResponseCode();if(code<200||code>=300)throw new ApiError(code);
+            try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>LIMIT)throw new IOException();out.write(b,0,n);}return new JSONObject(out.toString("UTF-8"));
+            }
+        }finally{c.disconnect();}
+    }
     static String segment(String s) { try { return java.net.URLEncoder.encode(s,"UTF-8").replace("+","%20"); } catch(Exception e) { throw new IllegalArgumentException(); } }
     static final class ApiError extends IOException { final int code; ApiError(int code) { super("Service request failed"); this.code=code; } }
 }

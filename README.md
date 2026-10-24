@@ -47,7 +47,7 @@ A Ring doorbell **must** interrupt wallpaper/art mode on the reference deploymen
 
 ## The TV your family knows
 
-The initial household reference uses six familiar choices: **SmartTube Â· Netflix Â· Disney+ Â· BBC Â· Live TV Â· Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
+The initial household reference uses six familiar choices: **SmartTube · Netflix · Disney+ · BBC · Live TV · Music**. A Sony-only Xbox action powers on its console and changes HDMI input. A Samsung-only TV Plus action should open the native service. Pressing **Down** reveals your own films and series, instead of leaving posters permanently covering the home screen.
 
 All these are *configurable examples*, not compulsory apps. The planned **Apps** screen lets viewers pin and rearrange dock shortcuts independently for each TV; it never uninstalls an app. See [app customisation](docs/APP_CUSTOMISATION.md). People without a NAS, Ring, Alexa, Xbox, VPN or AI subscription should still have a lovely, responsive launcher.
 
@@ -86,3 +86,10 @@ This repository is a **GitHub fork** of [CleanYourTV UI by Matheus Caldeira](htt
 Unified TV is independent of Apple, Samsung, Sony, TCL, Google, Amazon, NordVPN and the streaming services it launches. Their names and trademarks belong to their owners.
 
 **Different TVs. One familiar experience.**
+
+Inherited documentation: [Unified TV](README.md) · [CleanYourTV English](README.cleanyourtv.md) · [Português](README.pt-BR.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md). These translations describe inherited projects, not the current Unified TV specification.
+
+
+Contributor implementation rules: [AGENTS.md](AGENTS.md).
+
+Cross-TV evaluation: [implementation and acceptance matrix](docs/ALL_TV_TEST_PLAN.md). Household functions require [private adapter setup](docs/HOUSEHOLD_ADAPTERS.md).

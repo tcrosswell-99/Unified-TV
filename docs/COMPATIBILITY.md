@@ -31,3 +31,5 @@ Core apps are user-configurable. No user should need Ring, Alexa, a NAS, NordVPN
 Always report genuine model/firmware, failure modes, and steps to restore the factory UI. Never publish real household IP addresses, account tokens, camera snapshots, MAC addresses or serial numbers.
 
 Preview 0.2 implementation and remaining gates: [status and limitations](PREVIEW_0_2.md). This does not advance hardware gates to Tested.
+
+Configured Android overlays and HA script adapters are experimental. They do not establish native Tizen overlay support or passing Ring/TV Plus/Art Mode gates. See [all-TV tests](ALL_TV_TEST_PLAN.md).

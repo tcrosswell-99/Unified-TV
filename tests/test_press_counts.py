@@ -14,7 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PRESS = ROOT / "docs" / "PRESS.md"
-README = ROOT / "README.md"
+README = ROOT / "README.cleanyourtv.md"
 FEATURED = ROOT / "tools" / "readme_featured.py"
 
 LATAM = "Latin America (Spanish-language)"
@@ -110,7 +110,7 @@ class PressCountsTest(unittest.TestCase):
     def test_the_card_source_draws_the_same_numbers(self):
         more = re.search(r'^MORE = "(.*)"$', FEATURED.read_text(encoding="utf-8"), re.M)
         self.assertIsNotNone(more, "tools/readme_featured.py no longer has a MORE line")
-        expected = "+%d more  ·  %d articles from %d countries" % (
+        expected = "+%d more  Â·  %d articles from %d countries" % (
             self.numbers["total"] - len(logos()), self.numbers["total"], self.numbers["countries"])
         self.assertEqual(more.group(1), expected,
                          "tools/readme_featured.py is out of step with docs/PRESS.md; "

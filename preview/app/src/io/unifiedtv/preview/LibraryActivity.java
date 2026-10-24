@@ -20,6 +20,8 @@ public final class LibraryActivity extends Screen {
     private boolean shelf;
     private ImageView hero; private int focusedImage;
     private final ArrayDeque<String> history=new ArrayDeque<>();
+    private String currentRequest="";
+    private void navigate(String path){history.push(currentRequest);shelf=false;load(path);}
     @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);load("");}
     private String rootQuery(String type,String search){
         return "/Users/"+LocalApi.segment(config.optString("user"))+"/Items?Recursive=true&IncludeItemTypes="+type+
@@ -27,6 +29,7 @@ public final class LibraryActivity extends Screen {
             "&SortBy=DateCreated&SortOrder=Descending"+(search.isEmpty()?"":"&SearchTerm="+LocalApi.segment(search));
     }
     private void load(String request){
+        currentRequest=request;
         int current=++generation; page("Your Films & TV");
         android.view.View content=((android.view.ViewGroup)findViewById(android.R.id.content)).getChildAt(0);
         ((android.view.ViewGroup)content.getParent()).removeView(content);
@@ -37,18 +40,17 @@ public final class LibraryActivity extends Screen {
         try {config=new Vault(this).read(Vault.mediaKey(this));}catch(Exception e){unavailable("Unlock your media connection again in Settings.");return;}
         if(!config.optBoolean("enabled")){unavailable("Connect your library in Settings > Connections.");return;}
         if(request.isEmpty()){
-            button(shelf?"View All":"Films",()->{shelf=false;load(rootQuery("Movie",""));});
-            button("Series",()->{shelf=false;load(rootQuery("Series",""));});
+            button(shelf?"View All":"Films",()->navigate(rootQuery("Movie","")));
+            button("Series",()->navigate(rootQuery("Series","")));
             button("Search",()->{EditText search=new EditText(this);search.setSingleLine(true); new AlertDialog.Builder(this).setTitle("Search your library").setView(search).setNegativeButton("Cancel",null)
-                .setPositiveButton("Search",(d,w)->{shelf=false;load(rootQuery("Movie,Series",search.getText().toString()));}).show();});
+                .setPositiveButton("Search",(d,w)->navigate(rootQuery("Movie,Series",search.getText().toString()))).show();});
         }
         String path=request.isEmpty()?rootQuery("Movie,Series",""):request;
         TextView state=text("Loading your library…",22);
         worker.execute(()->{
             try {
                 JSONObject me=LocalApi.get(config,"/Users/Me");
-                if(!me.optString("Id").equals(config.optString("user")))throw new SecurityException();
-                if(EditLock.child(this) && (me.optJSONObject("Policy")==null || me.optJSONObject("Policy").optBoolean("IsAdministrator")))throw new SecurityException();
+                MediaAccount.require(me,config.optString("user"),EditLock.child(this));
                 JSONArray items=LocalApi.get(config,path).optJSONArray("Items");
                 runOnUiThread(()->{if(!active(current))return; state.setText(items==null||items.length()==0?"No titles available for this profile":"");render(items,current);});
             }catch(Exception e){runOnUiThread(()->{if(active(current)){state.setText("Library unavailable · check this profile's connection and server permissions.");button("Retry",()->load(request));}});}

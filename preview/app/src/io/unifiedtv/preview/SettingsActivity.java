@@ -13,6 +13,9 @@ public final class SettingsActivity extends Screen {
         button("Connections · Home Assistant",()->connection("ha"));
         button("Connections · Your Films & TV · Adult",()->connection("media-adult"));
         button("Connections · Your Films & TV · Child",()->connection("media-child"));
+        button("Household alerts & room actions",()->EditLock.ask(this,()->startActivity(new Intent(this,HouseholdActivity.class))));
+        button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));
+        button("TV Performance & Cleanup",()->EditLock.ask(this,()->startActivity(new Intent(this,PerformanceActivity.class))));
         button("Appearance & accessibility",()->{
             String[] keys={"reduceMotion","highContrast","opaque","lightweight"};
             boolean[] values=new boolean[keys.length]; for(int i=0;i<keys.length;i++) values[i]=getSharedPreferences("unified-tv-preview",0).getBoolean(keys[i],false);

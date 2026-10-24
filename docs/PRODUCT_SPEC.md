@@ -126,7 +126,7 @@ App order and available actions are per-TV; the Sony's Xbox and Frame's Samsung 
 
 ### 4.2 Screen geometry, visual hierarchy and safe space
 
-Design at a **1920 Ã— 1080 logical 16:9 canvas**, then scale proportionally to both 55-inch and 65-inch televisions, checking actual safe areas on each. Treat the outer ~4-5% of width and ~5-6% of height as a no-critical-content margin. Main artwork extends to every screen edge; key text, icons, tiles and alert controls do not. Fit seven app tiles on Sony/Frame without text truncation. Smaller screens retain the same proportions, not a compact web/mobile layout.
+Design at a **1920 × 1080 logical 16:9 canvas**, then scale proportionally to both 55-inch and 65-inch televisions, checking actual safe areas on each. Treat the outer ~4-5% of width and ~5-6% of height as a no-critical-content margin. Main artwork extends to every screen edge; key text, icons, tiles and alert controls do not. Fit seven app tiles on Sony/Frame without text truncation. Smaller screens retain the same proportions, not a compact web/mobile layout.
 
 **Resting Home composition:**
 
@@ -274,7 +274,7 @@ On Sony OLED, use restrained brightness, changing artwork and OLED-safe inactivi
 
 Use an original, redistribution-cleared modern sans family with strong legibility at normal sofa distances; do not bundle Apple's proprietary fonts. The design should feel typographically calm: one dominant heading when needed, one secondary line, consistent spacing and generous line height. Avoid long descriptions, all-caps labels, excessive bolding and dense specification tables in entertainment views.
 
-**Starting values on 1920 Ã— 1080 canvas** (subject to sofa-distance testing): 24-hour clock approximately 40-48 logical px; app label 26-30 px; hero title 44-64 px where shown; short metadata 23-28 px; toast body at least 25 px. Keep all essential text on safe backgrounds with strong contrast, target WCAG-like 4.5:1 for ordinary text when practical and never rely on colour alone for focused/disabled/protected states. Respect screen-reader labels, text scaling, increased contrast, reduced transparency and reduced motion.
+**Starting values on 1920 × 1080 canvas** (subject to sofa-distance testing): 24-hour clock approximately 40-48 logical px; app label 26-30 px; hero title 44-64 px where shown; short metadata 23-28 px; toast body at least 25 px. Keep all essential text on safe backgrounds with strong contrast, target WCAG-like 4.5:1 for ordinary text when practical and never rely on colour alone for focused/disabled/protected states. Respect screen-reader labels, text scaling, increased contrast, reduced transparency and reduced motion.
 
 Each service icon uses a recognisable and legally redistributable brand mark if permission and licensing permit; otherwise a clear text lockup. App tile styles are coordinated but brands retain their identity. Labels are `SmartTube`, `Netflix`, `Disney+`, `BBC`, `Live TV`, `Music`; `Xbox` only on Sony and `Samsung TV Plus` only on Frame. **Do not put VLC, Jellyfin, Synology, Home Assistant or NordVPN setup controls in the app dock.**
 
@@ -291,7 +291,7 @@ Each service icon uses a recognisable and legally redistributable brand mark if 
 
 ### 4.13 Mandatory design hand-off artefacts
 
-The project is not ready for launcher development from only a single static hero image. Produce original **1920 Ã— 1080 layouts and short motion studies** for all of these states, on the **same component and spacing system**:
+The project is not ready for launcher development from only a single static hero image. Produce original **1920 × 1080 layouts and short motion studies** for all of these states, on the **same component and spacing system**:
 
 1. Neutral Home with personal landscape, clock and six/seven-tile glass dock.
 2. Netflix app focused with a properly Netflix-relevant backdrop (licensed material or original brand-aware fallback); repeat for BBC to prove the system generalises.

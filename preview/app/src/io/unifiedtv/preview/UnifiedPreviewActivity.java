@@ -109,6 +109,23 @@ public final class UnifiedPreviewActivity extends Activity {
         private Item atmosphere, former;
         private String message = "";
         private long messageUntil = 0;
+        private long inputEvent;
+        private String fixture="";
+        private long fixtureFetched;
+        private final java.util.concurrent.ExecutorService fixtureWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
+        private void fixture(){
+            long now=System.currentTimeMillis();if(now-fixtureFetched<900000)return;fixtureFetched=now;
+            fixtureWorker.execute(()->{
+                String label="";try{
+                    org.json.JSONObject house=new Vault(activity).read("household"),ha=new Vault(activity).read("ha");String calendar=house.optString("calendar");
+                    if(calendar.matches("calendar\\.[a-z0-9_]+")){
+                        org.json.JSONObject attrs=LocalApi.get(ha,"/api/states/"+LocalApi.segment(calendar)).getJSONObject("attributes");
+                        label=FixturePolicy.label(attrs.optString("start_time"),attrs.optString("end_time"),java.time.Instant.now());
+                    }
+                }catch(Exception ignored){}
+                final String result=label;handler.post(()->{fixture=result;invalidate();});
+            });
+        }
         private final Runnable hold = () -> {
             if (okDown && !held) {
                 held = true;
@@ -119,6 +136,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable clockTick = new Runnable() {
             @Override public void run() {
                 invalidate();
+                fixture();
                 handler.postDelayed(this, 60_000L);
             }
         };
@@ -154,13 +172,20 @@ public final class UnifiedPreviewActivity extends Activity {
             outline.setStrokeWidth(2);
         }
 
-        void refresh() { invalidate(); }
+        void refresh() {
+            fixtureFetched=0;fixture();
+            if(moving)goBack();
+            installed.clear();dock.clear();scanInstalled();loadDock();
+            index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
+            atmosphere=index<0?null:dock.get(index);former=null;fadeAt=0;invalidate();
+        }
         void pause() {
             handler.removeCallbacks(hold); okDown=false;held=false;
             if(moving) goBack();
             prefs.edit().putInt("focus",Math.max(0,index)).apply();
         }
         void close() {
+            fixtureWorker.shutdownNow();
             handler.removeCallbacksAndMessages(null);
             handler.removeCallbacks(hold);
             handler.removeCallbacks(commitFocus);
@@ -192,6 +217,7 @@ public final class UnifiedPreviewActivity extends Activity {
             List<Item> defaults=new ArrayList<>();
             for(String id:new String[]{"smartutube","netflix","disney","bbc","live","music"}) defaults.add(defaultItem(id));
             if(Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults.add(defaultItem("xbox"));
+            if(prefs.getString("room","").equals("frame")) defaults.add(defaultItem("tvplus"));
             Set<String> canonical=new HashSet<>();for(Item item:defaults)if(item.pkg!=null)canonical.add(item.pkg);
             installed.removeIf(item->canonical.contains(item.pkg));installed.addAll(0,defaults);
         }
@@ -225,6 +251,7 @@ public final class UnifiedPreviewActivity extends Activity {
                         new String[]{"com.amazon.mp3", "com.amazon.music.tv"}, "amazon music",
                         0xFFE85C75, 0xFF8E2548);
                 case "xbox": return new Item(id, "Xbox", null, 0xFF14783F, 0xFF07351E, null);
+                case "tvplus": return new Item(id, "Samsung TV Plus", null, 0xFF154477, 0xFF07192F, null);
                 default:
                     for (Item x : installed) if (x.id.equals(id)) return x;
                     return null;
@@ -233,10 +260,13 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void loadDock() {
             String defaults = "smartutube,netflix,disney,bbc,live,music";
-            if (Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults += ",xbox";
+            String room = prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl");
+            if(room.equals("sony")) defaults += ",xbox";
+            if(room.equals("frame")) defaults += ",tvplus";
             String chosen = prefs.getString("dock", defaults);
             Set<String> seen = new HashSet<>();
             for (String id : chosen.split(",")) {
+                if(id.equals("xbox")&&!room.equals("sony") || id.equals("tvplus")&&!room.equals("frame"))continue;
                 if (id.isEmpty() || !seen.add(id)) continue;
                 Item item = defaultItem(id);
                 if (item != null) dock.add(item);
@@ -254,6 +284,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         boolean key(KeyEvent e) {
+            if(e.getAction()==KeyEvent.ACTION_DOWN)inputEvent=e.getEventTime();
             int code = e.getKeyCode();
             if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT &&
                 code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN &&
@@ -374,11 +405,13 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void controls() {
             new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
-                new String[]{"Apps · add and rearrange", "Settings", "Who's watching?", "Gallery"}, (dialog,which) -> {
+                new String[]{"Apps · add and rearrange", "Settings", "Who's watching?", "Gallery", "Ask your TV", "Matchday Live TV - protection required"}, (dialog,which) -> {
                 if(which==0) openApps();
                 if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
                 if(which==2) SettingsActivity.chooseProfile(activity);
                 if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
+                if(which==4) activity.startActivity(new Intent(activity,VoiceActivity.class));
+                if(which==5) info("Live TV locked: NordVPN traffic protection has not been verified");
             }).show();
         }
         private void openApps() {
@@ -391,9 +424,10 @@ public final class UnifiedPreviewActivity extends Activity {
                 return;
             }
             if ("xbox".equals(item.id)) {
-                info("Xbox wake and HDMI switching need Home Assistant setup");
+                HouseholdActivity.action(activity,"xbox");
                 return;
             }
+            if ("tvplus".equals(item.id)) { HouseholdActivity.action(activity,"tvplus");return; }
             if (item.pkg == null) { info(item.name + " is not installed or configured"); return; }
             PackageManager pm = activity.getPackageManager();
             Intent intent = pm.getLeanbackLaunchIntentForPackage(item.pkg);
@@ -411,12 +445,14 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         @Override protected void onDraw(Canvas c) {
+            if(inputEvent>0){InputStats.add(SystemClock.uptimeMillis()-inputEvent);inputEvent=0;}
             super.onDraw(c);
             c.save();
             c.scale(getWidth() / (float) W, getHeight() / (float) H);
             long now = SystemClock.uptimeMillis();
             drawBackground(c, now);
             drawHeader(c);
+            if(!fixture.isEmpty())text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
             if (apps) drawApps(c);
             else drawDock(c, now);
             if (menu) drawMenu(c);

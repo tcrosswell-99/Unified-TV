@@ -25,8 +25,7 @@ public final class PlayerActivity extends Screen {
             try{
                 config=new Vault(this).read(Vault.mediaKey(this));
                 JSONObject me=LocalApi.get(config,"/Users/Me");
-                if(!me.optString("Id").equals(config.optString("user")))throw new SecurityException();
-                if(EditLock.child(this)&&(me.optJSONObject("Policy")==null||me.optJSONObject("Policy").optBoolean("IsAdministrator")))throw new SecurityException();
+                MediaAccount.require(me,config.optString("user"),EditLock.child(this));
                 JSONObject item=LocalApi.get(config,"/Users/"+LocalApi.segment(config.optString("user"))+"/Items/"+LocalApi.segment(id));
                 long resume=item.optJSONObject("UserData")==null?0:item.optJSONObject("UserData").optLong("PlaybackPositionTicks",0)/10000;
                 String stream=config.getString("base")+"/Videos/"+LocalApi.segment(id)+"/stream?static=true";

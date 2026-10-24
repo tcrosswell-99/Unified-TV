@@ -30,12 +30,12 @@ public final class ConnectionsActivity extends Screen {
         status=text(old.length()==0?"Not configured":"Saved · not tested this session",22);
         button("Test connection",this::test);
         button("Save",()->{
-            try { JSONObject draft=draft(); new Vault(this).save(key,draft); status.setText("Saved · test to verify authorisation"); }
+            try { JSONObject draft=draft(); new Vault(this).save(key,draft); if(key.equals("ha"))stopService(new android.content.Intent(this,HouseholdService.class)); status.setText("Saved · test to verify authorisation"); }
             catch(IllegalArgumentException e) { status.setText(e.getMessage()); }
             catch(Exception e) { status.setText("Unable to save securely. Nothing was saved."); }
         });
         button("Forget connection",()->new AlertDialog.Builder(this).setMessage("Forget this connection and its credentials on this TV?").setNegativeButton("Cancel",null)
-            .setPositiveButton("Forget",(d,w)->{new Vault(this).forget(key); show();}).show());
+            .setPositiveButton("Forget",(d,w)->{if(key.equals("ha"))stopService(new android.content.Intent(this,HouseholdService.class));new Vault(this).forget(key); show();}).show());
         button("Back",this::finish);
     }
     private JSONObject draft() throws Exception {

@@ -44,3 +44,5 @@ No personal Home Assistant URLs, Ring snapshots, NAS share details, API keys, mu
 Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 This repository is not the upstream support channel. Original CleanYourTV guidance remains in [README.cleanyourtv.md](README.cleanyourtv.md); Matheus Caldeira's inherited README is archived at [docs/upstream/CLEANYOURTV_UI_README.md](docs/upstream/CLEANYOURTV_UI_README.md).
+
+Contributor implementation rules: [AGENTS.md](AGENTS.md).
