@@ -17,7 +17,7 @@ A household can have a Sony in the living room, a TCL elsewhere and a Samsung Fr
 - **Room-specific shortcuts:** an Xbox tile only on the television connected to the console; Samsung TV Plus only where it is installed. The layout stays familiar.
 - **Less to learn:** designed for children, visitors and family members who just want to watch something.
 
-The visual direction draws on the *principles* of contemporary tvOS motion and material design, and the restraint of projects like CleanFrame. It is an **original interface**, not an Apple product, replica or affiliated project.
+The visual direction draws on the *principles* of contemporary tvOS motion and material design, alongside the clean, gallery-like restraint of [CleanFrame by Nathan Clark](https://github.com/nthnclrk/CleanFrame). It is an **original interface**, not an Apple product, replica or affiliated project.
 
 ## What we want to build
 
@@ -67,7 +67,7 @@ Please **do not apply package changes or use ADB on a household TV without model
 
 ## Project and community
 
-Unified TV is being built for a real family first, with the source openly available for anyone who wants to experiment, adapt it to their home or help improve it. Contributions, suggestions and real device test reports are welcome once GitHub Issues and Discussions are enabled.
+Unified TV is being built for a real family first, with the source openly available for anyone who wants to experiment, adapt it to their home or help improve it. Contributions, suggestions and real device test reports are welcome through [GitHub Issues](https://github.com/tcrosswell-99/Unified-TV/issues) and [Discussions](https://github.com/tcrosswell-99/Unified-TV/discussions).
 
 See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Credits](CREDITS.md). No final Unified TV APK or supported-devices list has been published yet.
 
@@ -75,7 +75,7 @@ See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Credits](CREDI
 
 This repository is a **GitHub fork** of [CleanYourTV UI by Matheus Caldeira](https://github.com/matheus-caldeira/cleanyourtv-ui), built on [CleanYourTV by Gathin](https://github.com/Gathin23/cleanyourtv). The inherited UI also includes code from [Free My TV](https://github.com/simbasjungles/free-my-tv). The original history and licence files remain in the repository, including [MIT licence](LICENSE), [Free My TV licence](launcher-ui/LICENSE.free-my-tv) and [launcher attribution notice](launcher-ui/NOTICE). Please check the path for the Free My TV licence in the underlying source tree when preparing any redistribution.
 
-[TV Detox](https://github.com/Ansub/tv-detox) and [CleanFrame](https://github.com/nthnclrk/CleanFrame) are research/design references; their code has **not** been imported into Unified TV in this project phase. Details: [CREDITS.md](CREDITS.md).
+[TV Detox](https://github.com/Ansub/tv-detox) by Ansub Khan and [CleanFrame](https://github.com/nthnclrk/CleanFrame) by Nathan Clark are credited research and design references. **No code or visual assets from these projects have been imported into Unified TV** at this stage. Any future code integration will preserve the applicable original copyright and licence notices. Details: [CREDITS.md](CREDITS.md).
 
 Unified TV is independent of Apple, Samsung, Sony, TCL, Google, Amazon, NordVPN and the streaming services it launches. Their names and trademarks belong to their owners.
 

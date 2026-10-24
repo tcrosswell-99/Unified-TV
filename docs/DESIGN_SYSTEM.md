@@ -48,4 +48,4 @@ Remote interaction outranks animation and network imagery on the Sony and low-me
 
 Initial timing tokens are engineering *starting values*, not a claim that they have been tested. Aim for acknowledgement within 80 ms, a focus movement around 150–210 ms, and a background dissolve of 320–480 ms. Test rapid repeated D-pad presses. Back restores the prior item and screen. Offer reduced motion, increased contrast and reduced translucency without loss of information.
 
-Build original components and use cleared assets. Contemporary Apple tvOS, CleanFrame and Dribbble examples are **style references**; do not copy proprietary layouts, artwork, fonts, icon files or animations into the public codebase.
+Build original components and use cleared assets. Contemporary Apple tvOS, [CleanFrame by Nathan Clark](https://github.com/nthnclrk/CleanFrame) and Dribbble examples are **style references**; do not copy proprietary layouts, artwork, fonts, icon files or animations into the public codebase. CleanFrame's MIT-licensed source has not been incorporated into Unified TV. See [Credits](../CREDITS.md) for author attribution and required checks before any future reuse.
