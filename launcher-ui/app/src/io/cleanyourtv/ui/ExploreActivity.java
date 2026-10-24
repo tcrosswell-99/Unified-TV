@@ -250,7 +250,7 @@ public class ExploreActivity extends Activity {
                     "No TMDB key: add yours to launcher-ui/config.properties and install again."));
             return;
         }
-        io.execute(() -> {
+        bg(() -> {
             services();
             main.post(() -> { if (!isFinishing()) fillMenu(); });
         });
@@ -260,6 +260,7 @@ public class ExploreActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (hero != null && !menuOpen) restartHero();
+        if (backWant != null) main.post(backSoon);   // a backdrop onPause dropped (a no-op if it's the one shown)
         if (resumedOnce && Tmdb.hasKey()) {   // back from a title page: the list, the picks and what was seen may have changed
             refreshPersonal();
             TvUi.refreshSeen(page);
@@ -269,12 +270,35 @@ public class ExploreActivity extends Activity {
 
     @Override protected void onPause() {
         main.removeCallbacks(heroTick);
+        main.removeCallbacks(backSoon);   // reposted on resume; a tab or search that's waiting still runs (guarded by bg)
         super.onPause();
     }
 
     @Override protected void onDestroy() {
+        main.removeCallbacks(heroTick);
+        main.removeCallbacks(backSoon);
+        main.removeCallbacks(tabSoon);
+        main.removeCallbacks(searchSoon);
         io.shutdownNow();
         super.onDestroy();
+    }
+
+    /** Closing (or closed): nothing more to start, and the pool may already be shut down. */
+    private boolean gone() {
+        return isFinishing() || isDestroyed() || io.isShutdown();
+    }
+
+    /**
+     * Background work, only while the page is alive: a delayed callback (backdrop, tab, search, next page) that lands
+     * after onDestroy would otherwise throw RejectedExecutionException on the main thread and take :home down.
+     */
+    private void bg(Runnable r) {
+        if (gone()) return;
+        try {
+            io.execute(r);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            AppLog.w("explore: dropped work after close");
+        }
     }
 
     // MARK: - Background: the focused title's picture
@@ -310,10 +334,11 @@ public class ExploreActivity extends Activity {
 
     /** Small and blurred: a soft background, lighter than the home screen's, that costs nothing to draw. */
     private void loadBackdrop() {
+        if (gone()) return;
         String url = backWant;
         if (url == null || url.equals(backUrl)) return;
         backUrl = url;
-        io.execute(() -> {
+        bg(() -> {
             Bitmap b = Images.fetch(url);
             if (b == null) return;
             Bitmap soft = blur(Bitmap.createScaledBitmap(b, 160, Math.max(1, Math.round(160f * b.getHeight() / b.getWidth())), true), 3);
@@ -721,7 +746,7 @@ public class ExploreActivity extends Activity {
                     return;
                 }
         }
-        io.execute(() -> {   // the rows don't wait for the banner (on Home it asks for picks, title by title)
+        bg(() -> {   // the rows don't wait for the banner (on Home it asks for picks, title by title)
             List<Section> list = sections(id);
             main.post(() -> {
                 if (gen != generation || isFinishing()) return;
@@ -730,7 +755,7 @@ public class ExploreActivity extends Activity {
             });
         });
         if (withHero) {
-            io.execute(() -> {
+            bg(() -> {
                 List<Object[]> banner = heroItems(id);
                 main.post(() -> { if (gen == generation && !isFinishing()) setHero(banner); });
             });
@@ -771,7 +796,7 @@ public class ExploreActivity extends Activity {
             final int slot = i;
             final Section s = list.get(i);
             if (personalOnly && !s.personal) continue;
-            io.execute(() -> {
+            bg(() -> {
                 List<Tmdb.Title> titles;
                 try {
                     titles = s.load.call();
@@ -946,6 +971,7 @@ public class ExploreActivity extends Activity {
 
     /** A My list tab as a grid built as you scroll; `quiet`: only if it changed (back from a title page). */
     private void showTab(int which, boolean quiet) {
+        if (gone() || tabBody == null) return;
         int gen = generation;
         String kind = LIST_TABS[which][0];
         if (!quiet) {
@@ -953,7 +979,7 @@ public class ExploreActivity extends Activity {
             tabBody.removeAllViews();
             tabBody.addView(note(Ui.tr("Carregando…", "Loading…")));
         }
-        io.execute(() -> {
+        bg(() -> {
             List<Tmdb.Title> titles = new ArrayList<>();
             String problem = null;
             try {
@@ -1100,7 +1126,7 @@ public class ExploreActivity extends Activity {
             if (loading || done || page >= 25 || this != feed) return;
             loading = true;
             int want = page + 1;
-            io.execute(() -> {
+            bg(() -> {
                 List<Tmdb.Title> got;
                 try {
                     got = pager.page(want);
@@ -1267,6 +1293,7 @@ public class ExploreActivity extends Activity {
 
     /** New results: words go to TMDB's search (then the filter is applied here); without words, discover. */
     private void runFilter() {
+        if (gone() || filter == null || rows == null) return;
         if (results != null) rows.removeView(results);
         results = new TvUi.Grid(this, k, 7, this::open);
         rows.addView(results);
@@ -1785,7 +1812,7 @@ public class ExploreActivity extends Activity {
         if (hero.hasFocus()) followFocus(hero);
         int at = heroAt;
         FrameLayout shown = hero;
-        io.execute(() -> {
+        bg(() -> {
             String logo = logo(t);
             if (logo == null) return;
             main.post(() -> {

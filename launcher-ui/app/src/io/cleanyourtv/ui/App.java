@@ -20,5 +20,8 @@ public class App extends Application {
         Images.trim();
         Tmdb.trimMemory();
         Recs.trimLoaded();
+        // Not on every app opened (UI_HIDDEN): the cards would be rebuilt each time Home comes back. Only once the
+        // process is in the background list, which is when the system starts looking for memory to take.
+        if (level >= TRIM_MEMORY_BACKGROUND) HomeApps.trimTiles();
     }
 }

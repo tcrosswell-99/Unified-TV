@@ -155,9 +155,9 @@ public class SeasonActivity extends Activity {
                     try {
                         Tmdb.rateEpisode(this, series, season, number, 10 - which);
                         Tmdb.setEpisodeSeen(this, series, season, number, true);
-                        main.post(() -> recreate());
+                        main.post(() -> { if (!isFinishing() && !isDestroyed()) recreate(); });
                     } catch (Exception ex) {
-                        main.post(() -> Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show());
+                        main.post(() -> { if (!isFinishing() && !isDestroyed()) Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show(); });
                     }
                 }).start())
                 .show();

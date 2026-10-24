@@ -73,23 +73,26 @@ public class TmdbLoginActivity extends Activity {
         box.addView(line(56, TvUi.INK, Ui.tr("Conectar sua conta TMDB", "Connect your TMDB account")));
         status = line(28, TvUi.DIM, Ui.tr("Preparando…", "Getting ready…"));
         box.addView(status);
+        polling = true;   // before the thread: onDestroy (Back while the token is requested) turns it off for good
         new Thread(() -> {
             try {
                 String token = Tmdb.requestToken();
+                if (!polling || isDestroyed()) return;
                 String url = APPROVE + token;
                 Bitmap qr = render(Qr.encode(url), Math.round(420 * k));
-                main.post(() -> showCode(url, qr));
-                polling = true;
+                main.post(() -> { if (polling) showCode(url, qr); });
                 long until = System.currentTimeMillis() + 15 * 60_000L;
                 while (polling && System.currentTimeMillis() < until) {
                     Thread.sleep(3000);
                     if (Tmdb.finishSignIn(this, token)) {
-                        main.post(this::showSignedIn);
+                        main.post(() -> { if (!isDestroyed()) showSignedIn(); });
                         return;
                     }
                 }
+                if (!polling) return;
                 main.post(() -> status.setText(Ui.tr("O link expirou. Volte e abra de novo.", "The link expired. Go back and open it again.")));
             } catch (Exception e) {
+                if (!polling) return;
                 main.post(() -> status.setText(Ui.tr("Não deu para conectar: ", "Couldn't connect: ") + e.getMessage()));
             }
         }).start();

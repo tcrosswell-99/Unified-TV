@@ -153,9 +153,20 @@ fi
 "$BT/zipalign" -f -p 4 out/base.apk out/aligned.apk
 
 # --- Sign with your own key (created once; updates need the same key, so keep cleanyourtv-ui.keystore)
+# Back up cleanyourtv-ui.keystore (and its password) somewhere safe: without that same key the TV refuses an
+# update, and the only way back is uninstalling, which loses the app's settings. The password comes from
+# KEYSTORE_PASSWORD; unset, it is the old public default "cleanyourtv-ui", so keystores made by earlier builds
+# keep working. Set KEYSTORE_PASSWORD before the first build to make a key with your own password (an existing
+# keystore needs the password it was made with). It reaches keytool and apksigner through the environment,
+# not the command line, so other users on the machine can't read it in the process list.
+if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+  echo "Signing with the default keystore password; set KEYSTORE_PASSWORD to use your own (see build.sh)."
+fi
+export KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:-cleanyourtv-ui}"
 if [ ! -f cleanyourtv-ui.keystore ]; then
   "$KEYTOOL" -genkeypair -keystore cleanyourtv-ui.keystore -alias cleanyourtv-ui -keyalg RSA -keysize 2048 -validity 20000 \
-    -storepass cleanyourtv-ui -keypass cleanyourtv-ui -dname "CN=CleanYourTV UI" >/dev/null 2>&1
+    -storepass:env KEYSTORE_PASSWORD -keypass:env KEYSTORE_PASSWORD -dname "CN=CleanYourTV UI" >/dev/null 2>&1
+  echo "Created cleanyourtv-ui.keystore: back it up; every update must be signed with it."
 fi
-"$APKSIGNER" sign --ks cleanyourtv-ui.keystore --ks-pass pass:cleanyourtv-ui --key-pass pass:cleanyourtv-ui --out CleanYourTV-UI.apk out/aligned.apk
+"$APKSIGNER" sign --ks cleanyourtv-ui.keystore --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD --out CleanYourTV-UI.apk out/aligned.apk
 echo "Built CleanYourTV-UI.apk ($(du -h CleanYourTV-UI.apk | cut -f1)). Install: adb install -r CleanYourTV-UI.apk"
