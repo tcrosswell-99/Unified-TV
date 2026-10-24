@@ -1,0 +1,36 @@
+package io.unifiedtv.preview;
+import android.content.Intent;
+import android.os.*;
+import android.widget.TextView;
+import org.json.JSONObject;
+import java.util.concurrent.*;
+
+/** Sign in with your phone: a short code on the TV, approved in the Jellyfin app. Typing stays an advanced option. */
+public final class QuickConnectActivity extends Screen {
+    private final ExecutorService worker=Executors.newSingleThreadExecutor();private final Handler timer=new Handler(Looper.getMainLooper());
+    private String key,base,name;private JSONObject pending;private QuickConnect.Start start;private TextView code,state;private long until;private boolean active;
+    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);active=true;
+        key=getIntent().getStringExtra("key");base=getIntent().getStringExtra("base");name=getIntent().getStringExtra("name");if(key==null||base==null){finish();return;}
+        page(name==null||name.isEmpty()?"Your Films & TV":name);
+        code=text("",64);code.setLetterSpacing(.25f);
+        state=text("One moment...",21);
+        if(base.startsWith("http:"))text("This server is on your home network. Only continue if you trust your home network.",16);
+        button("Sign in another way (advanced)",()->{startActivity(new Intent(this,ConnectionsActivity.class).putExtra("key",key).putExtra("discoveredBase",base).putExtra("discoveredName",name));finish();});
+        button("Cancel",this::finish);
+        try{pending=QuickConnect.pending(base,QuickConnect.device(this));}catch(Exception e){finish();return;}
+        worker.execute(()->{try{QuickConnect.Start s=QuickConnect.initiate(pending);runOnUiThread(()->{if(!active)return;start=s;code.setText(s.code);
+                state.setText("On your phone, open the Jellyfin app, go to Quick Connect and enter this code.");until=SystemClock.elapsedRealtime()+5*60_000;poll();});}
+            catch(Exception e){runOnUiThread(()->{if(active)state.setText("Signing in with your phone isn't switched on for this server. Ask whoever looks after it to turn on Quick Connect, or sign in another way.");});}});
+    }
+    private void poll(){
+        if(!active)return;if(SystemClock.elapsedRealtime()>until){state.setText("The code has expired.");code.setText("");button("Get a new code",this::recreate);return;}
+        timer.postDelayed(()->worker.execute(()->{
+            try{if(!QuickConnect.approved(pending,start.secret)){runOnUiThread(this::poll);return;}
+                JSONObject account=QuickConnect.account(pending,QuickConnect.authenticate(pending,start.secret),key.endsWith("child"));new Vault(this).save(key,account);
+                runOnUiThread(()->{if(!active)return;code.setText("");state.setText(account.optString("name").isEmpty()?"You're signed in.":"You're signed in as "+account.optString("name")+".");button("Done",this::finish).requestFocus();});}
+            catch(SecurityException e){runOnUiThread(()->{if(active){code.setText("");state.setText("That's an administrator account. The Child profile needs a restricted account: approve the code from a child's account instead.");}});}
+            catch(Exception e){runOnUiThread(this::poll);}
+        }),3000);
+    }
+    @Override protected void onDestroy(){active=false;timer.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
+}

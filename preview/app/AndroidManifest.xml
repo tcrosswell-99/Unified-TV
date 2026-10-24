@@ -24,6 +24,7 @@
     <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".QuickConnectActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape"/>

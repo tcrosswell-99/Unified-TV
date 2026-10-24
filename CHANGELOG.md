@@ -8,6 +8,38 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
+Android Preview **0.5** (`0.5-preview`, versionCode 5). The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only (49 preview tests). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).
+
+### Added
+
+- **No addresses to type.**
+  - The NAS, Home Assistant and Jellyfin are looked for quietly in the background when Unified TV starts, only for what isn't set up yet.
+  - If exactly one is found, it is chosen for you; a list appears only if there are several.
+  - A saved connection opens straight away.
+  - Typing an address remains an advanced option.
+- **Sign in with your phone (Jellyfin):** the TV shows a code, approved in the Jellyfin app (Quick Connect). No token or user ID to type. The Child profile still refuses an administrator account.
+- **Poster cards for your films and series:** each title shows its own artwork and year from the server, never another title's.
+- **Home Assistant is found more reliably:** if the normal network search finds nothing, Unified TV tries the standard `homeassistant.local` name, then checks the TV's own home network for a server that identifies itself as Home Assistant.
+
+### Changed
+
+- **Searches use the home network under a VPN:** they go over the home Wi-Fi or Ethernet even while NordVPN is on, where NordVPN allows it.
+- **The NAS search tries harder:** if the usual network-wide search gets no reply, the same request is sent to each address on the home network.
+- **Plain language on screen:** setup and status screens show server names, not IP addresses, ports or network terms.
+
+### Fixed
+
+- **Long folders:** a folder that mixes videos with music or photos no longer stops paging early, so every video is reachable.
+- **Doorbell:**
+  - A person detected during a doorbell visit keeps the live picture and extends it, instead of restarting it.
+  - A reminder that arrives during the doorbell alert is shown afterwards if still relevant, instead of being lost.
+- **Reminders:** a TV clock a few seconds behind Home Assistant no longer drops every reminder.
+- **Home Assistant search:** it no longer fails on older Android when two services answer at once.
+- **VPN status (display only):** a status check started before a network change is discarded, so the header no longer shows a stale state. This changes only what the status shows. It is not VPN protection, and Live TV stays blocked.
+
+
 ## [0.4.1] - 2026-10-24
 
 Android Preview 0.4 plus fixes for everything around it: the inherited CleanYourTV code made safer and sturdier, the project's purpose explained, and green CI to build on. The preview app itself is unchanged from 0.4 (`0.4-preview`, versionCode 4). Every fix comes from the [October 2026 code review](docs/reviews/2026-10-code-review.md). All changes were checked by compiling and unit-testing the code; **none has been tested on a television yet.**
@@ -95,6 +127,7 @@ App versions in this release: Android Preview **0.4-preview** (unchanged), inher
 
 Untagged in this changelog: [Preview 0.3](docs/PREVIEW_0_3.md) (limited TCL checks), [Preview 0.2](docs/PREVIEW_0_2.md) and the [first Android preview](docs/FIRST_ANDROID_PREVIEW.md).
 
-[Unreleased]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.4.1...HEAD
+[Unreleased]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.5.0...HEAD
+[0.5.0]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.4.1...android-preview-v0.5.0
 [0.4.1]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.4.0...android-preview-v0.4.1
 [0.4.0]: https://github.com/tcrosswell-99/Unified-TV/releases/tag/android-preview-v0.4.0

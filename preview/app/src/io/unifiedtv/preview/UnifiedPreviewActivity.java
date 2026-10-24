@@ -46,7 +46,7 @@ import java.util.TimeZone;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
+    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
     @Override protected void onStop(){VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     private final Runnable gallery = () -> {

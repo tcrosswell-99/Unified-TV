@@ -21,9 +21,13 @@ public final class ConnectionsActivity extends Screen {
         String hostname="",p=ha?"8123":"8096"; boolean tls=true;
         try { URI u=URI.create(old.getString("base")); hostname=u.getHost(); p=""+u.getPort(); tls=u.getScheme().equals("https"); } catch(Exception ignored) {}
         if(old.length()==0&&getIntent().hasExtra("discoveredBase"))try{URI discovered=URI.create(getIntent().getStringExtra("discoveredBase"));hostname=discovered.getHost();p=""+discovered.getPort();tls="https".equals(discovered.getScheme());}catch(Exception ignored){}
+        // A server found on the network (or already saved) needs no address typing: the fields stay hidden unless asked for.
+        String found=getIntent().getStringExtra("discoveredName");TextView server=hostname.isEmpty()?null:text(found==null||found.isEmpty()?"Your saved connection":found+" · found on your home network",20);
         host=field("Hostname or IP (IPv4, IPv6 or local hostname)",hostname,false);
         port=field("Port",p,false); port.setInputType(InputType.TYPE_CLASS_NUMBER);
         https=new CheckBox(this); https.setText("Use HTTPS"); https.setTextColor(-1); https.setChecked(tls); column.addView(https);
+        if(server!=null){android.view.View[] address={column.getChildAt(column.indexOfChild(host)-1),host,column.getChildAt(column.indexOfChild(port)-1),port,https};for(android.view.View v:address)v.setVisibility(android.view.View.GONE);
+            Button change=button("Use a different address",()->{});change.setOnClickListener(v->{for(android.view.View a:address)a.setVisibility(android.view.View.VISIBLE);change.setVisibility(android.view.View.GONE);host.requestFocus();});}
         httpConsent=new CheckBox(this); httpConsent.setText("I trust this LAN server and allow unencrypted HTTP to this host only"); httpConsent.setTextColor(-1); httpConsent.setChecked(old.optBoolean("httpConsent")); column.addView(httpConsent);
         token=field(ha?"Long-lived access token":"User access token (not a server-wide API key for Child)",old.optString("token"),true);
         user=ha?null:field("Server user ID",old.optString("user"),false);

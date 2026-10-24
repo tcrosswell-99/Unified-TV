@@ -46,7 +46,7 @@ public final class HouseholdService extends Service {
         if(intent!=null&&"stop".equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
         if(intent!=null&&"dismiss".equals(intent.getAction())){dismiss();return START_NOT_STICKY;}
         if(intent!=null&&"camera".equals(intent.getAction())){
-            if(authorised){if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))ring();}
+            if(authorised){if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))show();}
             else pendingCamera=true;
         }
         if(socket==null)connect();return START_NOT_STICKY;
@@ -78,7 +78,7 @@ public final class HouseholdService extends Service {
                 retry=1000;send(ws,new JSONObject().put("id",1).put("type","subscribe_events").put("event_type","state_changed"));
                 if(house.optBoolean("reminders"))send(ws,new JSONObject().put("id",2).put("type","subscribe_events").put("event_type","unified_tv_reminder"));
                 update("Authorised · waiting for subscription confirmation");
-                if(pendingCamera){pendingCamera=false;if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))ring();}
+                if(pendingCamera){pendingCamera=false;if(policy.acceptRing("manual:"+System.currentTimeMillis(),System.currentTimeMillis()))show();}
             }else if(type.equals("result")){
                 if(value.optInt("id")==1)update(value.optBoolean("success")?"Listening · actual triggers and video need TV tests":"Subscription refused · check account permissions");
                 if(value.optInt("id")==streamId&&streamId>0){
@@ -100,11 +100,11 @@ public final class HouseholdService extends Service {
             JSONObject before=data.optJSONObject("old_state"),after=data.optJSONObject("new_state");if(before==null||after==null)return;
             String entity=data.optString("entity_id");
             if(AlertPolicy.rising(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"))){
-                String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now))ring();
+                String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now))show();
             }
-        }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")&&policy.reminderAllowed(fired,now)){
+        }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
-            reminder(data.optString("text"));
+            if(policy.ringing(now))policy.defer(data.optString("text"),fired);else if(policy.reminderAllowed(fired,now))reminder(data.optString("text"));
         }
     }
     private WindowManager.LayoutParams params(int w,int h,boolean focusable){
@@ -112,6 +112,8 @@ public final class HouseholdService extends Service {
             focusable?WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL:WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.RIGHT;p.x=30;p.y=30;return p;
     }
+    /** A press and a person detection moments apart are one visit: keep the live stream, extend its time. */
+    private void show(){if(cameraOverlay!=null){main.removeCallbacks(timeout);main.postDelayed(timeout,45000);}else ring();}
     private void ring(){
         main.removeCallbacks(timeout);
         if(cameraOverlay==null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringEnter");
@@ -146,6 +148,7 @@ public final class HouseholdService extends Service {
         main.removeCallbacks(timeout);
         if(cameraOverlay!=null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringExit");
         streamId=0;policy.dismiss();dismissViews();
+        String later=policy.release(System.currentTimeMillis());if(later!=null&&!stopped)reminder(later);
     }
     @Override public void onDestroy(){stopped=true;main.removeCallbacksAndMessages(null);if(socket!=null)socket.cancel();dismiss();if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}
     @Override public IBinder onBind(Intent i){return null;}
