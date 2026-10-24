@@ -12,6 +12,16 @@ Six default choices in the reference deployment: **SmartTube, Netflix, Disney+, 
 
 **Press Down** to reveal a curated personal NAS films/TV poster row. The end of this row contains **View All**, which opens a custom library with films, shows, seasons, episodes and search. Selecting media should play through VLC without showing a VLC launcher tile.
 
+## Add and rearrange favourites
+
+The resting dock is editable without a phone or developer tool. Open the subtle **Apps** grid icon to find installed apps and select **Add to Home**. **Remove from Home** hides the shortcut but leaves the app installed.
+
+On Home, **hold OK** over a tile for **Move**, **Remove from Home** and optional **App info**. **Move** lifts the tile; Left/Right adjusts its position, OK saves and Back cancels. Keep the movement restrained and remote response immediate. Short OK always launches.
+
+Retain one horizontally scrollable dock when more apps are pinned than fit. Persist order per room without changing the other TVs' layouts; Sony Xbox and Frame Samsung TV Plus remain device-only actions. Optionally lock editing with a PIN for children. All supported apps remain recoverable from the Apps library.
+
+See [full app personalisation requirements](APP_CUSTOMISATION.md).
+
 ## Every selection changes the atmosphere
 
 1. Focus moves **immediately**. The selected tile gently rises; it does not launch, play a trailer or start a VPN.
