@@ -51,4 +51,39 @@ public class DlnaClientTest {
         DlnaClient.Page page=DlnaClient.parse(soap("<container id='c1'><dc:title>Kids</dc:title></container>",1,1),ORIGIN);
         assertTrue(page.items.get(0).folder);assertEquals("Kids",page.items.get(0).title);assertEquals("",page.items.get(0).art);
     }
+    @Test public void fileNamesBecomeReadableTitles(){
+        assertEquals("The Matrix 1999",DlnaClient.title("The.Matrix.1999.mkv"));
+        assertEquals("Ocean's Eleven",DlnaClient.title("Ocean's_Eleven.MP4"));
+        assertEquals("Mr. Smith Goes to Washington",DlnaClient.title("Mr. Smith Goes to Washington.avi"));
+        assertEquals("Back to the Future Part II",DlnaClient.title("Back.to.the.Future.Part.II"));
+        assertEquals("Blade Runner",DlnaClient.title("Blade_Runner"));
+        assertEquals("Up",DlnaClient.title("Up.m4v"));
+        assertEquals("Star Wars",DlnaClient.title("Star Wars.ts"));
+        assertEquals("Amélie",DlnaClient.title("Amélie.mov"));
+        // Real titles are left alone.
+        for(String t:new String[]{"S.W.A.T.","Mr. Smith","Toy Story 4","Se7en","WALL-E","Cats","1917","Film 1"})assertEquals(t,DlnaClient.title(t));
+        assertEquals(".mkv",DlnaClient.title(".mkv"));assertEquals("",DlnaClient.title(null));assertEquals("Dune",DlnaClient.title("  Dune  "));
+    }
+    @Test public void parsedTitlesAreAlreadyClean()throws Exception{
+        String item="<item id='m1'><dc:title>The.Matrix.1999.mkv</dc:title><res protocolInfo='http-get:*:video/x-matroska:*'>/media/m1.mkv</res></item>";
+        assertEquals("The Matrix 1999",DlnaClient.parse(soap(item,1,1),ORIGIN).items.get(0).title);
+    }
+    @Test public void failuresAreClassifiedForPlainWording(){
+        assertEquals(DlnaClient.Failure.REFUSED,DlnaClient.Failure.classify(403,""));
+        assertEquals(DlnaClient.Failure.REFUSED,DlnaClient.Failure.classify(401,""));
+        String missing="<s:Envelope><s:Body><s:Fault><detail><UPnPError xmlns='urn:schemas-upnp-org:control-1-0'><errorCode>701</errorCode><errorDescription>No such object</errorDescription></UPnPError></detail></s:Fault></s:Body></s:Envelope>";
+        assertEquals(DlnaClient.Failure.MISSING,DlnaClient.Failure.classify(500,missing));
+        assertEquals(DlnaClient.Failure.MISSING,DlnaClient.Failure.classify(500,missing.replace("701","710")));
+        assertEquals(DlnaClient.Failure.REFUSED,DlnaClient.Failure.classify(500,missing.replace("701","606")));
+        assertEquals(DlnaClient.Failure.SERVER,DlnaClient.Failure.classify(500,missing.replace("701","720")));
+        assertEquals(DlnaClient.Failure.SERVER,DlnaClient.Failure.classify(503,null));
+        for(int k=1;k<=4;k++){String m=DlnaClient.Failure.plain(k);assertFalse(m.contains("://")||m.contains("SOAP")||m.contains("UPnP")||m.matches(".*\\d{3}.*"));}
+        assertFalse(new DlnaClient.Failure(DlnaClient.Failure.UNREACHABLE).getMessage().contains("192.168"));
+    }
+    @Test public void noServerAndUnreadableServerAreToldApart(){
+        DlnaClient.Report none=new DlnaClient.Report(),silent=new DlnaClient.Report();silent.answered=1;silent.unreadable=1;
+        assertTrue(none.plain().startsWith("No media server found"));
+        assertTrue(silent.plain().startsWith("A media server answered"));
+        assertNotEquals(none.plain(),silent.plain());
+    }
 }

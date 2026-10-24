@@ -28,11 +28,39 @@ final class DlnaClient {
     static String value(Element e,String name){NodeList n=e.getElementsByTagNameNS("*",name);return n.getLength()==0?"":n.item(0).getTextContent();}
     /** The home network under any VPN, set by the library screen; null uses the default route. */
     static volatile android.net.Network lan;
+    /** Why a media server request failed, in words a viewer can act on. The message never carries an address. */
+    static final class Failure extends IOException {
+        static final int UNREACHABLE=1,REFUSED=2,MISSING=3,SERVER=4;
+        final int kind;
+        Failure(int kind){super("Media server request failed: "+kind);this.kind=kind;}
+        /** HTTP status and, for a SOAP fault, the UPnP error code: 701/710 mean the object or folder no longer exists. */
+        static int classify(int http,String fault){
+            if(http==401||http==403)return REFUSED;
+            java.util.regex.Matcher m=java.util.regex.Pattern.compile("errorCode>\\s*(\\d+)").matcher(fault==null?"":fault);
+            if(m.find()){int upnp=count(m.group(1));if(upnp==701||upnp==710)return MISSING;if(upnp==606)return REFUSED;}
+            return SERVER;
+        }
+        static String plain(int kind){
+            switch(kind){
+                case UNREACHABLE:return "The media server isn't answering. Check that it is switched on and on your home network, then try again.";
+                case REFUSED:return "The media server refused this TV. Check that sharing with this TV is allowed in the server's media settings.";
+                case MISSING:return "This folder is no longer on the media server. It may have been moved, or the server was reset. An adult can choose the folders again.";
+                default:return "The media server couldn't show this folder just now. Try again in a moment.";
+            }
+        }
+    }
     static byte[] request(String url,String action,String body)throws Exception{
         URI uri=local(url);android.net.Network net=lan;HttpURLConnection c=(HttpURLConnection)(net!=null?net.openConnection(uri.toURL()):uri.toURL().openConnection());c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(6000);
         try{if(body!=null){c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","text/xml; charset=utf-8");c.setRequestProperty("SOAPAction","\""+action+"\"");try(OutputStream out=c.getOutputStream()){out.write(body.getBytes(StandardCharsets.UTF_8));}}
-            if(c.getResponseCode()!=200)throw new IOException("Local service unavailable");try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>4*1024*1024)throw new IOException("Response too large");out.write(b,0,n);}return out.toByteArray();}
-        }finally{c.disconnect();}
+            int code=c.getResponseCode();
+            if(code!=200)throw new Failure(Failure.classify(code,code==500?fault(c):""));
+            try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>4*1024*1024)throw new Failure(Failure.SERVER);out.write(b,0,n);}return out.toByteArray();}
+        }catch(Failure f){throw f;}catch(IOException e){throw new Failure(Failure.UNREACHABLE);}
+        finally{c.disconnect();}
+    }
+    /** The start of a SOAP fault body, enough to read its UPnP error code. */
+    private static String fault(HttpURLConnection c){
+        try(InputStream in=c.getErrorStream()){if(in==null)return "";byte[] b=new byte[4096];int total=0,n;while(total<b.length&&(n=in.read(b,total,b.length-total))!=-1)total+=n;return new String(b,0,total,StandardCharsets.UTF_8);}catch(IOException e){return "";}
     }
     static Device describe(String location)throws Exception{
         URI base=local(location);Element root=xml(request(location,null,null)).getDocumentElement();NodeList services=root.getElementsByTagNameNS("*","service");
@@ -41,14 +69,24 @@ final class DlnaClient {
             Device d=new Device();d.name=value(root,"friendlyName");if(d.name.length()>80)d.name=d.name.substring(0,80);d.control=control.toString();d.location=location;d.service=type;d.udn=value(root,"UDN");return d;
         }}throw new IOException("No media directory");
     }
-    static List<Device> discover(android.content.Context context,boolean thorough)throws Exception{
+    /** What a search heard: servers that answered but whose description could not be read are counted, not shown. */
+    static final class Report {int answered,unreadable;
+        /** "Nobody answered" and "a server answered but wouldn't talk to this TV" need different fixes. */
+        String plain(){
+            if(unreadable>0)return "A media server answered, but didn't let the TV see its library. Check that its media service is running and that this TV is allowed, then search again.";
+            return "No media server found. Check that the NAS media service is on and the TV is on the same home network. If NordVPN is on, allow devices on your home network.";
+        }
+    }
+    static List<Device> discover(android.content.Context context,boolean thorough)throws Exception{return discover(context,thorough,null);}
+    static List<Device> discover(android.content.Context context,boolean thorough,Report report)throws Exception{
         Set<String> locations=new LinkedHashSet<>();try(DatagramSocket socket=new DatagramSocket()){LocalDiscovery.bind(context,socket);
             socket.setSoTimeout(500);byte[] message=("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:schemas-upnp-org:device:MediaServer:1\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
             socket.send(new DatagramPacket(message,message.length,InetAddress.getByName("239.255.255.250"),1900));listen(socket,locations,4500);
             // Multicast can be lost to a VPN or a router setting; UPnP devices also answer a search sent straight to them.
             if(locations.isEmpty()&&thorough&&context!=null){for(InetAddress a:LocalDiscovery.neighbours(LocalDiscovery.address(context)))try{socket.send(new DatagramPacket(message,message.length,a,1900));}catch(IOException ignored){}listen(socket,locations,3000);}
         }
-        List<Device> devices=new ArrayList<>();Set<String> ids=new HashSet<>();long deadline=System.currentTimeMillis()+15000;for(String location:locations){if(Thread.currentThread().isInterrupted()||System.currentTimeMillis()>deadline)break;try{Device d=describe(location);if(ids.add(d.udn.isEmpty()?d.control:d.udn))devices.add(d);}catch(Exception ignored){}}return devices;
+        List<Device> devices=new ArrayList<>();Set<String> ids=new HashSet<>();long deadline=System.currentTimeMillis()+15000;if(report!=null)report.answered=locations.size();
+        for(String location:locations){if(Thread.currentThread().isInterrupted()||System.currentTimeMillis()>deadline)break;try{Device d=describe(location);if(ids.add(d.udn.isEmpty()?d.control:d.udn))devices.add(d);}catch(Exception ignored){if(report!=null)report.unreadable++;}}return devices;
     }
     private static void listen(DatagramSocket socket,Set<String> locations,long window){
         long end=System.currentTimeMillis()+window;while(System.currentTimeMillis()<end&&!Thread.currentThread().isInterrupted()){try{byte[] b=new byte[16384];DatagramPacket p=new DatagramPacket(b,b.length);socket.receive(p);String location=location(new String(b,0,p.getLength(),StandardCharsets.UTF_8),p.getAddress());if(location!=null&&locations.size()<8)locations.add(location);}catch(SocketTimeoutException ignored){}catch(Exception ignored){}}
@@ -67,11 +105,24 @@ final class DlnaClient {
     static Page parse(byte[] soap,URI origin)throws Exception{
         Element envelope=xml(soap).getDocumentElement();Page page=new Page();page.returned=count(value(envelope,"NumberReturned"));page.total=count(value(envelope,"TotalMatches"));
         String result=value(envelope,"Result");if(result.isEmpty())return page;Element didl=xml(result.getBytes(StandardCharsets.UTF_8)).getDocumentElement();
-        for(Node node=didl.getFirstChild();node!=null&&page.items.size()<PAGE;node=node.getNextSibling()){if(!(node instanceof Element))continue;Element e=(Element)node;Item item=new Item();item.id=e.getAttribute("id");item.title=value(e,"title");item.folder="container".equals(e.getLocalName());if(item.id.isEmpty()||item.id.length()>1024)continue;
+        for(Node node=didl.getFirstChild();node!=null&&page.items.size()<PAGE;node=node.getNextSibling()){if(!(node instanceof Element))continue;Element e=(Element)node;Item item=new Item();item.id=e.getAttribute("id");item.title=title(value(e,"title"));item.folder="container".equals(e.getLocalName());if(item.id.isEmpty()||item.id.length()>1024)continue;
             if(!item.folder){NodeList resources=e.getElementsByTagNameNS("*","res");for(int i=0;i<resources.getLength();i++){Element res=(Element)resources.item(i);String protocol=res.getAttribute("protocolInfo");if(protocol.startsWith("http-get:")&&protocol.contains("video/")){String u=sameHost(origin,res.getTextContent());if(!u.isEmpty()){item.url=u;break;}}}if(item.url.isEmpty())continue;}
             item.art=sameHost(origin,value(e,"albumArtURI"));String date=value(e,"date");if(date.matches("\\d{4}.*"))item.year=date.substring(0,4);
             page.items.add(item);
         }if(page.returned==0)page.returned=page.items.size();return page;
+    }
+    private static final java.util.regex.Pattern VIDEO_FILE=java.util.regex.Pattern.compile("(?i)\\.(mkv|mp4|m4v|avi|ts|m2ts|mov|wmv|mpg|mpeg|webm)$");
+    /**
+     * Servers often send the file name as the title. A trailing video extension is removed, and dots or underscores become spaces,
+     * only when the title looks like a file name (an extension, or no spaces with words joined by dots or underscores). "Mr. Smith" and "S.W.A.T." are left alone.
+     */
+    static String title(String raw){
+        String t=raw==null?"":raw.trim();if(t.isEmpty())return t;
+        java.util.regex.Matcher ext=VIDEO_FILE.matcher(t);boolean file=ext.find()&&ext.start()>0;
+        String stem=file?t.substring(0,ext.start()):t;
+        boolean joined=!stem.contains(" ")&&stem.matches(".*[\\p{L}\\d]{2,}[._][\\p{L}\\d].*");
+        if(file||joined){if(!stem.contains(" ")||stem.contains("_"))stem=stem.replaceAll("[._]+"," ");stem=stem.replaceAll("\\s+"," ").trim();}
+        return stem.isEmpty()?t:stem;
     }
     static int count(String s){try{return Math.max(0,Integer.parseInt(s.trim()));}catch(Exception e){return 0;}}
     static String sameHost(URI origin,String ref){try{if(ref==null||ref.trim().isEmpty())return "";URI u=origin.resolve(ref.trim());local(u.toString());return origin.getHost().equalsIgnoreCase(u.getHost())?u.toString():"";}catch(Exception e){return "";}}

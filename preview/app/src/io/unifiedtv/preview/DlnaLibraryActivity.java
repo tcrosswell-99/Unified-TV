@@ -1,33 +1,120 @@
 package io.unifiedtv.preview;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.content.Intent;
 import android.widget.*;
 import org.json.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Automatic server search on first entry. Only explicitly selected folder roots become a library. */
+/**
+ * Automatic server search on first entry. Only explicitly selected folder roots become a library, and a saved viewer never browses above them.
+ * Every load has a ticket and a time limit: a superseded or cancelled load can't paint over the screen, and nothing waits forever.
+ */
 public final class DlnaLibraryActivity extends Screen {
-    private final ExecutorService worker=Executors.newSingleThreadExecutor(),artwork=Executors.newFixedThreadPool(2);private JSONObject source;private int generation;private boolean setup;private String currentFolder="Collection";private final ArrayDeque<String> history=new ArrayDeque<>();private final ArrayDeque<String> names=new ArrayDeque<>();private boolean inFolder;
+    /** Longest a folder may load, including one quiet search for a server whose address changed, before Retry is offered. */
+    static final long LOAD_LIMIT_MS=25_000;
+    private final ExecutorService worker=Executors.newSingleThreadExecutor(),artwork=Executors.newFixedThreadPool(2);
+    private final Handler handler=new Handler(Looper.getMainLooper());
+    private JSONObject source;private int generation;private boolean setup;private Future<?> task;
+    private DlnaScope.Trail trail=new DlnaScope.Trail();
+    /** The folder or title to focus when its screen is shown again, so Back lands on the poster the viewer left. */
+    private String focusId="";
+    /** The single-server shortcut runs once per visit, so Back out of its folders reaches the search screen instead of looping. */
+    private boolean autoChosen;
+
     @Override public void onCreate(Bundle state){super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);setup=getIntent().getBooleanExtra("setup",false);try{source=new Vault(this).read("dlna");}catch(Exception e){source=new JSONObject();}
         if(EditLock.child(this)){page("Your Films & TV");text("Shared DLNA folders do not provide restricted Child accounts. Ask an adult to connect a restricted media account.",20);button("Back",this::finish);return;}
-        if(!setup&&source.optBoolean("enabled")&&source.optJSONArray("roots")!=null)roots();else discover();
+        if(setup||!source.optBoolean("enabled")||source.optJSONArray("roots")==null){discover();return;}
+        JSONArray roots=source.optJSONArray("roots");
+        if(state!=null&&state.getString("trail")!=null){
+            focusId=state.getString("focus","");
+            DlnaScope.Trail saved=DlnaScope.Trail.restore(state.getString("trail"),roots);
+            if(!saved.isEmpty()){trail=saved;show();}else roots();
+            return;
+        }
+        // Home's poster row and saved-collection shortcuts open straight into a folder; anything else is ignored.
+        Intent in=getIntent();
+        DlnaScope.Frame start=DlnaScope.start(roots,in.getStringExtra("folder"),in.getStringExtra("name"),in.getBooleanExtra("fromShelf",false),in.getStringExtra("root"));
+        if(start!=null){String root=DlnaScope.root(roots,start.id)!=null?start.id:in.getStringExtra("root");trail.start(start,root);show();}else roots();
     }
     private boolean active(int ticket){return ticket==generation&&!isFinishing()&&!isDestroyed();}
-    private void discover(){int ticket=++generation;page("Your Films & TV");text("Bring your film and TV collection together in one place.",23);TextView status=text("One moment...",19);button("Search again",this::discover);button("Media server account setup",()->startActivity(new Intent(this,ConnectionsActivity.class).putExtra("key",Vault.mediaKey(this))));button("Back",this::finish);
+    /** Supersedes whatever was loading: its result is ignored and its thread interrupted. */
+    private int nextTicket(){if(task!=null)task.cancel(true);task=null;handler.removeCallbacksAndMessages(null);return ++generation;}
+
+    private void discover(){int ticket=nextTicket();trail.clear();page("Your Films & TV");text("Bring your film and TV collection together in one place.",23);TextView status=text("Looking for your media server…",19);button("Search again",this::discover);button("Media server account setup",()->startActivity(new Intent(this,ConnectionsActivity.class).putExtra("key",Vault.mediaKey(this))));button("Back",this::finish);
         List<DlnaClient.Device> ready=LocalDiscovery.fresh()?LocalDiscovery.nasFound:null;
-        worker.execute(()->{try{List<DlnaClient.Device> devices=ready!=null&&!ready.isEmpty()?ready:DlnaClient.discover(getApplicationContext(),true);runOnUiThread(()->{if(!active(ticket))return;
+        task=worker.submit(()->{try{DlnaClient.Report report=new DlnaClient.Report();List<DlnaClient.Device> devices=ready!=null&&!ready.isEmpty()?ready:DlnaClient.discover(getApplicationContext(),true,report);runOnUiThread(()->{if(!active(ticket))return;
             // One media server on the home network: choose it for the viewer and go straight to their collection's folders.
-            if(devices.size()==1&&!source.optBoolean("enabled")){DlnaClient.Device only=devices.get(0);EditLock.ask(this,()->{try{source=only.json();setup=true;browse("0",0);}catch(Exception e){note("Unable to select that server");}});}status.setText(devices.isEmpty()?"No media servers found. Check that the NAS media service is running, the TV is on the same network, and VPN settings allow local discovery.":"Select your media server");for(DlnaClient.Device device:devices)button(device.name.isEmpty()?"Media server":device.name,()->EditLock.ask(this,()->{try{source=device.json();setup=true;browse("0",0);}catch(Exception e){note("Unable to select that server");}}));});}catch(Exception e){runOnUiThread(()->{if(active(ticket))status.setText("Discovery unavailable. Check your local network and try again.");});}});
+            if(devices.size()==1&&!source.optBoolean("enabled")&&!autoChosen){autoChosen=true;DlnaClient.Device only=devices.get(0);EditLock.ask(this,()->choose(only));}
+            status.setText(devices.isEmpty()?report.plain():"Select your media server");for(DlnaClient.Device device:devices)button(device.name.isEmpty()?"Media server":device.name,()->EditLock.ask(this,()->choose(device)));});}catch(Exception e){runOnUiThread(()->{if(active(ticket))status.setText("The TV couldn't search your home network just now. Check its network connection, then search again.");});}});
     }
-    private void roots(){inFolder=false;history.clear();names.clear();page("Your Films & TV");text("Your selected collection",20);JSONArray roots=source.optJSONArray("roots");if(roots!=null)for(int i=0;i<roots.length();i++){JSONObject root=roots.optJSONObject(i);if(root!=null)button(root.optString("name","Collection"),()->{currentFolder=root.optString("name","Collection");browse(root.optString("id"),0); });}button("Change media server",()->EditLock.ask(this,()->{setup=true;discover();}));button("Back",this::finish);}
-    private void browse(String id,int offset){inFolder=true;int ticket=++generation;page(setup?"Choose library folders":"Your Films & TV");TextView state=text("Loading folders...",19);
-        if(setup&&!id.equals("0"))button("Add this folder to your library",()->{try{JSONArray roots=source.optJSONArray("roots");if(roots==null)roots=new JSONArray();boolean exists=false;for(int i=0;i<roots.length();i++)if(roots.getJSONObject(i).optString("id").equals(id))exists=true;if(!exists)roots.put(new JSONObject().put("id",id).put("name",currentFolder));source.put("roots",roots);note("Folder selected");}catch(Exception e){note("Unable to select folder");}});
-        if(setup)button("Save selected folders",()->{try{if(source.optJSONArray("roots")==null||source.getJSONArray("roots").length()==0){note("Select at least one folder");return;}new Vault(this).save("dlna",source);getSharedPreferences("unified-tv-preview",0).edit().putString("librarySource","dlna").apply();setup=false;history.clear();roots();}catch(Exception e){note("Unable to save library securely");}});
-        button("Back",()->{if(history.isEmpty()){if(setup)discover();else roots();}else {currentFolder=names.pop();browse(history.pop(),0);}});
-        worker.execute(()->{try{DlnaClient.Page page=DlnaClient.browse(source,id,offset);List<DlnaClient.Item> entries=page.items;runOnUiThread(()->{if(!active(ticket))return;state.setText(entries.isEmpty()?(page.more(offset)?"Nothing to show here yet.":"No supported videos or folders found."):setup?"Open a folder, then add it. Only selected folders will appear in your library.":"");
-            LinearLayout row=null;for(int i=0;i<entries.size();i++){DlnaClient.Item item=entries.get(i);if(i%4==0){row=new LinearLayout(this);column.addView(row);}row.addView(card(item,ticket,()->{if(item.folder){history.push(id);names.push(currentFolder);currentFolder=item.title;browse(item.id,0);}else if(!setup)startActivity(new Intent(this,PlayerActivity.class).putExtra("dlnaUrl",item.url).putExtra("title",item.title));}),new LinearLayout.LayoutParams(0,-2,1));}
-            if(page.more(offset))button("Show more",()->browse(id,page.next(offset)));});}catch(Exception e){runOnUiThread(()->{if(active(ticket)){state.setText("The media server is unavailable. Check its media service and local-network access.");button("Retry",()->browse(id,offset));}});}});
+    private void choose(DlnaClient.Device device){try{source=device.json();setup=true;trail.start(new DlnaScope.Frame("0",device.name,0),"");show();}catch(Exception e){note("Unable to select that server");}}
+
+    private void roots(){nextTicket();trail.clear();page("Your Films & TV");text("Your selected collection",20);JSONArray roots=source.optJSONArray("roots");Button again=null;
+        if(roots!=null)for(int i=0;i<roots.length();i++){JSONObject root=roots.optJSONObject(i);if(root==null)continue;String id=root.optString("id"),name=root.optString("name","Collection");
+            Button b=button(name,()->{trail.start(new DlnaScope.Frame(id,name,0),id);show();});if(id.equals(focusId))again=b;}
+        button("Change media server",()->EditLock.ask(this,()->{setup=true;discover();}));button("Back",this::finish);
+        if(again!=null)again.requestFocus();focusId="";
+    }
+    private void open(DlnaClient.Item folder){trail.open(new DlnaScope.Frame(folder.id,folder.title,0));show();}
+    /** Back one folder; from the first folder a viewer returns to the saved collections, never the server's top level. */
+    private void back(){
+        DlnaScope.Frame leaving=trail.current();DlnaScope.Frame parent=trail.back();focusId=leaving==null?"":leaving.id;
+        if(parent!=null)show();else if(setup)discover();else roots();
+    }
+    private void show(){
+        DlnaScope.Frame frame=trail.current();if(frame==null){roots();return;}
+        String id=frame.id;int offset=frame.offset;int ticket=nextTicket();
+        page(setup?"Choose library folders":"Your Films & TV");if(!frame.name.isEmpty()&&!id.equals("0"))text(frame.name,22);TextView state=text("Loading…",19);
+        if(setup&&!id.equals("0"))button("Add this folder to your library",()->{try{JSONArray roots=source.optJSONArray("roots");if(roots==null)roots=new JSONArray();if(DlnaScope.root(roots,id)==null)roots.put(new JSONObject().put("id",id).put("name",frame.name.isEmpty()?"Collection":frame.name));source.put("roots",roots);note("Folder selected");}catch(Exception e){note("Unable to select folder");}});
+        if(setup)button("Save selected folders",()->{try{if(source.optJSONArray("roots")==null||source.getJSONArray("roots").length()==0){note("Select at least one folder");return;}new Vault(this).save("dlna",source);getSharedPreferences("unified-tv-preview",0).edit().putString("librarySource","dlna").apply();setup=false;roots();}catch(Exception e){note("Unable to save library securely");}});
+        button("Back",this::back);
+        AtomicBoolean done=new AtomicBoolean();
+        JSONObject from=source;
+        task=worker.submit(()->{
+            DlnaClient.Page page;JSONObject moved=null;
+            try{page=DlnaClient.browse(from,id,offset);}
+            catch(Exception first){
+                // The NAS may have restarted with a new address: look for the same server (same UDN) once, quietly.
+                try{moved=first instanceof DlnaClient.Failure&&((DlnaClient.Failure)first).kind==DlnaClient.Failure.UNREACHABLE?relocate(from):null;
+                    if(moved==null)throw first;page=DlnaClient.browse(moved,id,offset);}
+                catch(Exception e){if(done.compareAndSet(false,true))runOnUiThread(()->failed(ticket,state,e));return;}
+            }
+            DlnaClient.Page result=page;JSONObject relocated=moved;
+            if(!done.compareAndSet(false,true))return;
+            runOnUiThread(()->{if(!active(ticket))return;if(relocated!=null)keep(relocated);render(ticket,state,frame,result);});
+        });
+        handler.postDelayed(()->{if(active(ticket)&&done.compareAndSet(false,true)){if(task!=null)task.cancel(true);failed(ticket,state,new DlnaClient.Failure(DlnaClient.Failure.UNREACHABLE));}},LOAD_LIMIT_MS);
+    }
+    /** The same server (matched by its UDN, never by name) at a new local address, or null. */
+    private JSONObject relocate(JSONObject from)throws Exception{
+        String udn=from.optString("udn");if(udn.isEmpty())return null;
+        for(DlnaClient.Device d:DlnaClient.discover(getApplicationContext(),false)){
+            if(udn.equals(d.udn)&&!d.control.equals(from.optString("control"))&&d.service.equals(from.optString("service"))){JSONObject copy=new JSONObject(from.toString());copy.put("control",d.control).put("location",d.location);return copy;}
+        }
+        return null;
+    }
+    /** Saves the server's new address for this library; folders and their IDs are unchanged. */
+    private void keep(JSONObject relocated){source=relocated;if(!setup)try{new Vault(this).save("dlna",source);}catch(Exception ignored){/* Still usable for this visit. */}}
+    private void failed(int ticket,TextView state,Exception e){
+        if(!active(ticket))return;
+        int kind=e instanceof DlnaClient.Failure?((DlnaClient.Failure)e).kind:DlnaClient.Failure.SERVER;
+        state.setText(DlnaClient.Failure.plain(kind));
+        Button retry=button("Try again",this::show);retry.requestFocus();
+        if(kind==DlnaClient.Failure.MISSING&&!setup)button("Choose folders again",()->EditLock.ask(this,()->{setup=true;discover();}));
+    }
+    private void render(int ticket,TextView state,DlnaScope.Frame frame,DlnaClient.Page page){
+        List<DlnaClient.Item> entries=page.items;int offset=frame.offset;
+        state.setText(entries.isEmpty()?(page.more(offset)?"Nothing to show here yet.":"No supported videos or folders found."):setup?"Open a folder, then add it. Only selected folders will appear in your library.":"");
+        LinearLayout row=null;Button again=null;
+        for(int i=0;i<entries.size();i++){DlnaClient.Item item=entries.get(i);if(i%4==0){row=new LinearLayout(this);column.addView(row);}
+            LinearLayout card=card(item,ticket,()->{focusId=item.id;if(item.folder)open(item);else if(!setup)startActivity(new Intent(this,PlayerActivity.class).putExtra("dlnaUrl",item.url).putExtra("title",item.title));});
+            row.addView(card,new LinearLayout.LayoutParams(0,-2,1));if(item.id.equals(focusId))again=(Button)card.getChildAt(card.getChildCount()-1);}
+        if(page.more(offset))button("Show more",()->{trail.page(page.next(offset));show();});
+        if(again!=null)again.requestFocus();
     }
     /** Poster-first: a title shows its own server artwork, never another title's. No artwork means a plain card. */
     private LinearLayout card(DlnaClient.Item item,int ticket,Runnable open){
@@ -38,6 +125,7 @@ public final class DlnaLibraryActivity extends Screen {
         Button b=styled(label,open);b.setTextSize(18);b.setContentDescription((item.folder?"Open ":"Play ")+item.title);card.addView(b,new LinearLayout.LayoutParams(-1,-2));
         if(autoFocusButtons&&column.findFocus()==null)b.requestFocus();return card;
     }
-    @Override public void onBackPressed(){if(inFolder){if(!history.isEmpty()){currentFolder=names.pop();browse(history.pop(),0);}else if(setup){inFolder=false;discover();}else roots();}else super.onBackPressed();}
-    @Override protected void onDestroy(){generation++;worker.shutdownNow();artwork.shutdownNow();super.onDestroy();}
+    @Override public void onBackPressed(){if(!trail.isEmpty())back();else super.onBackPressed();}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);if(!setup&&!trail.isEmpty()){out.putString("trail",trail.save());out.putString("focus",focusId);}}
+    @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);worker.shutdownNow();artwork.shutdownNow();super.onDestroy();}
 }
