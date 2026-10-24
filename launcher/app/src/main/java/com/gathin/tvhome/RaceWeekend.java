@@ -125,6 +125,20 @@ final class RaceWeekend {
     private RaceWeekend() {
     }
 
+    /** Session times a calendar may hold: Instant.parse also takes year +999999999, which no clock format can show. */
+    static final Instant EARLIEST = Instant.parse("2000-01-01T00:00:00Z");
+    static final Instant LATEST = Instant.parse("2101-01-01T00:00:00Z");
+
+    /** A calendar's "start" (ISO-8601 UTC), or null when it does not parse or falls outside 2000-2100. */
+    static Instant sessionStart(String text) {
+        try {
+            Instant start = Instant.parse(text);
+            return start.isBefore(EARLIEST) || !start.isBefore(LATEST) ? null : start;
+        } catch (java.time.format.DateTimeParseException e) {
+            return null;
+        }
+    }
+
     /** The weekend {@code now} falls in, or null when no race is near. */
     static State at(List<Race> calendar, Instant now) {
         for (Race race : calendar) {
