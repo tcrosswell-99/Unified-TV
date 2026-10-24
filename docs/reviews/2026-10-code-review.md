@@ -1,6 +1,6 @@
 # Code review, October 2026
 
-> **Status:** the findings below were addressed in [0.1.0](../../CHANGELOG.md). See [Status after 0.1.0](#status-after-010) at the end. Line numbers refer to the code as it was at `7a41145`.
+> **Status:** the findings below were addressed in [0.4.1](../../CHANGELOG.md). See [Status after 0.4.1](#status-after-041) at the end. Line numbers refer to the code as it was at `7a41145`.
 
 Date: 24 October 2026. Read-only review of `claude/modest-davinci-dq3wrc` at `7a41145`. Nothing was committed, pushed or run on a TV.
 
@@ -81,7 +81,7 @@ Severity reflects impact on a household TV. There are no Critical findings.
 - **PowerShell.** The guard tests skip without `pwsh`; sh/ps1 parity was checked by reading only.
 - **Partial coverage.** `HomeView.java` (about 2,950 lines) drawing paths and the TV Hub, World Clock, Photo Prints and Flock UIs were skimmed rather than read line by line.
 
-## Status after 0.1.0
+## Status after 0.4.1
 
 | # | Status | Note |
 | --- | --- | --- |

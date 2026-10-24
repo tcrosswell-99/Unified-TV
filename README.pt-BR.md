@@ -44,7 +44,7 @@ Free My TV. Este projeto é para quem quer os dois e um Explorar completo.
 - Clima da sua cidade, tema que escurece com o pôr do sol, screensaver com fotos.
 - Funciona sem ADB ligado: debloat, troca da Home e o serviço dos botões são feitos uma vez pelo computador.
 
-**Explorar** (o botão ▶ da tela inicial ou um botão do controle)
+**Explorar** (o botão â–¶ da tela inicial ou um botão do controle)
 - Banner como o do Apple TV, com a logo do título; a imagem se mistura ao fundo, que acompanha o pôster focado.
 - Fileiras de até 10 títulos com "Ver mais", que abre a lista inteira em grade, carregada conforme você desce.
 - Menu lateral (seta para a esquerda na borda): Explorar e ajustes, Buscar, Início, Minha lista, e o resto na ordem
@@ -137,3 +137,6 @@ conflito vira uma issue com os comandos para resolver à mão.
   Clima por Open-Meteo.com.
 - Matheus Caldeira, [github.com/matheus-caldeira](https://github.com/matheus-caldeira). Dúvidas e problemas nas
   [issues](https://github.com/matheus-caldeira/cleanyourtv-ui/issues).
+
+Inherited documentation: [Unified TV](README.md) · [CleanYourTV English](README.cleanyourtv.md) · [Português](README.pt-BR.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md). These translations describe inherited projects, not the current Unified TV specification.
+

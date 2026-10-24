@@ -8,7 +8,7 @@ Concept artwork for the README, the GitHub social preview and posts about the pr
 | [`every-room.png`](every-room.png) | 1600×900 | "Same apps, same order, every room" |
 | [`before-after.png`](before-after.png) | 1600×900 | Different brands today versus one harmonised home |
 | [`home-view.png`](home-view.png) | 1600×900 | Optional Home Assistant alerts over viewing |
-| [`alert-priority.png`](alert-priority.png) | 1200×850 | Alert order, see [Home view](../HOME_VIEW.md) |
+| [`alert-priority.png`](alert-priority.png) | 1200×700 | Alert order, see [Home view](../HOME_VIEW.md) |
 | [`social-preview.png`](social-preview.png) | 1280×640 | Repository settings → Social preview |
 
 ## Rules these images follow

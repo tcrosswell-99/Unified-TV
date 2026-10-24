@@ -1,0 +1,67 @@
+name: Versioned Android preview release
+
+on:
+  push:
+    tags: ['android-preview-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-35 build-tools;35.0.0
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Tests, lint, APK and manifest verification
+        run: bash preview/build.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-preview-verification
+          path: |
+            preview/app/build/reports/
+            preview/app/build/test-results/
+          retention-days: 30
+      - name: Assemble versioned release files
+        run: |
+          mkdir release
+          cp preview/out/UnifiedTV-Preview.apk release/
+          cp preview/out/SHA256SUMS.txt release/
+          cp preview/out/manifest.txt release/
+          cp docs/PRODUCT_SPEC.md release/Unified-TV-Specification.md
+          cp docs/FEATURE_STATUS.md release/Unified-TV-Feature-Status.md
+          cp docs/AI_HANDOVER.md release/Unified-TV-AI-Handover.md
+          cp docs/PREVIEW_0_4_RELEASE.md release/Release-notes.md
+          cp scripts/windows/Install-Preview-0.4.txt release/Windows-sideload.txt
+          cd preview/app/build
+          zip -qr ../../../release/Android-test-and-lint-reports.zip reports test-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android-preview-release-files
+          path: release/
+          retention-days: 30
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android-preview-release-files
+          path: release
+      - name: Retain immutable prerelease and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --prerelease --title "Unified TV $RELEASE_TAG" --notes-file release/Release-notes.md release/*

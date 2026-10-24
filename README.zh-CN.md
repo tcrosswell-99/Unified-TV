@@ -284,3 +284,5 @@ TV_HOST=192.168.1.50 tools/restore.sh "examples/你的机型/debloat.txt" com.go
 ## 许可证
 
 项目采用 [MIT 许可证](LICENSE)。Outfit 字体采用 [SIL Open Font License](launcher/FONT-LICENSE-OFL.txt)。
+
+Inherited documentation: [Unified TV](README.md) · [CleanYourTV English](README.cleanyourtv.md) · [Português](README.pt-BR.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md). These translations describe inherited projects, not the current Unified TV specification.

@@ -1,5 +1,12 @@
 # Unified TV roadmap
 
+**Current Android candidate: Preview 0.4.** Two-column Settings, automatic local media-server discovery, encrypted selected folders, embedded DLNA playback trial, five authorised gallery examples and four VPN states. See [feature status](FEATURE_STATUS.md), [complete v2.2 specification](PRODUCT_SPEC.md) and [AI handover](AI_HANDOVER.md). Local Android checks passed; new TCL/Frame hardware acceptance remains outstanding. The latest Apps request allows owner pin/unpin, but that menu is not implemented in this build. It supersedes older fixed-membership requirement text below.
+
+
+**Latest owner direction, 24 October 2026:** the dock is now a fixed approved set, with rearrangement only. Add/remove/pin and the arbitrary Apps picker are removed. This supersedes earlier editable-shortlist language. The approved shared six are SmartTube, Netflix, Disney+, BBC, Live TV and Music; Sony adds Xbox and the native Frame plan adds Samsung TV Plus. See [Preview 0.3](PREVIEW_0_3.md) for implementation and remaining VPN gates.
+
+**Current native plan:** [Complete specification v2.0 draft](PRODUCT_SPEC.md) selects native Android for Sony/TCL and a native Tizen Web Application for Frame, with embedded Media3/AVPlay and no VLC playback. No external Frame streamer is required. Native Tizen remains unfinished. [TCL hardware evidence](TCL_TEST_2026_10_24.md) records the limited Android smoke pass and remaining gates. Earlier external-streamer and VLC milestones below are superseded by this plan.
+
 **Current phase: foundation and technical validation.** Items listed here are not shipping features until reviewed and tested. Milestones follow [Product Spec](PRODUCT_SPEC.md); hardware acceptance must precede release claims.
 
 ## 0. Keep the inherited baseline safe
@@ -46,7 +53,7 @@
 
 ## 3. Optional household modules
 
-- **Home view:** optional Home Assistant glance strip and alerts with the strict priority order in [Home view](HOME_VIEW.md): safety alarm, doorbell, baby monitor, reminders, deliveries/arrivals, sport, everything else. Connected on the TV under Settings > Connections; nothing on screen when disconnected.
+- **Home view:** optional Home Assistant glance strip and alerts with the strict priority order in [Home view](HOME_VIEW.md): doorbell (Ring), reminders (Alexa), then deliveries and arrivals, sport and everything else. Connected on the TV under Settings > Connections; nothing on screen when disconnected.
 - Ring and Alexa reminders via trusted Home Assistant events, with clear overlay priority.
 - Tottenham matchday widget without scores, hidden on other days.
 - NordVPN truthful status and strict Live TV launch restrictions.
@@ -68,3 +75,5 @@
 ## Priority policy
 
 Safety, playback and responsive navigation come before visual flourishes. Ring interruption and VPN fail-closed behaviour are absolute gates for the household reference implementation. The public project must remain useful with all optional household integrations disabled.
+
+Preview 0.2 implementation and remaining gates: [status and limitations](PREVIEW_0_2.md). This does not advance hardware gates to Tested.

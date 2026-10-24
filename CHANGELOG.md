@@ -2,27 +2,27 @@
 
 All notable changes to Unified TV are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): while the project is below 1.0.0, any release may change behaviour.
 
-Unified TV's version covers the whole repository. The apps inside it keep their own Android version numbers, listed under each release. The product specification has its own document version (see [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md)).
+Unified TV's version follows the Android Preview line (`0.4`, `0.4.1`, …) and covers the whole repository. Preview APKs are published from `android-preview-v*` tags. The inherited apps keep their own Android version numbers, listed under each release. The product specification has its own document version (see [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md)); feature-by-feature evidence is in [FEATURE_STATUS.md](docs/FEATURE_STATUS.md).
 
 Nothing in a release has been tested on a television unless the entry says so. Planned features stay in the [roadmap](docs/ROADMAP.md) until they have been tested on real hardware.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-24
+## [0.4.1] - 2026-10-24
 
-The first tracked version of Unified TV: the inherited CleanYourTV code made safer and sturdier, the project's purpose explained, and green CI to build on. Every fix comes from the [October 2026 code review](docs/reviews/2026-10-code-review.md). All changes were checked by compiling and unit-testing the code; **none has been tested on a television yet.**
+Android Preview 0.4 plus fixes for everything around it: the inherited CleanYourTV code made safer and sturdier, the project's purpose explained, and green CI to build on. The preview app itself is unchanged from 0.4 (`0.4-preview`, versionCode 4). Every fix comes from the [October 2026 code review](docs/reviews/2026-10-code-review.md). All changes were checked by compiling and unit-testing the code; **none has been tested on a television yet.**
 
-App versions in this release: launcher **2.8** (versionCode 9), launcher UI **1.1** (versionCode 2). Product specification **v1.9 draft**.
+App versions in this release: Android Preview **0.4-preview** (unchanged), inherited launcher **2.8** (versionCode 9), launcher UI **1.1** (versionCode 2). Product specification **v2.2** (unchanged).
 
 ### Added
 
-- **One familiar home on every TV.** The README now explains the aim: the same apps, in the same order, on every TV in the house, whatever the brand. Android TV and Google TV first, Samsung through a streamer, other TVs later.
-- **Home view design note** ([docs/HOME_VIEW.md](docs/HOME_VIEW.md)): optional Home Assistant alerts on the TV, such as the doorbell, reminders, deliveries and matchday, with a strict order so only the most important alert shows. This is a planned design, not a working feature yet.
+- **One familiar home on every TV.** The README now explains the aim: the same apps, in the same order, on every TV in the house, whatever the brand. A native Android app for Sony and TCL first, a native Tizen app for Samsung Frame next, other TVs later.
+- **Home view design note** ([docs/HOME_VIEW.md](docs/HOME_VIEW.md)): optional Home Assistant alerts on the TV, one at a time in the spec's order (doorbell first, then reminders), with deliveries and matchday as proposed glances. A smoke/CO alarm above the doorbell is recorded as a proposal awaiting the owner's decision. This is a planned design, not a working feature yet.
 - **Ideas catalogue** ([docs/IDEAS.md](docs/IDEAS.md)): optional features for home and safety, family, sport, content and practical everyday information, each marked as an idea, planned, or partly inherited.
 - **Marketing images** ([docs/marketing](docs/marketing/README.md)): concept artwork for the README and social preview, with an editable source and a render script. Each image is labelled as concept artwork, not a screenshot.
 - **Maintainer checklist** ([docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)) for repository description, topics, social preview and outreach.
 - **Optional own signing keys:** the launcher can be signed with your own key through four settings (`UNIFIEDTV_KEYSTORE`, `UNIFIEDTV_KEYSTORE_PASSWORD`, `UNIFIEDTV_KEY_ALIAS`, `UNIFIEDTV_KEY_PASSWORD`), and the launcher UI's keystore password can be set with `KEYSTORE_PASSWORD`. Without them, builds are signed exactly as before. Keep a backup of your keystore: updates need the same key.
-- **CI:** a launcher UI build job, unit tests for changed add-ons, and weekly Dependabot updates for CI actions and the Python tool pins.
+- **CI:** a launcher UI build job alongside the preview APK job, unit tests for changed add-ons, and weekly Dependabot updates for CI actions and the Python tool pins.
 - This changelog.
 
 ### Changed
@@ -39,7 +39,6 @@ App versions in this release: launcher **2.8** (versionCode 9), launcher UI **1.
   - The issue template for TV reports now asks about restore, and stresses that cleanup is optional and needs consent.
   - The upstream sponsor button and a duplicate bug template have been removed.
 - **Python tools:** Pillow 13.0.0 on Python 3.11 or later (11.3.0 stays for older Python), and cryptography capped below 51.
-- **Product specification:** now v1.9 draft, adding the harmonised-house positioning, the Home view note and alert order, and the ideas catalogue. No requirements were weakened.
 
 ### Fixed
 
@@ -71,9 +70,31 @@ App versions in this release: launcher **2.8** (versionCode 9), launcher UI **1.
 
 ### Known limitations
 
-- Nothing in this release has been tested on a television. The crash fixes, memory limits, Android 10 theme check and sleep timer changes each need a real-device check (see [compatibility](docs/COMPATIBILITY.md)).
+- Nothing in this release has been tested on a television. The crash fixes, memory limits, Android 10 theme check and sleep timer changes each need a real-device check (see [compatibility](docs/COMPATIBILITY.md)), as does everything in Preview 0.4.
 - Android 8 and 9 still trust a theme file in shared storage, because they have no `content write` route.
 - CI actions are pinned by version tag, not commit SHA.
 
-[Unreleased]: https://github.com/tcrosswell-99/Unified-TV/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/tcrosswell-99/Unified-TV/releases/tag/v0.1.0
+## [0.4.0] - 2026-10-24
+
+[Android Preview 0.4](https://github.com/tcrosswell-99/Unified-TV/releases/tag/android-preview-v0.4.0), a test prerelease of the separate `io.unifiedtv.preview` app. Full notes: [PREVIEW_0_4_RELEASE.md](docs/PREVIEW_0_4_RELEASE.md). Product specification v2.2.
+
+### Added
+
+- Two-column Settings: Connections, Profiles, Notifications, Appearance, TV & performance, and Privacy & security.
+- Automatic UPnP/DLNA server discovery by name, encrypted selected-folder configuration, and a Media3 direct-play trial.
+- Home Assistant discovery on the home network to pre-fill a new connection.
+- A gallery with five owner-authorised example images, interval and remote controls.
+- Four VPN states (Connected, Disconnected, Checking, Unknown). Live TV stays blocked until VPN protection is proven.
+- Music opens the official Amazon Music app, or its store page.
+
+### Verification
+
+37 Android tests, lint and the APK builds passed. Not installed on a TV; editable Apps, real NAS playback, Ring, reminders, VPN protection and the Samsung app remain open. See [FEATURE_STATUS.md](docs/FEATURE_STATUS.md).
+
+## Earlier previews
+
+Untagged in this changelog: [Preview 0.3](docs/PREVIEW_0_3.md) (limited TCL checks), [Preview 0.2](docs/PREVIEW_0_2.md) and the [first Android preview](docs/FIRST_ANDROID_PREVIEW.md).
+
+[Unreleased]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.4.1...HEAD
+[0.4.1]: https://github.com/tcrosswell-99/Unified-TV/compare/android-preview-v0.4.0...android-preview-v0.4.1
+[0.4.0]: https://github.com/tcrosswell-99/Unified-TV/releases/tag/android-preview-v0.4.0

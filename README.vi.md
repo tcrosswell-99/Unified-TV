@@ -370,3 +370,5 @@ Liên hệ báo chí và hợp tác xem [phần liên hệ tiếng Anh](README.c
 ## Giấy phép
 
 Dự án dùng [giấy phép MIT](LICENSE). Font Outfit dùng [SIL Open Font License](launcher/FONT-LICENSE-OFL.txt).
+
+Inherited documentation: [Unified TV](README.md) · [CleanYourTV English](README.cleanyourtv.md) · [Português](README.pt-BR.md) · [日本語](README.ja.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md). These translations describe inherited projects, not the current Unified TV specification.

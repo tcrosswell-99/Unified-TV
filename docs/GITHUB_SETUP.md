@@ -13,7 +13,7 @@ GitHub hides forks from repository search by default, and a fork with fewer star
 
 Settings → General (or the ⚙ next to **About**). Suggested description (under 350 characters):
 
-> Calm, advert-free home screen for Android TV & Google TV: one familiar launcher on every TV in the house (Sony, TCL, Samsung via a streamer), with optional reversible cleanup and planned Home Assistant alerts. Early-development fork of CleanYourTV.
+> Calm, advert-free home screen for Android TV & Google TV: one familiar experience on every TV in the house (Sony and TCL on Android, Samsung Frame on Tizen), with optional reversible cleanup and planned Home Assistant alerts. Early-development fork of CleanYourTV.
 
 - [ ] Paste the description.
 - [ ] Leave the website empty until GitHub Pages (section 6) exists.
