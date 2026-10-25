@@ -10,6 +10,11 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **Memory and speed on 2 GB TVs (Android):** cheaper graphics and smaller caches on low-memory TVs, with the same look and navigation. Nothing runs while Home is hidden, and memory is given back when Android asks. `preview/tools/mem_check.py` measures it from a PC. **Not tested** on a television.
+- **What this TV can do, sound output, guided setup and remote help (Android Settings):** features are shown in five plain states, detected rather than assumed from the brand. Sound output is read-only. A resumable 5-step first-run guide can be re-run from Settings. **Not tested** on a television.
+- **White brand marks on the dock (OD-20), a country flag beside the VPN shield (OD-21), and Unified TV's own app icon and banner.** Settings > Updates & About shows the exact build. **Not tested** on a television.
+- **Clearer phone setup:** one QR code that always opens this TV's setup page, numbered steps on the TV and the phone, and a direct link to the API-Football key page with VPN and Private Relay help. **Not tested** on a television.
+
 - **Settings foundations (Android, module 12):** a versioned settings schema with safe migration. Restore defaults per section, and an overall reset that never changes alarms or Live TV. Readability changes undo themselves after 15 s unless kept. Backup and import go through the phone page, with no secrets in the file. Also: a privacy page with per-item clearing, a local event log (7 days, no pictures), quiet hours for person alerts only, a connection summary, text size and longer on-screen times, media server rename/rescan/forget, playback preferences (resume choice, autoplay off by default, subtitle size), and replacing dock apps that were uninstalled. **Not tested** on a television.
 - **Live Home behind Settings (Android):** appearance changes show on Home underneath the sidebar without moving it, and closing Settings returns focus to the gear. **Not tested** on a television.
 - **Favourites and "Wrong picture?" (Android library):** hold OK on a title to add it to Favourites (per profile), or to choose its poster from TMDB candidates, type another title, or show no picture. **Not tested** on a television.
@@ -54,6 +59,14 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **From the owner's second TCL test (25 October 2026):**
+  - With NordVPN connected, the library now explains that Nord is blocking the home network, instead of saying the media server is off, and reaches the NAS where Nord allows local devices.
+  - Choosing Unified TV as Home no longer leaves you on the TV's own Home, and the app says so if the TV keeps its own Home button.
+  - "Ask your TV" falls back to the TV's own voice screen.
+  - The phone setup page accepts the TV's address however the phone writes it.
+  - The Home background now visibly moves.
+
+  **Not tested** on a television.
 - **Kids with no PIN:** the gear did nothing, leaving Kids stuck. Settings now opens with its changes locked, and Kids can return to Adults. The 135 ms pause before a highlighted title's background has been removed. **Not tested** on a television.
 - **Wallpaper memory:** pictures now take half the memory and are freed as soon as they fade out, after the TCL froze during the Wallpaper under memory pressure (25 October 2026). **Not tested** on a television.
 - **From the owner's TCL test (25 October 2026):**
