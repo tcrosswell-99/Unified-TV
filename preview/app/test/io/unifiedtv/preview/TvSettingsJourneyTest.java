@@ -49,7 +49,9 @@ public class TvSettingsJourneyTest {
             assertTrue(says(root(a),"Never guessed from the TV's brand"));
             // Read from this (Robolectric) TV: the preview package, nothing set up, Android 11.
             for(String feature:new String[]{"Unified TV as the Home screen","Your Films & TV","Film posters","Live TV","Frosted glass in Settings"})assertNotNull(feature,find(root(a),feature));
-            assertTrue("the preview says why it is never Home",says(root(a),"This is the Unified TV preview"));
+            // Both apps run these tests: the preview says it is never Home; the launcher says Home is still the TV's own.
+            if(DefaultHome.available(a))assertTrue("the launcher says the Home button still opens the TV's own",says(root(a),"opens the TV's own"));
+            else assertTrue("the preview says why it is never Home",says(root(a),"This is the Unified TV preview"));
             assertTrue(says(root(a),Capabilities.State.SETUP_REQUIRED.words));assertTrue(says(root(a),Capabilities.State.UNSUPPORTED_ON_DEVICE.words));
             assertEquals("each row's state is spoken with it","Your Films & TV, "+Capabilities.State.SETUP_REQUIRED.words,String.valueOf(find(root(a),"Your Films & TV").getContentDescription()));
             // OK on a feature goes to its next step inside the same sheet; Back comes out of it.
@@ -122,7 +124,7 @@ public class TvSettingsJourneyTest {
             press(a,"What the buttons do");
             assertEquals(SettingsActivity.REMOTE_HELP,a.overlay().task());
             for(String key:new String[]{"OK","Hold OK","Up","Down","Back","Home"}){Button b=find(root(a),key);assertNotNull(key,b);assertTrue("focusable, so the remote can move through the list",b.isFocusable());}
-            assertTrue(says(root(a),"straight to the small icons at the top right"));assertTrue(says(root(a),"This preview never becomes the Home screen"));
+            assertTrue(says(root(a),"straight to the small icons at the top right"));assertTrue(says(root(a),DefaultHome.available(a)?"isn't this TV's Home screen yet":"This preview never becomes the Home screen"));
             Button up=find(root(a),"Up");up.performClick();idle();assertEquals("a help row does nothing",SettingsActivity.REMOTE_HELP,a.overlay().task());
             a.onBackPressed();idle();assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());assertEquals(SettingsActivity.CONNECTIONS,a.overlay().category());
         }
