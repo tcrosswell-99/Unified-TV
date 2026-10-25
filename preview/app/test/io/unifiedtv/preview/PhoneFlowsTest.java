@@ -1,6 +1,5 @@
 package io.unifiedtv.preview;
 
-import com.sun.net.httpserver.HttpServer;
 import org.json.JSONObject;
 import org.junit.*;
 import static org.junit.Assert.*;
@@ -180,28 +179,24 @@ public class PhoneFlowsTest {
     }
 
     // --- against a fake Home Assistant on this machine
-    private HttpServer fake;
+    private MiniHttp fake;
     private final List<String> seen = Collections.synchronizedList(new ArrayList<>());
-    @After public void down() { if (fake != null) fake.stop(0); }
+    @After public void down() { if (fake != null) fake.close(); }
     private String fakeHa() throws IOException {
-        fake = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
-        fake.createContext("/", x -> {
-            String body = new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), path = x.getRequestURI().getPath();
-            String auth = x.getRequestHeaders().getFirst("Authorization");
-            seen.add(x.getRequestMethod() + " " + path + " " + body + (auth == null ? "" : " auth=" + auth));
-            int status; String reply;
-            if (path.equals("/manifest.json")) { status = 200; reply = "{\"name\":\"Home Assistant\",\"short_name\":\"Assistant\"}"; }
-            else if (path.equals("/auth/token")) {
+        fake = new MiniHttp(x -> {
+            String body = x.body, path = x.path, auth = x.header("Authorization");
+            seen.add(x.method + " " + path + " " + body + (auth == null ? "" : " auth=" + auth));
+            if (path.equals("/manifest.json")) return new MiniHttp.Response(200, "{\"name\":\"Home Assistant\",\"short_name\":\"Assistant\"}");
+            if (path.equals("/auth/token")) {
                 Map<String, String> f = PhoneSetupServer.decode(body);
                 boolean ok = "authorization_code".equals(f.get("grant_type")) && "good-code".equals(f.get("code")) && "http://192.168.1.20:50000/".equals(f.get("client_id"));
-                status = ok ? 200 : 400; reply = ok ? "{\"access_token\":\"ACCESS\",\"expires_in\":1800,\"refresh_token\":\"REFRESH\",\"token_type\":\"Bearer\"}" : "{\"error\":\"invalid_request\"}";
-            } else if (path.equals("/api/")) { boolean ok = "Bearer GOOD".equals(auth); status = ok ? 200 : 401; reply = ok ? "{\"message\":\"API running.\"}" : "401: Unauthorized"; }
-            else if (path.equals("/auth/revoke")) { status = 200; reply = ""; }
-            else { status = 302; reply = ""; x.getResponseHeaders().add("Location", "http://elsewhere.invalid/"); }
-            byte[] b = reply.getBytes(StandardCharsets.UTF_8); x.sendResponseHeaders(status, b.length == 0 ? -1 : b.length); if (b.length > 0) x.getResponseBody().write(b); x.close();
+                return new MiniHttp.Response(ok ? 200 : 400, ok ? "{\"access_token\":\"ACCESS\",\"expires_in\":1800,\"refresh_token\":\"REFRESH\",\"token_type\":\"Bearer\"}" : "{\"error\":\"invalid_request\"}");
+            }
+            if (path.equals("/api/")) { boolean ok = "Bearer GOOD".equals(auth); return new MiniHttp.Response(ok ? 200 : 401, ok ? "{\"message\":\"API running.\"}" : "401: Unauthorized"); }
+            if (path.equals("/auth/revoke")) return new MiniHttp.Response(200, "");
+            return new MiniHttp.Response(302, "").header("Location", "http://elsewhere.invalid/");
         });
-        fake.start();
-        return "http://127.0.0.1:" + fake.getAddress().getPort();
+        return fake.base();
     }
 
     @Test public void oauthCodeExchangeAgainstAFakeHomeAssistant() throws Exception {
@@ -230,18 +225,16 @@ public class PhoneFlowsTest {
     }
 
     @Test public void tmdbCheckAgainstAFakeServer() throws Exception {
-        fake = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
-        fake.createContext("/3/authentication", x -> {
-            String q = x.getRequestURI().getRawQuery(), auth = x.getRequestHeaders().getFirst("Authorization");
-            boolean ok = "api_key=0123456789abcdef0123456789abcdef".equals(q) || "Bearer eyJgood.a.b".equals(auth);
-            byte[] b = (ok ? "{\"success\":true,\"status_code\":1}" : "{\"success\":false,\"status_code\":7}").getBytes(StandardCharsets.UTF_8);
-            x.sendResponseHeaders(ok ? 200 : 401, b.length); x.getResponseBody().write(b); x.close();
+        fake = new MiniHttp(x -> {
+            if (!x.path.equals("/3/authentication")) return new MiniHttp.Response(404, "");
+            boolean ok = "api_key=0123456789abcdef0123456789abcdef".equals(x.query) || "Bearer eyJgood.a.b".equals(x.header("Authorization"));
+            return new MiniHttp.Response(ok ? 200 : 401, ok ? "{\"success\":true,\"status_code\":1}" : "{\"success\":false,\"status_code\":7}");
         });
-        fake.start(); String base = "http://127.0.0.1:" + fake.getAddress().getPort();
+        String base = fake.base();
         assertEquals(PhoneFlows.Verdict.OK, TmdbKey.check(base, "0123456789abcdef0123456789abcdef"));
         assertEquals(PhoneFlows.Verdict.OK, TmdbKey.check(base, "eyJgood.a.b"));
         assertEquals(PhoneFlows.Verdict.REFUSED, TmdbKey.check(base, "ffffffffffffffffffffffffffffffff"));
-        fake.stop(0); fake = null;
+        fake.close(); fake = null;
         assertEquals(PhoneFlows.Verdict.OFFLINE, TmdbKey.check(base, "0123456789abcdef0123456789abcdef"));
     }
 }
