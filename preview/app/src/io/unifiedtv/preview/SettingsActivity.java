@@ -215,6 +215,9 @@ public final class SettingsActivity extends Screen {
         if(!all.isEmpty()){all.get(Math.max(0,Math.min(n,all.size()-1))).requestFocus();return;}
         if(header.getChildCount()>0)header.getChildAt(0).requestFocus();
     }
+    /** The focused view, read from the window's own view tree exactly as PhoneWindow does. Robolectric's ShadowActivity
+     *  answers null here whatever has focus, which hid Right's row lookup and the focus the journey test checks. */
+    @Override public View getCurrentFocus(){View decor=getWindow().peekDecorView();return decor==null?null:decor.findFocus();}
     @Override public void onWindowFocusChanged(boolean has){super.onWindowFocusChanged(has);if(has&&overlay.acceptsInput()&&getCurrentFocus()==null)landing();}
     @Override public boolean dispatchKeyEvent(KeyEvent e){
         // Closing: navigation keys reach neither Home nor a half-gone sheet; volume, media and other keys still work.
