@@ -33,12 +33,12 @@ Gallery hashes: `example-1` `b0797ebd…5fe1`, `example-2` `c18c2847…481d`, `e
 
 ## Planned curated set (not yet fetched)
 
-This cloud session cannot reach any artwork source: Wikimedia, NASA, the Metropolitan Museum and the Art Institute of Chicago all refuse connections from it. The curated set will therefore be fetched on the owner's PC by a small script, `preview/tools/fetch_artwork.py` (to be written). It:
+This cloud session cannot reach any artwork source: Wikimedia, NASA, the Metropolitan Museum and the Art Institute of Chicago all refuse connections from it. The curated set is therefore fetched on the owner's PC by `preview/tools/fetch_artwork.py` (steps in [OWNER_TESTING.md](../OWNER_TESTING.md#fetching-the-wallpaper-artwork)). It:
 
-1. reads a fixed list of museum object IDs from this page;
-2. asks the museum's own API for each one and **refuses any image not marked public domain/CC0 for that object**;
-3. downloads it once, records the source URL, licence statement, retrieval date and SHA-256 here, and resizes it to 3840 × 2160 and 1920 × 1080 JPEG for the app;
-4. never runs on the TV; the app ships the resized files.
+1. holds a fixed list of museum objects: Hokusai's *Great Wave* and van Gogh's *Wheat Field with Cypresses* (The Met); Monet's *Water Lilies*, Seurat's *La Grande Jatte*, van Gogh's *The Bedroom* and Hokusai's *Under the Wave off Kanagawa* (Art Institute of Chicago);
+2. asks each museum's own API and **refuses any image the museum does not mark public domain** (both museums publish these as CC0), any title that doesn't match (a wrong object number) and any portrait-format image;
+3. downloads each once, records the source page, licence, retrieval date and SHA-256, and (with Pillow installed) saves a 1920-pixel-wide JPEG for the app;
+4. writes `catalogue.json` and the rows for this page; it never runs on the TV, and the app ships only the saved files.
 
 The owner then sends the files, or commits them, and they are added with their rows. Target: 8 to 12 calm, landscape-format works (seascapes, landscapes, botanical studies, Japanese woodblock prints), avoiding faces so the simple clock is always legible.
 

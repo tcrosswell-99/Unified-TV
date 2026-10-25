@@ -88,6 +88,19 @@ Write down the last line: the TV's own Home (on the TCL it was `com.google.andro
 
 Removing the review build also hands Home back. Then, in the review build, open **Settings → TV & performance → Make Unified TV the Home screen**, and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
 
+## Fetching the Wallpaper artwork
+
+This cloud session cannot reach museum websites, so the curated artwork is fetched on your PC. The tool keeps only works the museum itself marks public domain.
+
+```powershell
+cd $HOME
+Invoke-WebRequest https://raw.githubusercontent.com/tcrosswell-99/Unified-TV/claude/modest-davinci-dq3wrc/preview/tools/fetch_artwork.py -OutFile fetch_artwork.py
+python3 -m pip install --user pillow
+python3 fetch_artwork.py
+```
+
+**Expected:** a "kept …" line for each work and "N of 6 works kept in C:\Users\<you>\UnifiedTV-artwork". Any "skip" line gives its reason. Send back the `.jpg` files, `catalogue.json` and `ARTWORK-rows.md` from that folder (drag them into the chat). The agent checks them and adds them to the app with their licence rows.
+
 ## Live TV protection check
 
 Follow [VPN_PROTECTION.md](VPN_PROTECTION.md). It uses `preview/tools/vpn_check.py`, which needs Python and the repository's `tools/requirements.txt`.
