@@ -235,7 +235,8 @@ public class PhoneFlowsTest {
         assertEquals(PhoneFlows.Verdict.OK, TmdbKey.check(base, "0123456789abcdef0123456789abcdef"));
         assertEquals(PhoneFlows.Verdict.OK, TmdbKey.check(base, "eyJgood.a.b"));
         assertEquals(PhoneFlows.Verdict.REFUSED, TmdbKey.check(base, "ffffffffffffffffffffffffffffffff"));
-        fake.close(); fake = null;
-        assertEquals(PhoneFlows.Verdict.OFFLINE, TmdbKey.check(base, "0123456789abcdef0123456789abcdef"));
+        // Nothing listens on port 1 of this machine, so the check can only fail to connect (a just-closed test port could
+        // already belong to another test's server).
+        assertEquals(PhoneFlows.Verdict.OFFLINE, TmdbKey.check("http://127.0.0.1:1", "0123456789abcdef0123456789abcdef"));
     }
 }
