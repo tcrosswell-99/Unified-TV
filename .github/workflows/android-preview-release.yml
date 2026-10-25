@@ -20,33 +20,14 @@ jobs:
         with:
           packages: platforms;android-35 build-tools;35.0.0
       - uses: gradle/actions/setup-gradle@v4
-      # Durable signing (spec P05-01, docs/SIGNING.md): the launcher app (io.unifiedtv.launcher) is signed with the
-      # owner's key when all four repository secrets exist. The keystore is stored base64-encoded, decoded to the
-      # runner's temp folder for this job and deleted afterwards. Secrets are passed through the environment and never
-      # printed. Without them the launcher is test-signed with the runner's debug key. The preview app is never
-      # signed with the durable key: it stays exactly as it was.
+      # Owner decision (25 October 2026): no signing key or password is ever stored on GitHub, not even as encrypted
+      # repository secrets. CI therefore only test-signs (each runner's own debug key); the household launcher is
+      # signed on the owner's own computer (docs/SIGNING.md), and a test-signed launcher is never published.
       - name: Tests, lint, APK and manifest verification
         id: build
-        env:
-          PREVIEW_KEYSTORE_BASE64: ${{ secrets.UNIFIEDTV_PREVIEW_KEYSTORE_BASE64 }}
-          UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD }}
-          UNIFIEDTV_PREVIEW_KEY_ALIAS: ${{ secrets.UNIFIEDTV_PREVIEW_KEY_ALIAS }}
-          UNIFIEDTV_PREVIEW_KEY_PASSWORD: ${{ secrets.UNIFIEDTV_PREVIEW_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          keystore="$RUNNER_TEMP/unifiedtv-preview.keystore"
-          trap 'rm -f "$keystore"' EXIT
-          if [ -n "$PREVIEW_KEYSTORE_BASE64" ] && [ -n "$UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD" ] \
-             && [ -n "$UNIFIEDTV_PREVIEW_KEY_ALIAS" ] && [ -n "$UNIFIEDTV_PREVIEW_KEY_PASSWORD" ]; then
-            printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 -d > "$keystore"
-            export UNIFIEDTV_PREVIEW_KEYSTORE="$keystore"
-            echo "signing=durable" >> "$GITHUB_OUTPUT"
-            echo "Signing the launcher with the durable key."
-          else
-            unset UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD UNIFIEDTV_PREVIEW_KEY_ALIAS UNIFIEDTV_PREVIEW_KEY_PASSWORD
-            echo "signing=test" >> "$GITHUB_OUTPUT"
-            echo "No durable key configured: test-signed with this runner's debug key."
-          fi
+          echo "signing=test" >> "$GITHUB_OUTPUT"
           bash preview/build.sh
       - name: Record the signing certificate (public digest only)
         env:
@@ -79,9 +60,15 @@ jobs:
             preview/app/build/test-results/
           retention-days: 30
       - name: Assemble versioned release files
+        env:
+          SIGNING: ${{ steps.build.outputs.signing }}
         run: |
           mkdir release
-          cp preview/out/UnifiedTV-Launcher.apk preview/out/UnifiedTV-Preview.apk release/
+          # v3.4 module 08: the household launcher uses the durable key from its first install. A test-signed
+          # launcher is never published as a release file; the preview (never durably signed) always is.
+          if [ "$SIGNING" = durable ]; then cp preview/out/UnifiedTV-Launcher.apk release/
+          else echo "No durable key: UnifiedTV-Launcher.apk is not published in this release."; fi
+          cp preview/out/UnifiedTV-Preview.apk release/
           cp preview/out/SHA256SUMS.txt release/
           cp preview/out/manifest.txt release/manifest-preview.txt
           cp preview/out/manifest-launcher.txt release/

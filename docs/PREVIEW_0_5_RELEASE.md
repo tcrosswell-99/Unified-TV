@@ -43,12 +43,12 @@ Android only installs an update signed with the **same key** as the app already 
 - **Creating the key, once.** On your own computer (with Android Studio or a Java JDK installed), from a copy of this repository, run:
 
   ```bash
-  python3 preview/tools/make_preview_key.py --github
+  python3 preview/tools/make_preview_key.py
   ```
 
-  It makes the key in a private folder outside the repository (`~/UnifiedTV-signing`), prints its certificate SHA-256, and, if the GitHub CLI (`gh`) is installed and signed in, stores the four repository secrets for you. Without `--github`, `secrets.txt` in that folder lists the four values to add under **Settings → Secrets and variables → Actions**. It never replaces an existing key. **Back that folder up** (a password manager is ideal): without it, no TV will accept another update.
+  It makes the key in a private folder outside the repository (`~/UnifiedTV-signing`), keeps its password in a separate folder (`~/UnifiedTV-signing-password`) and prints the certificate SHA-256. It never replaces an existing key. **The key and password never go on GitHub, not even as repository secrets** (owner decision, 25 October 2026). Back them up separately as [SIGNING.md](SIGNING.md) says: without the key, no TV will accept another update.
 - **Durable key (recommended).** The owner creates one keystore, keeps it and its passwords private and backed up, and never commits it. Builds use it when all four settings are present, as Gradle properties or environment variables: `UNIFIEDTV_PREVIEW_KEYSTORE`, `UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD`, `UNIFIEDTV_PREVIEW_KEY_ALIAS`, `UNIFIEDTV_PREVIEW_KEY_PASSWORD`. Without them, builds are signed exactly as before.
-- **Releases.** The tagged release workflow signs with the durable key when the repository secrets `UNIFIEDTV_PREVIEW_KEYSTORE_BASE64` (the keystore, base64-encoded), `UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD`, `UNIFIEDTV_PREVIEW_KEY_ALIAS` and `UNIFIEDTV_PREVIEW_KEY_PASSWORD` are all set. Otherwise the release is labelled **test-signed: may not update over a differently signed install**. Each release includes `SIGNING.txt` with the certificate's SHA-256.
+- **Releases.** CI and tagged releases only ever test-sign; a test-signed household launcher is never published, and the launcher is signed on the owner's own computer ([SIGNING.md](SIGNING.md)). Each release includes `SIGNING.txt` with the public certificate SHA-256 only.
 - **Moving to the durable key once.** A preview already on the TV with a different key cannot be updated to the durable-key build. Keep it as it is until its settings can be written down and re-entered, then make that change deliberately: with the safe install tool refusing the mismatch, an adult uninstalls the old preview by hand and installs the durable-key build. From 0.5 the NAS, Home Assistant and Jellyfin are found again without typing, but saved folders, sign-ins, the room profile and a recorded Live TV check must be set up again. The separate `deviceCheck` build installs alongside with its own empty settings.
 
 ### Installing with the safe install tool

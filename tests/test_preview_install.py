@@ -271,5 +271,30 @@ class Evidence(unittest.TestCase):
         self.assertNotRegex(text, re.compile(r"serial", re.I))
 
 
+class LauncherFirstInstallTest(unittest.TestCase):
+    """v3.4 module 08: the household launcher is never first installed with a throwaway debug key."""
+    DEBUG = b"0\x82...CN=Android Debug,O=Android,C=US..."
+    DURABLE = b"0\x82...CN=Unified TV Preview..."
+
+    def test_debug_signed_launcher_first_install_is_refused(self):
+        self.assertIn("TEST-SIGNED", ip.first_install_guard("io.unifiedtv.launcher", None, self.DEBUG))
+
+    def test_unreadable_certificate_refuses_the_first_launcher_install(self):
+        self.assertIsNotNone(ip.first_install_guard("io.unifiedtv.launcher", None, None))
+
+    def test_durable_launcher_installs(self):
+        self.assertIsNone(ip.first_install_guard("io.unifiedtv.launcher", None, self.DURABLE))
+
+    def test_preview_and_review_build_may_be_test_signed(self):
+        for package in ("io.unifiedtv.preview", "io.unifiedtv.launcher.devicecheck"):
+            self.assertIsNone(ip.first_install_guard(package, None, self.DEBUG), package)
+
+    def test_updates_are_left_to_the_certificate_match_rule(self):
+        self.assertIsNone(ip.first_install_guard("io.unifiedtv.launcher", {"version_code": 1, "cert_match": True}, self.DEBUG))
+
+    def test_test_key_flag_overrides(self):
+        self.assertIsNone(ip.first_install_guard("io.unifiedtv.launcher", None, self.DEBUG, test_key=True))
+
+
 if __name__ == "__main__":
     unittest.main()

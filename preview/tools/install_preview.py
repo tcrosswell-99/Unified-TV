@@ -13,9 +13,12 @@ It refuses a downgrade unless --allow-downgrade is passed. It installs with `pm 
 and writes an evidence record to preview-evidence/ (git-ignored) with no IP addresses, serials or account data.
 
 Set TV_HOST (and TV_PORT if needed) as for tools/tv.py. Usage:
-    install_preview.py APK [--allow-downgrade] [--check]
+    install_preview.py APK [--allow-downgrade] [--check] [--test-key]
         --check            read and compare only: nothing is pushed, installed or launched
         --allow-downgrade  install an APK with a lower versionCode (pm install -r -d); data is kept
+        --test-key         allow a FIRST install of the household launcher (io.unifiedtv.launcher) signed with a
+                           throwaway debug key; without it that is refused, because no durably signed launcher
+                           could ever update it (v3.4 module 08)
 
 Exit status: 0 installed (or --check found nothing in the way), 1 refused or failed, 3 factory Home changed.
 """
@@ -275,6 +278,31 @@ def decide(installed, apk, allow_downgrade=False):
     return "install", f"update from versionCode {have} to {want}, same key: data kept"
 
 
+HOUSEHOLD_LAUNCHER = "io.unifiedtv.launcher"
+
+
+def debug_signed(der):
+    """True when the certificate is an Android debug certificate (subject CN "Android Debug", which every SDK and CI
+    runner generates for itself): such a key is thrown away, so nothing could ever update an app signed with it."""
+    return der is not None and b"Android Debug" in der
+
+
+def first_install_guard(package, installed, der, test_key=False):
+    """None, or why a first install must be refused (v3.4 module 08: the launcher uses a durable release key from its
+    very first install). Only the household launcher is guarded; the preview and the .devicecheck review build are
+    meant to be test-signed. --test-key overrides it for a deliberate, throwaway experiment."""
+    if package != HOUSEHOLD_LAUNCHER or installed is not None or test_key:
+        return None
+    if der is None:
+        return ("could not read the launcher's certificate, so it can't be shown to use the household's durable key; "
+                "the first install decides which key every later update must use")
+    if debug_signed(der):
+        return ("this launcher is TEST-SIGNED (an Android debug key). Installed first, it could never be updated by a "
+                "durably signed launcher. Use the durably signed release, or the .devicecheck review build to try it "
+                "(pass --test-key only for a throwaway experiment)")
+    return None
+
+
 def install_command(allow_downgrade):
     return check_command(f"pm install -r {'-d ' if allow_downgrade else ''}{REMOTE_APK}")
 
@@ -438,7 +466,7 @@ def save(record):
 
 def main(argv):
     paths = [a for a in argv if not a.startswith("--")]
-    unknown = [a for a in argv if a.startswith("--") and a not in ("--allow-downgrade", "--check")]
+    unknown = [a for a in argv if a.startswith("--") and a not in ("--allow-downgrade", "--check", "--test-key")]
     if len(paths) != 1 or unknown or not os.path.isfile(paths[0]):
         print(__doc__)
         return 2
@@ -471,6 +499,9 @@ def main(argv):
                   f"{'matches' if before['cert_match'] else 'DIFFERS' if before['cert_match'] is False else 'unreadable'}"
                   f" ({method})")
         decision = decide(before, ident, allow_downgrade)
+        guard = first_install_guard(ident["package"], before, der, "--test-key" in argv)
+        if decision[0] == "install" and guard:
+            decision = ("refuse", guard)
         if not home_before:
             decision = ("refuse", "could not read which app owns Home, so a change could not be detected")
         print(("Will install: " if decision[0] == "install" else "Refused: ") + decision[1])

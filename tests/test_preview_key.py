@@ -45,24 +45,6 @@ class Folder(unittest.TestCase):
         self.assertIsNone(mk.existing(self.folder), "no keystore, no key")
 
 
-class Upload(unittest.TestCase):
-    def test_secrets_go_through_stdin_never_the_command_line(self):
-        calls = []
-        values = dict(zip(mk.SECRETS, ("QUJD", "pw-1", mk.ALIAS, "pw-1")))
-        with mock.patch.object(mk.shutil, "which", return_value="/usr/bin/gh"):
-            mk.upload(values, "owner/repo", run=lambda args, **kw: calls.append((args, kw)))
-        self.assertEqual([c[0][3] for c in calls], list(mk.SECRETS))
-        for args, kw in calls:
-            self.assertEqual(args[:3], ["gh", "secret", "set"])
-            self.assertNotIn("pw-1", " ".join(args))
-            self.assertIn(kw["input"], values.values())
-
-    def test_no_github_cli_is_a_plain_refusal(self):
-        with mock.patch.object(mk.shutil, "which", return_value=None), self.assertRaises(SystemExit):
-            mk.upload({}, "owner/repo")
-
-
-@unittest.skipUnless(KEYTOOL, "keytool not installed")
 class RealKey(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -87,23 +69,25 @@ class RealKey(unittest.TestCase):
             self.assertEqual(base64.b64decode(values["UNIFIEDTV_PREVIEW_KEYSTORE_BASE64"]), f.read())
         self.assertEqual(mk.existing(self.folder), values)
         if os.name == "posix":
-            for name in (mk.KEYSTORE, "keystore.base64.txt", "password.txt", "secrets.txt"):
+            for name in (mk.KEYSTORE, "keystore.base64.txt", "README.txt"):
                 self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.folder, name)).st_mode), 0o600, name)
+            for name in ("password.txt", "local-build.txt"):
+                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(mk.password_folder(self.folder), name)).st_mode), 0o600, name)
+        # v3.4 module 08, password separation: nothing in the key folder holds the password.
+        for name in os.listdir(self.folder):
+            with open(os.path.join(self.folder, name), "rb") as f:
+                self.assertNotIn(password.encode(), f.read(), name)
         listed = subprocess.run([KEYTOOL, "-list", "-keystore", keystore, "-storetype", "PKCS12", "-alias", mk.ALIAS,
                                  "-storepass:env", "PW"], env=dict(os.environ, PW=password), capture_output=True, text=True)
         self.assertEqual(listed.returncode, 0, listed.stderr)
         with self.assertRaises(SystemExit):
             mk.create(self.folder, KEYTOOL)
 
-    def test_github_again_reuses_the_key_and_never_makes_another(self):
-        mk.create(self.folder, KEYTOOL)
-        before = Path(self.folder, mk.KEYSTORE).read_bytes()
-        sent = []
-        with mock.patch.object(mk, "upload", side_effect=lambda values, repo: sent.append((values, repo))):
-            self.assertEqual(mk.main(["--dir", self.folder, "--github", "--repo", "owner/repo"]), 0)
-        self.assertEqual(Path(self.folder, mk.KEYSTORE).read_bytes(), before)
-        self.assertEqual(sent[0][0], mk.existing(self.folder))
-        self.assertEqual(sent[0][1], "owner/repo")
+    def test_nothing_is_ever_sent_to_github(self):
+        """Owner decision (25 October 2026): the key and password never leave the owner's computer."""
+        source = Path(mk.__file__).read_text(encoding="utf-8")
+        for forbidden in ('"gh"', "secret set", "--github"):
+            self.assertNotIn(forbidden, source)
 
 
 if __name__ == "__main__":

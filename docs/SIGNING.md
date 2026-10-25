@@ -34,7 +34,8 @@ $env:JAVA_HOME = (Get-ChildItem $HOME\jdk17 -Directory)[0].FullName
 
 The tool:
 
-- makes `C:\Users\<you>\UnifiedTV-signing\` (outside any repository) holding `unifiedtv-preview.p12` (the key), `password.txt`, `keystore.base64.txt` and `secrets.txt`, readable only by you;
+- makes `C:\Users\<you>\UnifiedTV-signing\` (outside any repository) holding `unifiedtv-preview.p12` (the key) and `keystore.base64.txt`, readable only by you;
+- keeps the **password apart from the key** (v3.4 module 08): `password.txt` and `local-build.txt` go in `C:\Users\<you>\UnifiedTV-signing-password\`. Put the password in your password manager straight away;
 - generates a long random password; it never appears on a command line;
 - prints the certificate's SHA-256 fingerprint (public; safe to share);
 - refuses to replace a key that already exists.
@@ -45,8 +46,8 @@ The file and secret names say "preview" because they were created before the spl
 
 Keep **two** copies, in different places:
 
-1. **A password manager entry** (for example 1Password, Bitwarden or KeePass) named "Unified TV signing key", with `unifiedtv-preview.p12` attached and the password from `password.txt` in the password field. Note the fingerprint in the entry.
-2. **An offline copy**: the whole `UnifiedTV-signing` folder on a USB stick kept somewhere other than the PC, for example with other important documents.
+1. **The password** from `UnifiedTV-signing-password\password.txt` in a password manager entry (for example 1Password, Bitwarden or KeePass) named "Unified TV signing key", with the certificate fingerprint noted. Then delete the `UnifiedTV-signing-password` folder from the PC.
+2. **The key**: the `UnifiedTV-signing` folder on a USB stick kept somewhere other than the PC. It holds no password, so the USB stick alone can't sign anything.
 
 Check a backup can actually be opened (it asks for the password):
 
@@ -56,18 +57,13 @@ Check a backup can actually be opened (it asks for the password):
 
 **Pass:** it lists `unifiedtv-preview` with the same SHA-256 fingerprint. Repeat this before every release and at least every six months.
 
-## GitHub (so tagged releases are signed)
+## Never on GitHub
 
-Add four repository secrets under **Settings → Secrets and variables → Actions** (or run the tool with `--github` if the GitHub CLI is installed):
+**Owner decision, 25 October 2026: no signing key or password is ever put on GitHub, not even as encrypted repository secrets.** If any `UNIFIEDTV_PREVIEW_*` secrets were ever added under Settings → Secrets and variables → Actions, delete them.
 
-| Secret | Value |
-| --- | --- |
-| `UNIFIEDTV_PREVIEW_KEYSTORE_BASE64` | the whole contents of `keystore.base64.txt` |
-| `UNIFIEDTV_PREVIEW_KEYSTORE_PASSWORD` | the password |
-| `UNIFIEDTV_PREVIEW_KEY_ALIAS` | `unifiedtv-preview` |
-| `UNIFIEDTV_PREVIEW_KEY_PASSWORD` | the same password |
-
-Only the tag-triggered release workflow reads them. Ordinary CI never does: its builds are test-signed. The workflow decodes the key into the runner's temporary folder and deletes it at the end of the job; it never prints a secret. Every release includes `SIGNING.txt` with the launcher's certificate fingerprint, which must match yours.
+- GitHub CI only test-signs, each run with its own throwaway debug key. Tagged releases publish the preview and the test-only review build, never a test-signed household launcher.
+- The household launcher is signed **on the owner's own computer**, with the key and password from the backups. The exact local signing procedure is written before the first launcher release (checklist below); until then, use the `.devicecheck` review build to try Unified TV.
+- `SIGNING.txt` and the release notes carry only the public certificate fingerprint.
 
 ## Never
 
@@ -79,13 +75,17 @@ Only the tag-triggered release workflow reads them. Ordinary CI never does: its 
 
 - **The PC is lost, but a backup exists:** restore the folder from the password manager or USB copy and carry on.
 - **Every copy of the key is lost:** the installed launcher can never be updated. The only way forward is a new package identity and a fresh setup on each TV. That is why there are two backups.
-- **The key may have leaked** (for example, pasted somewhere public): delete the four GitHub secrets at once. Then create a new key and rotate the launcher to it with `apksigner rotate` (APK Signature Scheme v3), signing the change with the old key. This works on Android 9 and later, including the TCL. Ask for this to be planned before doing it.
-- **A release says "test-signed":** the secrets were missing. Do not install that launcher as the household launcher.
+- **The key may have leaked** (for example, pasted somewhere public): stop using it at once. Then create a new key and rotate the launcher to it with `apksigner rotate` (APK Signature Scheme v3), signing the change with the old key. This works on Android 9 and later, including the TCL. Ask for this to be planned before doing it.
+- **A launcher says "test-signed":** it was signed by CI, not by you. Do not install it as the household launcher (`install_preview.py` refuses it as a first install).
 
 ## Before the first launcher release (checklist)
 
 1. Key created; fingerprint written down.
 2. Both backups made and the `keytool -list` check passes on the backup.
-3. Four GitHub secrets added.
+3. The launcher signed on the owner's computer with the durable key, and its fingerprint checked against the one recorded at creation.
 4. A tagged release's `SIGNING.txt` shows "durable" and your fingerprint (SIGN-02, SIGN-07).
 5. On the TCL: install that launcher, set something up, install the next version over it, and confirm the settings survived (SIGN-03). Record the result in the register.
+
+## Installing the household launcher
+
+`install_preview.py` refuses a **first** install of `io.unifiedtv.launcher` signed with a throwaway debug key (or with an unreadable certificate): the first install decides which key every later update must use (v3.4 module 08). The `.devicecheck` review build and the preview are meant to be test-signed and are not affected. Tagged releases publish the launcher only when it is signed with the durable key. `--test-key` overrides the check for a deliberate, throwaway experiment.
