@@ -16,7 +16,7 @@ This report separates implemented source code from automated evidence and physic
 | Android Preview 0.3 baseline | Earlier GitHub Actions run 40123046697 passed all three jobs. Canonical preview was installed and limited remote/material/VPN journeys were inspected on the TCL. Existing 0.3 screenshots are retained separately. |
 | Current TCL availability | Developer connection did not answer during this 0.4 update. No 0.4 install, playback or revised screenshot claim. |
 | NAS media service | Owner restored Synology Media Server. PC received a MediaServer discovery response and verified its ContentDirectory service. No claim of TV discovery, folder selection or playback. |
-| Samsung | PC verified reported Developer Mode enabled and reachable developer port. Samsung SDB connection failed; no installed Unified TV Tizen application. Host PC authorisation/restart still needs checking. |
+| Samsung | PC verified reported Developer Mode enabled and reachable developer port. Samsung SDB connection failed; no installed Unified TV Tizen application. Host PC authorisation/restart still needs checking. The `samsung/` web app is built and unit-tested only (unsigned `.wgt`); not installed. |
 | Sony | No physical testing recorded in this session. |
 | GitHub Preview 0.4 | Source, docs and version are published through a separate feature branch. Actions and tagged release results must be read from GitHub; local checks do not imply remote CI passed. |
 
@@ -75,7 +75,7 @@ This report separates implemented source code from automated evidence and physic
 8. Prove VPN app routing and no-leak-on-drop before allowing protected Live TV. Auto-connect and tunnel observation alone are insufficient.
 9. Install/sign in to official Amazon Music where supported; investigate authorised metadata/control access before building the custom player and account search/playlists.
 10. Complete optional OpenAI voice relay, ephemeral session security, microphone support, UK voice and safe command policy.
-11. Complete native Tizen application: full UI entry point, styles/build scripts/tests, compatible secure storage, AVPlay authentication path, certificate setup, package/install and real remote tests. Existing local `samsung/` files are a partial, untracked scaffold and deliberately excluded from this Android publication to avoid colliding with another agent's work.
+11. Native Tizen application: the app in `samsung/` now has its Home, focus, Settings, locked Live TV, alerts, Wallpaper, AVPlay and DLNA code, 117 Node tests and an unsigned test-only `.wgt` from CI (register FRAME-01 to FRAME-03). Still to do: authenticated NAS playback, a Content-Security-Policy, the owner's certificate signing, installation and real remote tests on the Frame. The NAS address is typed once under Advanced, because a web app cannot discover it; the owner has not yet accepted that exception.
 12. Prove native TV Plus launch/return, Frame Art Mode interruption/restoration, startup behaviour and Echo Studio audio route.
 13. Sony hardware validation, Xbox wake/HDMI sequence, OLED safety and performance.
 14. Complete time-of-day material refinement, final visual QA, focus latency/frame/memory measurements and a full accessibility audit.

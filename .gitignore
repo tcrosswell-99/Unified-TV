@@ -33,3 +33,6 @@ home-evidence/
 *.keystore
 *.p12
 *.pfx
+
+# Samsung Frame build output (unsigned test packages)
+samsung/out/

@@ -8,6 +8,12 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ## [Unreleased]
 
+### Added
+
+- **Samsung Frame web app** (`samsung/`): a native Tizen web app for the Frame (2021) with the same Home light palettes as Android (a test keeps them identical), remote focus, six-category Settings, the locked Live TV sheet, smoke/CO alerts above Ring, the Wallpaper and AVPlay/DLNA playback of NAS folders. 117 Node tests; CI (`samsung.yml`) builds an **unsigned, test-only** `.wgt`, which a retail TV will not install until the owner signs it with their own Samsung certificates. Secrets are kept only in Tizen Key Manager and the app fails closed without it. **Not tested on the Frame.**
+  - Limits: the NAS address is typed once under Advanced (web apps cannot discover it; awaiting the owner's acceptance), the Ring card has no live camera, private NAS playback and a Content-Security-Policy are not built, and Samsung TV Plus is found by name because its app id is unconfirmed.
+- **Samsung Home-button proposal** ([SAMSUNG_HOME_PROPOSAL.md](docs/SAMSUNG_HOME_PROPOSAL.md)) and the Frame capability table ([samsung-frame-2021.md](docs/devices/samsung-frame-2021.md), every value `unknown`). A proposal only: nothing was run on the TV.
+
 ## [0.5.0] - 2026-10-24
 
 Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience". Home now changes its whole scene with what is in focus and your films rise into view on Down. Unified TV can become the TV's real Home if an adult chooses it, and can always hand Home back. The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only. Release notes: [PREVIEW_0_5_RELEASE.md](docs/PREVIEW_0_5_RELEASE.md). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).

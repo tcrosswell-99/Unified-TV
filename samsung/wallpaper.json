@@ -1,0 +1,11 @@
+{
+  "note": "Artwork copied into the package by build.sh from images already in the repository and recorded in docs/design/ARTWORK.md. No image is committed under samsung/ and none is downloaded on the TV.",
+  "pictures": [
+    {"from": "preview/app/src/main/assets/unified-preview-coast.png", "file": "wallpaper/coast.png", "title": "Coastal landscape", "credit": "Made for Unified TV (preview/THIRD_PARTY.md)"},
+    {"from": "preview/app/src/main/assets/gallery/example-1.jpg", "file": "wallpaper/example-1.jpg", "title": "Example artwork 1", "credit": "Owner-supplied example artwork, authorised for public inclusion (docs/design/ARTWORK.md)"},
+    {"from": "preview/app/src/main/assets/gallery/example-2.jpg", "file": "wallpaper/example-2.jpg", "title": "Example artwork 2", "credit": "Owner-supplied example artwork, authorised for public inclusion (docs/design/ARTWORK.md)"},
+    {"from": "preview/app/src/main/assets/gallery/example-3.jpg", "file": "wallpaper/example-3.jpg", "title": "Example artwork 3", "credit": "Owner-supplied example artwork, authorised for public inclusion (docs/design/ARTWORK.md)"},
+    {"from": "preview/app/src/main/assets/gallery/example-4.jpg", "file": "wallpaper/example-4.jpg", "title": "Example artwork 4", "credit": "Owner-supplied example artwork, authorised for public inclusion (docs/design/ARTWORK.md)"},
+    {"from": "preview/app/src/main/assets/gallery/example-5.jpg", "file": "wallpaper/example-5.jpg", "title": "Example artwork 5", "credit": "Owner-supplied example artwork, authorised for public inclusion (docs/design/ARTWORK.md)"}
+  ]
+}
