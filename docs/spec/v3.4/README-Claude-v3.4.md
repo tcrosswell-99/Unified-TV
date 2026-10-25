@@ -18,3 +18,17 @@ For **any Settings, onboarding, profile, service configuration or discovery task
 
 
 **v3.4.4 binding amendment:** Use `references/approved-home/Unified-TV-Approved-Home-2026-10-25.jpg` as primary Home visual reference. Dock label setting defaults to **Focused only** (not Always); Adults/Kids may independently choose Always or Hide via Settings → Appearance & Home → Dock & Icons. Read UX-ICON-05/06, UX-VISUAL-01/02 and SET-026 before any dock or Settings change. The approved image's always-visible labels and Disney+/BBC wordmarks do **not** override these requirements.
+
+## v3.4.5 onboarding update
+
+New requirements: **Build My TV** wizard for optional app/service selection, beginning with Music Yes/No and supported provider choices. Detect installed apps, offer trusted native store handoff only on verified platforms, recheck after return, and let users assign to the editable dock. SmartTube uses an original minimalist YouTube-inspired play glyph, distinct from official YouTube. See SET-BUILD-01–08 and UX-ICON-07. The product must work with no optional integrations installed.
+
+
+## v3.4.6 changes (read first)
+
+Default dock is **six**, optionally **eight** under Settings → Appearance & Home → Dock & Icons; `Focused only` labels remain default. Detect music apps before asking: one installed → auto-configure; multiple installed → ask user which is default and whether one/both/all are displayed; none → optional provider setup; unknown → manual selection. No silent installs or store bypass. See v3.4.6 changelog and modules 05/12. No code implementation or real-TV test is claimed.
+
+
+## v3.4.7 — READ THIS FOR ANY SETTINGS WORK
+
+Load `modules/13_Settings_Liquid_Glass_Overlay_and_Screen_Design.md` **in addition to module 12 and UX**. It is the binding screen-by-screen design and supersedes the earlier two-column/split Settings presentation. Settings is a ~50% **right-side overlay over unmoved Home**, expandable to 70–80%, with original Liquid Glass-inspired materials and remote-first focus. Do not confuse an internal card grid with Home reflow. See `V3.4.7_SETTINGS_GLASS_CHANGELOG.md`.

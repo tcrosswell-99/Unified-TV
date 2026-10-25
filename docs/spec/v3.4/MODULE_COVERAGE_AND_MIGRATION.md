@@ -27,3 +27,16 @@ New normative `modules/12_Settings_Onboarding_and_Configuration.md` owns Setting
 ## v3.4.4 traceability
 
 Primary approved Home screenshot: `references/approved-home/Unified-TV-Approved-Home-2026-10-25.jpg` → module 05 UX-VISUAL-01/02. Configurable label modes: module 05 UX-ICON-05/06, module 12 SET-026, Core OD-15/16. This explicitly overrides the screenshot's always-visible labels and any historical unconditional label language.
+
+
+## v3.4.6 cross-module dependencies
+
+- UX module 05: UX-DOCK-08–10 responsive six/eight icon dock, labels and navigation.
+- Settings module 12: SET-027, SET-BUILD-09–11 detect-first and multi-music choice.
+- Core/architecture: persist per-profile capacity and service preference without altering device-level installation.
+- Testing: extend the existing acceptance register and preserve G0–G6 safety gates.
+
+
+## v3.4.7 Settings presentation
+
+New normative `modules/13_Settings_Liquid_Glass_Overlay_and_Screen_Design.md` specifies the visual overlay, all ten screen layouts, motion, focus and tests. It supersedes module 12's historical two-column presentation; module 12 remains authoritative for functional settings and onboarding.

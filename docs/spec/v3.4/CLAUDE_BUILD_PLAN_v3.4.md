@@ -27,3 +27,21 @@ Implement the Settings shell, schema/migration, local-first storage, safe reset 
 ## v3.4.4 incremental task
 
 During G2 dock visual work, adopt primary approved screenshot and implement UX-ICON-05/06 + UX-VISUAL-01/02. During Settings foundation, implement SET-026. Tests: default Focused only; switch to Always/Hide; rapid D-pad focus; Adults/Kids independent persistence; restart/migration; accessible focus; edited dock; TCL/Sony/Samsung hardware evidence. Preserve prior gates and safety.
+
+## v3.4.5 implementation sequence — Entertainment Hub Builder
+
+At G1/G2, first audit installed-app discovery, native store launch/deep-link capability and return/resume on each target platform. Implement the optional category wizard and app selection with local state and a capability-filtered catalogue; reuse the existing dock editor. Start with **Music Yes/No → available provider → installed or store handoff → dock choice**, then expand to other categories. Do not delay animated Home G2 for optional provider coverage. Keep no silent installs, no credentials collection, VPN fail-closed, and stock launcher recovery. Test first on TCL preview; collect Sony/Tizen feasibility separately. Log SET-BUILD and UX-ICON-07 acceptance cases in `docs/ACCEPTANCE_REGISTER.csv` only after inspecting the actual repository.
+
+
+## v3.4.6 — Build sequence
+
+1. Inspect current app discovery and dock preference schemas; document platform detection gaps and migrations.
+2. Implement per-profile `dock.capacity` (6 default / 8 optional) and 6/8 responsive dock with accurate Settings preview; no forced app addition.
+3. Implement one/multiple/none/unknown installed music decision branches; multiple must prompt for explicit default and one/both/all visibility.
+4. Implement safe dock capacity changes, explicit replacement confirmation, Apps-only fallback, no silent install, persistence and accessible D-pad focus.
+5. Unit/UI tests, TCL preview comparison, then request Sony/Tizen owner device evidence. Update acceptance register, keeping implementation and physical verification distinct.
+
+
+## v3.4.7 Settings implementation workstream (respect existing G0–G6 order)
+
+At the Settings gate, read modules 12, 13 and 05. Audit existing Settings before replacing anything. Implement overlay shell + focus restoration and static fallback first, then root navigation, Appearance live preview, Apps/Build My TV and dock editor, remaining ten-category screens behind capability checks, and real-device owner acceptance. **Never reflow Home.** Track GLASS-01–GLASS-12 in repository `docs/ACCEPTANCE_REGISTER.csv` with separate implementation vs physical-test status.

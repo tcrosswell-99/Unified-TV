@@ -4,7 +4,7 @@
 
 **Version:** 3.3, with the owner's later decisions | **Date:** 25 October 2026 (UK time) | **Status:** working specification. It states requirements, **not** features already built or verified.
 
-> **v3.4.4 is the current specification.** The owner supplied the full v3.4.4 developer pack on 25 October 2026: [docs/spec/v3.4/](spec/v3.4/README.md) (index, modules 00–12, changelogs, handover, build plan). Its modules are the normative requirements; where they and this document differ, **the v3.4.4 modules win**, and the owner's later explicit instructions (recorded below, for example the fixtures, alarm-switch, Live TV and PIN-reset answers) win over both. This document remains the consolidated reference for decisions and detail the modules don't restate. The pack's reference images are kept outside Git (third-party marks).
+> **v3.4.7 is the current specification.** The owner supplied the v3.4.7 developer pack on 25 October 2026: [docs/spec/v3.4/](spec/v3.4/README.md) (index, modules 00–13, changelogs to v3.4.7, handover, build plan). v3.4.5–v3.4.7 add Build My TV, the 6/8-icon dock and the Liquid Glass Settings overlay (module 13). Its modules are the normative requirements; where they and this document differ, **the v3.4.4 modules win**, and the owner's later explicit instructions (recorded below, for example the fixtures, alarm-switch, Live TV and PIN-reset answers) win over both. This document remains the consolidated reference for decisions and detail the modules don't restate. The pack's reference images are kept outside Git (third-party marks).
 
 > **North star: Content first, underlying technology hidden.**
 >

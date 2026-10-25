@@ -44,3 +44,7 @@ The original eight decisions remain binding; these six are **additional**, not r
 ## v3.4.4 binding visual preference
 
 **OD-15:** Owner-approved active Home image `references/approved-home/Unified-TV-Approved-Home-2026-10-25.jpg` is the primary visual composition reference. **OD-16:** Dock labels default to **Focused only**, independently configurable for Adults and Kids; Always show labels and Hide labels are optional Settings choices. Minimalist dock glyphs remain mandatory. See UX-ICON-05/06 and SET-026.
+
+## v3.4.5 owner decision — guided entertainment setup
+
+Unified TV is for multiple households: onboarding must offer an optional **Build My TV / Entertainment Hub Builder** that detects existing apps and helps users select or install supported services through the platform's native store with explicit consent. The opening **Music Yes/No** question offers installed/available Spotify, Apple Music, Amazon Music, YouTube Music and other region/platform-supported providers. Categories are optional, multiple apps per category are allowed, and selected apps can be placed in the six-slot dock without replacing existing choices silently. SmartTube's dock mark is a minimalist YouTube-inspired play symbol, **distinct from the official YouTube mark**. See SET-BUILD-01–08 and UX-ICON-07 / UX-BUILD-01.

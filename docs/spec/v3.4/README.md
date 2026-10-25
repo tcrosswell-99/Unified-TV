@@ -1,4 +1,4 @@
-> **Repository copy (25 October 2026).** This is the owner's v3.4.4 developer pack text, unchanged except that the link to the approved Home image is shown as a plain path. The pack's reference images (approved Home, six palettes, five Wallpaper references) are **kept outside Git**: they contain third-party marks (Netflix, Disney+, BBC and others) and are reference only, not licensed production assets ([REFERENCES.md](../../design/REFERENCES.md)).
+> **Repository copy (25 October 2026).** This is the owner's v3.4.7 developer pack text, unchanged except that links to reference images are shown as plain paths. The pack's reference images (approved Home, six palettes, five Wallpaper references) are **kept outside Git**: they contain third-party marks (Netflix, Disney+, BBC and others) and are reference only, not licensed production assets ([REFERENCES.md](../../design/REFERENCES.md)).
 
 # Unified TV — Specification v3.4 (authoritative index)
 
@@ -27,7 +27,7 @@ This short index and the files in `modules/` are the **only normative v3.4 requi
 | G4 Sony | [Android](modules/02_Architecture_Android.md), [Remote/Home](modules/07_Remote_Home_and_Recovery.md), relevant feature modules |
 | G5 Samsung supported UI | [Tizen](modules/04_Architecture_Tizen.md), [UX/Motion](modules/05_UX_Motion_Design.md), [Signing](modules/08_Signing_Release_and_Update.md) |
 | G5P Samsung controlled-test **proposal only** | [Tizen](modules/04_Architecture_Tizen.md), [Remote/Home](modules/07_Remote_Home_and_Recovery.md), [Capability gaps](modules/11_Platform_Capability_and_Open_Issues.md) |
-| Settings/onboarding, any gate | [Settings](modules/12_Settings_Onboarding_and_Configuration.md), [UX/Motion](modules/05_UX_Motion_Design.md), target platform module and affected integration/media module |
+| Settings/onboarding, any gate | [Settings](modules/12_Settings_Onboarding_and_Configuration.md), [Settings Glass Overlay](modules/13_Settings_Liquid_Glass_Overlay_and_Screen_Design.md), [UX/Motion](modules/05_UX_Motion_Design.md), target platform module and affected integration/media module |
 | G6 Home Assistant, Ring, VPN and household | [Shared](modules/01_Architecture_Shared.md), [Integrations](modules/09_Integrations_and_Notifications.md), target platform module |
 
 ## Product-wide settings and new v3.4 decisions
@@ -74,3 +74,21 @@ Six palette images exist under `references/ambient/01-smarttube.jpg` ... `06-mus
 ## v3.4.4 — Approved Home visual and default dock labels
 
 **Binding owner decision:** The primary Home visual reference is `references/approved-home/Unified-TV-Approved-Home-2026-10-25.jpg`. It supersedes older Home compositions, subject to accessibility, technical and safety contracts. The image shows labels for all six apps, but **the implementation default MUST be Focused only**. Users can choose Always show labels or Hide labels at **Settings → Appearance & Home → Dock & Icons → App label visibility**, stored independently for Adults/Kids. Minimalist icons are mandatory in every mode. Requirements: **UX-ICON-05, UX-ICON-06, UX-VISUAL-01/02, SET-026, OD-15/16**. The historical v3.2 archive is not normative.
+
+## v3.4.5 — Guided Entertainment Hub Builder and SmartTube icon
+
+**Owner-confirmed:** A new household should be invited (never forced) to **Build My TV** by answering category questions. Start with **Music: Yes/No**, then choose a preferred installed or platform-supported music service (Spotify, Apple Music, Amazon Music, YouTube Music, etc.). Offer native app-store installation only when a trusted, verified platform-specific store handoff is available, and only after user approval. Return to the wizard and recheck installation before assigning dock shortcuts. Add Streaming Video, YouTube/alternative viewers, Local Movies & TV, Live TV, Casting, Photos and Smart Home as optional categories; no integration is required to use the minimal Home. Reopen the wizard under Settings → Apps & Shortcuts → Build My TV. The six-slot dock remains editable and **Focused only** is the default label mode. **SmartTube uses a minimalist YouTube-inspired play glyph but must remain distinguishable from official YouTube branding.** Details: `modules/12_Settings_Onboarding_and_Configuration.md` SET-BUILD-01–08 and `modules/05_UX_Motion_Design.md` UX-ICON-07/UX-BUILD-01. No claim of universal store availability or automatic installation; TCL, Sony and Tizen require separate validation.
+
+
+## v3.4.6 — Owner-approved onboarding and dock refinements
+
+**Dock:** six minimalist icons by default, with an optional eight-slot layout in Settings → Appearance & Home → Dock & Icons → Dock size. The Home retains its approved frosted-glass aesthetic, direct Up-to-utility and Down-to-NAS navigation, and `Focused only` label default. Increasing capacity does not auto-add apps; shrinking a populated dock requires explicit review and confirmation. Adults/Kids have independent dock settings.
+
+**Music onboarding:** detect installed apps first. Exactly one verified compatible music app → select as default without asking. Multiple verified music apps → **ask the user** which should be the default and whether one, both, or all should be displayed as separate app shortcuts, with Apps-only fallback if dock space is insufficient. None with reliable discovery → optional Music Yes/No and consent-based store choice. Incomplete detection → do not assume missing; offer manual choice. Never silently install, sideload, bypass native stores, or claim unsupported service availability. Preserve existing preferences and Kids restrictions.
+
+Authoritative detail: `modules/05_UX_Motion_Design.md` UX-DOCK-08–10 and `modules/12_Settings_Onboarding_and_Configuration.md` SET-BUILD-09–11 and SET-027. This is a **specification update only**, not an implementation or hardware verification claim.
+
+
+## v3.4.7 — Settings Liquid Glass overlay (binding)
+
+**Owner-confirmed:** Settings slides from the right **over** a full-size, stationary Home; default width approximately 50%, expandable to 70–80% for complex tasks. The glass is dark, translucent, softly frosted, subtly edge-lit, Apple Liquid Glass-*inspired* but distinctively Unified TV. Home never moves or resizes. Detailed screen-by-screen contents for all ten categories, motion tokens, focus/Back, responsive/performance fallbacks and acceptance tests: **[Module 13 — Settings Liquid Glass Overlay & Screen Design](modules/13_Settings_Liquid_Glass_Overlay_and_Screen_Design.md)**. This supersedes old split/two-column Settings presentation language. Existing functional/safety/platform contracts remain in force.
