@@ -162,4 +162,9 @@ public class AlertPolicyTest {
         assertEquals("never while the alarm is active",0,p.ringAfterAlarm(5000));assertEquals(1000,p.queuedRingAt());
         p.update(HALL,"smoke","Hall","off",6000,false);assertEquals(1,p.ringAfterAlarm(7000));
     }
+    // Owner, 25 October 2026: person toasts can be off in Kids; nothing else changes in any profile.
+    @Test public void personToastInKidsFollowsTheSettingAndAdultsAlwaysSeeIt(){
+        assertTrue(AlertPolicy.personToastAllowed(false,false));assertTrue(AlertPolicy.personToastAllowed(false,true));
+        assertTrue("on by default",AlertPolicy.personToastAllowed(true,true));assertFalse(AlertPolicy.personToastAllowed(true,false));
+    }
 }

@@ -86,4 +86,27 @@ public class DlnaClientTest {
         assertTrue(silent.plain().startsWith("A media server answered"));
         assertNotEquals(none.plain(),silent.plain());
     }
+    // Owner, 25 October 2026: Kids reads the server's own content rating and parent; star scores are not ratings.
+    @Test public void ratingParentAndClassAreRead()throws Exception{
+        String didl="<item id='k1' parentID='64$2'><dc:title>Paddington</dc:title><upnp:class>object.item.videoItem.movie</upnp:class><upnp:rating>PG</upnp:rating><upnp:userRating>5</upnp:userRating><res protocolInfo='http-get:*:video/mp4:*'>/media/k1.mp4</res></item>";
+        DlnaClient.Item i=DlnaClient.parse(soap(didl,1,1),ORIGIN).items.get(0);
+        assertEquals("64$2",i.parent);assertEquals("object.item.videoItem.movie",i.upnpClass);assertEquals(java.util.Collections.singletonList("PG"),i.ratings);
+        DlnaClient.Item plain=DlnaClient.parse(soap(video(3),1,1),ORIGIN).items.get(0);assertTrue(plain.ratings.isEmpty());assertEquals("",plain.parent);
+    }
+    static DlnaClient.Check check(String name,String udn,int folders){DlnaClient.Check c=new DlnaClient.Check("http://nas.invalid/desc.xml");if(name!=null){c.device=new DlnaClient.Device();c.device.name=name;c.device.udn=udn;c.device.control="ctl-"+udn;}c.folders=folders;return c;}
+    @Test public void onlyValidatedServersWithACatalogueAreOffered(){
+        DlnaClient.Report r=new DlnaClient.Report();
+        java.util.List<DlnaClient.Device> out=DlnaClient.offered(java.util.Arrays.asList(check("Home NAS","uuid:1",3),check(null,"",0),check("Printer","uuid:2",0),check("Broken","uuid:3",-1),check("Home NAS","uuid:1",3)),r);
+        assertEquals(1,out.size());assertEquals("Home NAS",out.get(0).name);
+        assertEquals(5,r.answered);assertEquals(1,r.unreadable);assertEquals(2,r.empty);
+        DlnaClient.Report empty=new DlnaClient.Report();empty.empty=1;assertTrue(empty.plain().contains("isn't sharing any folders"));
+    }
+    @Test public void catalogueCountsFoldersOnly()throws Exception{
+        assertEquals(1,DlnaClient.folders(DlnaClient.parse(soap("<container id='c1'><dc:title>Video</dc:title></container>"+video(1),2,2),ORIGIN)));
+        assertEquals(0,DlnaClient.folders(DlnaClient.parse(soap(video(1),1,1),ORIGIN)));
+    }
+    @Test public void serversAreNamedNeverAddressed(){
+        DlnaClient.Device a=check("Home NAS","uuid:1",1).device,b=check("home nas","uuid:2",1).device,c=check(" ","uuid:3",1).device;
+        assertEquals(java.util.Arrays.asList("Home NAS","home nas (2)","Media server"),DlnaClient.labels(java.util.Arrays.asList(a,b,c)));
+    }
 }

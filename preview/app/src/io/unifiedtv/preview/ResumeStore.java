@@ -8,6 +8,11 @@ import java.util.*;
 /**
  * Where each film was left, on this TV only (spec 27.2): never shown as Continue Watching and never sent to a server.
  * Keys are one-way hashes of the stream address, so no titles, folders or addresses are stored. Bounded: oldest entries go first.
+ *
+ * One store per profile (owner, 25 October 2026): Adults and Kids never see each other's places. Places saved before
+ * profiles had their own were all an adult's (Kids could not play NAS titles then), so they move to Adults once.
+ * Other apps' watch progress is not here and can't be: Android TV's Watch Next rows belong to the system launcher and
+ * are not readable by a third-party Home, and no supported API offers them. Nothing to build.
  */
 final class ResumeStore {
     static final int MAX=60;
@@ -47,4 +52,23 @@ final class ResumeStore {
         }
     }
     String json(){return entries.toString();}
+
+    static final String LEGACY="places";
+    static String prefsKey(String profile){return Profiles.CHILD.equals(Profiles.stored(profile))?"places-kids":"places-adults";}
+    /** Legacy places joined to the Adults store; the newer of two places for one title wins. Bounded like any store. */
+    static String merge(String legacy,String adults){
+        ResumeStore into=new ResumeStore(adults),from=new ResumeStore(legacy);
+        for(Iterator<String> it=from.entries.keys();it.hasNext();){String k=it.next();JSONObject e=from.entries.optJSONObject(k);if(e==null)continue;
+            JSONObject mine=into.entries.optJSONObject(k);if(mine==null||mine.optLong("at")<e.optLong("at"))try{into.entries.put(k,e);}catch(Exception ignored){}}
+        into.trim();return into.json();
+    }
+    /** The current profile's places, after the one-time move of legacy places to Adults. */
+    static ResumeStore load(android.content.Context c){
+        android.content.SharedPreferences p=c.getSharedPreferences(PlayerActivity.RESUME_PREFS,0);
+        if(p.contains(LEGACY))p.edit().putString(prefsKey(Profiles.ADULT),merge(p.getString(LEGACY,""),p.getString(prefsKey(Profiles.ADULT),""))).remove(LEGACY).commit();
+        return new ResumeStore(p.getString(prefsKey(Profiles.current(c.getSharedPreferences("unified-tv-preview",0))),""));
+    }
+    static void save(android.content.Context c,ResumeStore store){
+        c.getSharedPreferences(PlayerActivity.RESUME_PREFS,0).edit().putString(prefsKey(Profiles.current(c.getSharedPreferences("unified-tv-preview",0))),store.json()).apply();
+    }
 }

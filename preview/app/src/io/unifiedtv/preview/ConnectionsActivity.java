@@ -14,7 +14,7 @@ public final class ConnectionsActivity extends Screen {
     private boolean busy;
     @Override public void onCreate(Bundle b) { super.onCreate(b); getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE); key=getIntent().getStringExtra("key"); if(key==null) { finish(); return; } show(); }
     private void show() {
-        boolean ha=key.equals("ha"); page(ha?"Home Assistant":"Your Films & TV · "+(key.endsWith("child")?"Child":"Adult"));
+        boolean ha=key.equals("ha"); page(ha?"Home Assistant":"Your Films & TV · "+(key.endsWith("child")?"Kids":"Adults"));
         JSONObject old;
         try { old=new Vault(this).read(key); } catch(Exception e) { old=new JSONObject(); note("Stored connection cannot be unlocked. Forget and configure it again."); }
         enabled=new CheckBox(this); enabled.setText("Enable connection"); enabled.setTextColor(-1); enabled.setChecked(old.optBoolean("enabled")); column.addView(enabled);
@@ -29,7 +29,7 @@ public final class ConnectionsActivity extends Screen {
         if(server!=null){android.view.View[] address={column.getChildAt(column.indexOfChild(host)-1),host,column.getChildAt(column.indexOfChild(port)-1),port,https};for(android.view.View v:address)v.setVisibility(android.view.View.GONE);
             Button change=button("Use a different address",()->{});change.setOnClickListener(v->{for(android.view.View a:address)a.setVisibility(android.view.View.VISIBLE);change.setVisibility(android.view.View.GONE);host.requestFocus();});}
         httpConsent=new CheckBox(this); httpConsent.setText("I trust this LAN server and allow unencrypted HTTP to this host only"); httpConsent.setTextColor(-1); httpConsent.setChecked(old.optBoolean("httpConsent")); column.addView(httpConsent);
-        token=field(ha?"Long-lived access token":"User access token (not a server-wide API key for Child)",old.optString("token"),true);
+        token=field(ha?"Long-lived access token":"User access token (not a server-wide API key for Kids)",old.optString("token"),true);
         user=ha?null:field("Server user ID",old.optString("user"),false);
         text("Credentials stay encrypted on this TV. Test does not save changes. Reachability does not verify playback or automations.",18);
         status=text(old.length()==0?"Not configured":"Saved · not tested this session",22);
@@ -69,7 +69,7 @@ public final class ConnectionsActivity extends Screen {
                         if(account.optString("Id").isEmpty()) throw new java.io.IOException();
                         JSONObject me=LocalApi.get(config,"/Users/Me");
                         if(!account.optString("Id").equals(me.optString("Id"))) result="Authentication required · use this user's own access token";
-                        else if(key.endsWith("child") && me.optJSONObject("Policy")!=null && me.optJSONObject("Policy").optBoolean("IsAdministrator")) result="Child account must not be an administrator";
+                        else if(key.endsWith("child") && me.optJSONObject("Policy")!=null && me.optJSONObject("Policy").optBoolean("IsAdministrator")) result="The Kids account must not be an administrator";
                         else result="Authorised · media playback not tested";
                     }
                 }

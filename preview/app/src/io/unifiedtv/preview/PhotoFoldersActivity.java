@@ -24,7 +24,7 @@ public final class PhotoFoldersActivity extends Screen {
     static final int PICK_PAGE=48;
 
     @Override public void onCreate(Bundle state){super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);
-        if(!WallpaperPolicy.photosAllowed(getSharedPreferences("unified-tv-preview",0).getString("profile",WallpaperPolicy.ADULT))){page("My Photos");text("Personal photos are for the adult profile. The Child profile shows Artwork.",20);button("Back",this::finish);return;}
+        if(!WallpaperPolicy.photosAllowed(getSharedPreferences("unified-tv-preview",0).getString("profile",WallpaperPolicy.ADULT))){page("My Photos");text("Personal photos are for Adults. Kids shows Artwork.",20);button("Back",this::finish);return;}
         try{record=new Vault(this).read("photos");}catch(Exception e){record=new JSONObject();}
         if(roots().length()>0&&!record.optString("control").isEmpty())summary();else find(false);
     }

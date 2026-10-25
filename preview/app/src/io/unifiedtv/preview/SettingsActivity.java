@@ -31,24 +31,32 @@ public final class SettingsActivity extends Screen {
         case 0:
             button("Home Assistant",()->startActivity(new Intent(this,ServiceDiscoveryActivity.class)));
             button("Your Films & TV",()->startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("setup",true)));
-            button("Media server accounts",()->new AlertDialog.Builder(this).setTitle("Media account").setItems(new String[]{"Adult","Child"},(d,n)->connection(n==0?"media-adult":"media-child")).show());
+            button("Media server accounts",()->new AlertDialog.Builder(this).setTitle("Media account").setItems(new String[]{"Adults","Kids"},(d,n)->connection(n==0?"media-adult":"media-child")).show());
             button("Connected services",this::services);
             airPlay();break;
         case 1:
-            text("Current profile: "+(EditLock.child(this)?"Child":"Adult"),18);
-            button("Switch profile",()->chooseProfile(this));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
-            text("Child restrictions require a separate restricted media account. This does not lock Android or switch streaming-app accounts.",16);break;
+            text("Who's watching: "+Profiles.label(Profiles.current(getSharedPreferences("unified-tv-preview",0))),18);
+            button("Switch profile",()->Profiles.choose(this));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
+            button("Kids settings",()->EditLock.ask(this,()->startActivity(new Intent(this,KidsActivity.class))));
+            text("Unified TV opens in the profile used last. To switch from Home, press Up, then Left to the profile name, then OK. Moving to Adults always asks for the adult PIN; Kids can be switched on once a PIN is set.",16);
+            text("Kids limits what Unified TV shows and opens: chosen NAS folders, approved apps and an optional app guard. It is not a lock on Android and doesn't switch streaming-app accounts; Kids settings says exactly what it can and can't do.",16);break;
         case 2:
             button("Doorbell, reminders & room setup",()->EditLock.ask(this,()->startActivity(new Intent(this,HouseholdActivity.class))));
             button("Stop household alerts",()->{stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");});
+            // Owner, 25 October 2026: person toasts can be kept off the screen while Kids is watching. Doorbell presses and
+            // smoke or carbon monoxide alarms are never affected, in any profile.
+            toggle("Show person alerts in Kids",AlertPolicy.KIDS_PERSON_PREF,true,on->{});
+            text("Doorbell presses and smoke or carbon monoxide alarms always show, whoever is watching.",15);
             text("Smoke and carbon monoxide alarms come first, then the doorbell. They add to your alarms and never replace them. Native Samsung and third-party protected-video behaviour require separate device tests.",16);break;
         case 3:
             toggle("Reduce motion","reduceMotion");toggle("Keep the Home background still","stillBackground");toggle("High contrast","highContrast");toggle("Reduce transparency","opaque");toggle("Lightweight rendering","lightweight");
             button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
             wallpaper();break;
         case 4:
-            button("Picture, sound, network & Bluetooth",()->{try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception e){note("Use the TV's own Settings");}});
+            button("Picture, sound, network & Bluetooth",()->Launch.unlocked(this,new Intent(Settings.ACTION_SETTINGS),"Use the TV's own Settings"));
             button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
+            // Read-only checks for the owner; never on Home, never in Kids, always behind the PIN.
+            if(!Profiles.kids(this))button("Owner diagnostics",()->EditLock.ask(this,()->startActivity(new Intent(this,OwnerDiagnosticsActivity.class))));
             // Spec 6.1: hardware key logging only in owner-authorised debug builds (the review build is one).
             if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));
             if(DefaultHome.available(this)){
@@ -67,7 +75,7 @@ public final class SettingsActivity extends Screen {
         }
     }
     private void services(){detail="services";heading("Connected services","Available services on this Android TV");button("NordVPN",()->VpnGate.show(this));button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));button("AirPlay receiver",this::airplay);}
-    private void airplay(){android.content.pm.PackageManager pm=getPackageManager();Intent q=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(q,0))if(ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT).contains("airpin")){Intent i=pm.getLeanbackLaunchIntentForPackage(ri.activityInfo.packageName);if(i!=null){startActivity(i);return;}}note("No supported receiver found");}
+    private void airplay(){android.content.pm.PackageManager pm=getPackageManager();Intent q=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(q,0))if(ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT).contains("airpin")){String error=Launch.open(this,ri.activityInfo.packageName,"AirPin LITE");if(error!=null&&!error.isEmpty())note(error);return;}note("No supported receiver found");}
     /** Spec 7.1: AirPlay through AirPin LITE. Setup happens in AirPin itself; Unified TV only reports what it can confirm. */
     private void airPlay(){
         String pkg=AirPlayReceiver.installed(this);
@@ -88,7 +96,7 @@ public final class SettingsActivity extends Screen {
         String[] sources=adult?new String[]{"Artwork","My Photos","Off"}:new String[]{"Artwork","Off"};
         button("Wallpaper: "+WallpaperPolicy.sourceLabel(source),()->choose("Wallpaper",sources,n->{String pick=sources[n];
             if(pick.equals("My Photos"))EditLock.ask(this,this::myPhotos);else p.edit().putString("wallpaperSource",pick.equals("Off")?WallpaperPolicy.OFF:WallpaperPolicy.ARTWORK).apply();}));
-        if(WallpaperPolicy.PHOTOS.equals(saved)&&!adult)text("The Child profile shows Artwork, never personal photos.",16);
+        if(WallpaperPolicy.PHOTOS.equals(saved)&&!adult)text("Kids shows Artwork, never personal photos.",16);
         if(WallpaperPolicy.PHOTOS.equals(source)){
             text(WallpaperPolicy.PHOTOS_LIMIT,16);
             int chosen=0;try{org.json.JSONArray r=new Vault(this).read("photos").optJSONArray("roots");chosen=r==null?0:r.length();}catch(Exception ignored){}
@@ -105,7 +113,7 @@ public final class SettingsActivity extends Screen {
     }
     /** Spec 33.2.6: a clear local privacy confirmation before personal photos appear on a shared TV. */
     private void myPhotos(){
-        new AlertDialog.Builder(this).setTitle("Show my photos on this TV?").setMessage("Only the folders you choose are shown, and only in the adult profile; the Child profile shows Artwork. Nothing is uploaded.\n\n"+WallpaperPolicy.PHOTOS_LIMIT)
+        new AlertDialog.Builder(this).setTitle("Show my photos on this TV?").setMessage("Only the folders you choose are shown, and only in Adults; Kids shows Artwork. Nothing is uploaded.\n\n"+WallpaperPolicy.PHOTOS_LIMIT)
             .setPositiveButton("Show my photos",(d,w)->{getSharedPreferences("unified-tv-preview",0).edit().putString("wallpaperSource",WallpaperPolicy.PHOTOS).apply();
                 int chosen=0;try{org.json.JSONArray r=new Vault(this).read("photos").optJSONArray("roots");chosen=r==null?0:r.length();}catch(Exception ignored){}
                 if(chosen==0)startActivity(new Intent(this,PhotoFoldersActivity.class));if(category==3)show(3);})
@@ -115,7 +123,8 @@ public final class SettingsActivity extends Screen {
         new AlertDialog.Builder(this).setTitle(title).setItems(options,(d,n)->{pick.accept(n);show(3);}).show();
     }
     private void toggle(String name,String key){toggle(name,key,on->{});}
-    private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,false));c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
+    private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){toggle(name,key,false,after);}
+    private void toggle(String name,String key,boolean byDefault,java.util.function.Consumer<Boolean> after){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,byDefault));c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
     /** Recording is an adult's statement that the network-level check passed on this TV; versions are captured automatically. */
     private void protection(){
         String live=LiveTvProtection.livePackage(this);org.json.JSONObject saved=LiveTvProtection.saved(this);
@@ -127,7 +136,7 @@ public final class SettingsActivity extends Screen {
     /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
     private void homeSetup(){
         new AlertDialog.Builder(this).setTitle("Make Unified TV the Home screen").setMessage("Pressing Home will open Unified TV instead of the original TV interface. The original interface stays on the TV, and you can switch back at any time from this screen.\n\nYour TV will ask you to choose: pick Unified TV.")
-            .setPositiveButton("Continue",(d,w)->{homeAsked=true;DefaultHome.offer(this);}).setNegativeButton("Cancel",null).show();
+            .setPositiveButton("Continue",(d,w)->{homeAsked=true;settingsPass();DefaultHome.offer(this);}).setNegativeButton("Cancel",null).show();
     }
     private boolean homeAsked;
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
@@ -143,7 +152,7 @@ public final class SettingsActivity extends Screen {
         java.util.List<String> choices=new java.util.ArrayList<>();choices.add("Open original interface for now");if(ours)choices.add("Make original interface the default");choices.add("Cancel");
         new AlertDialog.Builder(this).setTitle("Original TV interface").setItems(choices.toArray(new String[0]),(d,n)->{
             String pick=choices.get(n);
-            if(pick.startsWith("Open")){if(!DefaultHome.openOriginal(this))new AlertDialog.Builder(this).setMessage("This TV doesn't let Unified TV open the original interface directly."+(ours?" Choose 'Make original interface the default' instead.":" Press the Home button on your remote to get there.")).setPositiveButton("OK",null).show();}
+            if(pick.startsWith("Open")){settingsPass();if(!DefaultHome.openOriginal(this))new AlertDialog.Builder(this).setMessage("This TV doesn't let Unified TV open the original interface directly."+(ours?" Choose 'Make original interface the default' instead.":" Press the Home button on your remote to get there.")).setPositiveButton("OK",null).show();}
             else if(pick.startsWith("Make"))new AlertDialog.Builder(this).setTitle("Make original interface the default").setMessage("From now on, pressing Home will open the original TV interface until you choose Unified TV again in Settings > TV & performance.")
                 .setPositiveButton("Make it the default",(d2,w2)->{DefaultHome.withdraw(this);note("The Home button now opens the original TV interface.");show(4);}).setNegativeButton("Cancel",null).show();
         }).show();
@@ -151,5 +160,6 @@ public final class SettingsActivity extends Screen {
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}
     @Override public void onBackPressed(){if(!detail.isEmpty())show(category);else if(!navigation[category].hasFocus())navigation[category].requestFocus();else super.onBackPressed();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putInt("category",category);}
-    static void chooseProfile(android.app.Activity a){new AlertDialog.Builder(a).setTitle("Who's watching?").setItems(new String[]{"Adult","Child"},(d,n)->{Runnable change=()->{a.getSharedPreferences("unified-tv-preview",0).edit().putString("profile",n==0?"adult":"child").apply();a.recreate();};if(n==0)EditLock.ask(a,change);else if(a.getSharedPreferences("unified-tv-preview",0).getString("pin","").isEmpty())new AlertDialog.Builder(a).setMessage("Set an adult PIN before enabling Child mode. Use a separate restricted media account.").setPositiveButton("OK",null).show();else change.run();}).show();}
+    /** An adult is here behind the PIN: if Kids is on, the Kids guard lets system screens opened from here stay a while. */
+    private void settingsPass(){if(Profiles.kids(this))getSharedPreferences("unified-tv-preview",0).edit().putLong(KidsGuard.PASS,System.currentTimeMillis()+KidsGuard.PASS_MS).apply();}
 }

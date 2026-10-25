@@ -23,13 +23,14 @@ public final class VoiceActivity extends Screen {
         if(busy)return;String text=query.getText().toString().trim();if(text.isEmpty())return;
         String command=VoiceCommand.classify(text);
         if(command.equals("blocked")){answer.setText("Live TV stays blocked until VPN traffic protection is verified.");return;}
-        if(command.equals("profile")){SettingsActivity.chooseProfile(this);return;}
+        if(command.equals("profile")){Profiles.choose(this);return;}
         if(command.equals("camera")){startService(new Intent(this,HouseholdService.class).setAction("camera"));answer.setText("Camera requested. Household alerts must be configured with overlay permission.");return;}
         if(command.equals("find")){startActivity(new Intent(this,LibraryActivity.class).putExtra("search",text.substring(5).trim()));return;}
         String pkg=command.equals("bbc")?"bbc.iplayer.android.tv":command.equals("netflix")?"com.netflix.ninja":command.equals("disney")?"com.disney.disneyplus":"";
         if(!pkg.isEmpty()){
-            Intent launch=getPackageManager().getLeanbackLaunchIntentForPackage(pkg);if(launch==null)launch=getPackageManager().getLaunchIntentForPackage(pkg);
-            if(launch!=null){try{startActivity(launch);}catch(Exception e){answer.setText("App unavailable");}}else answer.setText("That app is not installed under its expected TV identity. Use Apps to find it.");return;
+            // The same gate as the dock and Apps (Live TV protection and the Kids list): voice is never a way round it.
+            if(getPackageManager().getLeanbackLaunchIntentForPackage(pkg)==null&&getPackageManager().getLaunchIntentForPackage(pkg)==null){answer.setText("That app is not installed under its expected TV identity. Use Apps to find it.");return;}
+            String why=Launch.open(this,pkg,command.equals("bbc")?"BBC iPlayer":command.equals("netflix")?"Netflix":"Disney+");if(why!=null&&!why.isEmpty())answer.setText(why);return;
         }
         answer.setText("Try Open BBC, Open Netflix, Show Camera, Switch Profile, or Find followed by a title. General voice discovery is not connected; it needs a scoped read-only relay before it can be enabled safely.");
     }

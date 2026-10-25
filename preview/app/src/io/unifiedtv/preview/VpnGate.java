@@ -45,6 +45,8 @@ final class VpnGate {
             :"NordVPN is connected but isn't covering this app (it may be set to leave some apps out). Live TV stays locked.";
     }
     static void connect(Activity a){
+        // Kids: NordVPN is another app, so it opens only if an adult approved it (Launch's one Kids check).
+        String no=Launch.kidsRefusal(a,"com.nordvpn.android","NordVPN");if(no!=null){Toast.makeText(a,no,Toast.LENGTH_LONG).show();return;}
         android.content.pm.PackageManager pm=a.getPackageManager();Intent launch=pm.getLeanbackLaunchIntentForPackage("com.nordvpn.android");
         if(launch==null)launch=pm.getLaunchIntentForPackage("com.nordvpn.android");
         if(launch!=null){try{a.startActivity(launch);return;}catch(RuntimeException ignored){}}

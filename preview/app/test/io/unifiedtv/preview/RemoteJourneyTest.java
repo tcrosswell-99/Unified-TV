@@ -65,9 +65,32 @@ public class RemoteJourneyTest {
         hold();for(int i=0;i<3;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));assertEquals(6,((java.util.List<?>)field("dock")).size());
     }
+    // Owner, 25 October 2026: Up moves into the top row, onto the controls (as before, one OK away); Left reaches the profile.
     @Test public void appsIsReachableFromTheControls()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();
+        press(KeyEvent.KEYCODE_DPAD_UP);assertEquals(true,field("header"));press(KeyEvent.KEYCODE_DPAD_CENTER);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();
         assertEquals("Apps",d.getListView().getAdapter().getItem(0));
+    }
+    @Test public void profileIsOneStepLeftInTheTopRowAndNeverMovesTheDock()throws Exception{
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);int before=(Integer)field("index");
+        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_LEFT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);
+        assertTrue(String.valueOf(d.getListView().getAdapter().getItem(0)).startsWith("Adults"));assertTrue(String.valueOf(d.getListView().getAdapter().getItem(1)).startsWith("Kids"));
+        d.dismiss();press(KeyEvent.KEYCODE_DPAD_DOWN);
+        assertEquals(false,field("header"));assertEquals("the dock keeps its tile",before,field("index"));assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+    }
+    @Test public void kidsNeedsAPinFirstAndNothingChangesWithoutOne()throws Exception{
+        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_LEFT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();Shadows.shadowOf(d).clickOnItem(1);
+        assertEquals("adult",activity.getSharedPreferences("unified-tv-preview",0).getString("profile","adult"));
+    }
+    @Test public void libraryTileOpensSetupAndHomeKeepsItsPlace()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putString("dock","netflix,library").commit();
+        controller.pause().resume();press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertEquals(1,field("index"));press(KeyEvent.KEYCODE_DPAD_CENTER);
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);
+        assertEquals(DlnaLibraryActivity.class.getName(),started.getComponent().getClassName());assertTrue(started.getBooleanExtra("setup",false));
+        controller.pause().stop().restart().start().resume();
+        assertEquals("focus stays on Library",1,field("index"));assertEquals("library",field("scene"));
     }
     @Test public void moveSavePersistsOrderAndSurvivesRecreation()throws Exception{
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
@@ -85,7 +108,11 @@ public class RemoteJourneyTest {
         for(int i=0;i<4;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
-    @Test public void upOpensNativeControls()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);assertTrue(d.isShowing());assertEquals(5,d.getListView().getCount());
+    @Test public void upThenOkOpensNativeControls()throws Exception{
+        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_CENTER);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);assertTrue(d.isShowing());assertEquals(5,d.getListView().getCount());
+    }
+    @Test public void backLeavesTheTopRowForTheSameTile()throws Exception{
+        int before=(Integer)field("index");press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_BACK);
+        assertEquals(false,field("header"));assertEquals(before,field("index"));assertFalse(activity.isFinishing());
     }
 }

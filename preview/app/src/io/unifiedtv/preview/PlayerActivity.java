@@ -54,22 +54,39 @@ public final class PlayerActivity extends Screen {
                 String stream=config.getString("base")+"/Videos/"+LocalApi.segment(id)+"/stream?static=true";
                 JSONObject source=config;
                 runOnUiThread(()->play(ticket,stream,source));
-            }catch(Exception e){runOnUiThread(()->{if(ticket==generation&&!isFinishing()&&!isDestroyed())unavailable(e instanceof SecurityException?"This title isn't available on this profile. Check this profile's media account.":"The film library didn't answer. Check that the media server is on and this profile is connected.",!(e instanceof SecurityException));});}
+            }catch(Exception e){runOnUiThread(()->{if(ticket==generation&&!isFinishing()&&!isDestroyed())unavailable(e instanceof KidsRefused?"This title isn't in the Kids folders, or its rating isn't for Kids. Ask an adult.":e instanceof SecurityException?"This title isn't available on this profile. Check this profile's media account.":"The film library didn't answer. Check that the media server is on and this profile is connected.",!(e instanceof SecurityException));});}
         });
     }
+    /** Kids asked for something outside the Kids folders or the rating table. */
+    static final class KidsRefused extends SecurityException{}
     private void prepareDlna(int ticket)throws Exception{
-        if(EditLock.child(this))throw new SecurityException();
-        JSONObject saved=new Vault(this).read("dlna");if(!saved.optBoolean("enabled")||saved.optJSONArray("roots")==null)throw new SecurityException();
+        boolean kids=Profiles.kids(this);
+        JSONObject saved=new Vault(this).read(kids?KidsPolicy.STORE:"dlna");if(!saved.optBoolean("enabled")||saved.optJSONArray("roots")==null)throw kids?new KidsRefused():new SecurityException();
         String stream=getIntent().getStringExtra("dlnaUrl");java.net.URI uri=DlnaClient.local(stream),origin=DlnaClient.local(saved.getString("control"));
-        if(!origin.getHost().equalsIgnoreCase(uri.getHost()))throw new SecurityException();
+        if(!origin.getHost().equalsIgnoreCase(uri.getHost()))throw kids?new KidsRefused():new SecurityException();
         if(DlnaClient.lan==null)DlnaClient.lan=LocalDiscovery.lan(this);
+        if(kids)kidsCheck(saved,stream);
         int port=uri.getPort()<0?("https".equals(uri.getScheme())?443:80):uri.getPort();
         JSONObject source=new JSONObject().put("enabled",true).put("httpConsent",true).put("dlna",true).put("base",Endpoint.base(uri.getHost(),""+port,"https".equals(uri.getScheme())));config=source;
         resumeKey=ResumeStore.key(stream);
         long here=position<0?resumeStore().position(resumeKey,System.currentTimeMillis()):0;
         runOnUiThread(()->{if(position<0&&here>0)askResume(ticket,here,stream,source);else play(ticket,stream,source);});
     }
-    private ResumeStore resumeStore(){return new ResumeStore(getSharedPreferences(RESUME_PREFS,0).getString("places",""));}
+    /**
+     * Kids, at play time, whatever opened the player: the server itself must say this title sits inside a Kids folder
+     * (its parentID chain, KidsPolicy.playable), the stream must be that title's own, and no rating on the way may be
+     * refused. The library and the Home shelf already leave such titles out; this is the wall, not the poster.
+     */
+    private void kidsCheck(JSONObject kids,String stream)throws Exception{
+        java.util.Set<String> roots=KidsPolicy.roots(kids);String item=getIntent().getStringExtra("dlnaItem"),root=getIntent().getStringExtra("root");
+        if(item==null||root==null||!roots.contains(root))throw new KidsRefused();
+        DlnaClient.Item self=DlnaClient.metadata(kids,item);
+        if(self==null||self.folder||!stream.equals(self.url))throw new KidsRefused();
+        String udn=kids.optString("udn");
+        if(!KidsPolicy.playable(item,roots,id->{DlnaClient.Item i=id.equals(item)?self:DlnaClient.metadata(kids,id);return i==null?null:CatalogueItem.fromDlna(i,udn,root);}))throw new KidsRefused();
+    }
+    /** This profile's own places (Adults and Kids are kept apart). */
+    private ResumeStore resumeStore(){return ResumeStore.load(this);}
     /** Local resume is labelled as this TV's own: it is not Continue Watching and is not shared with the server. */
     private void askResume(int ticket,long here,String stream,JSONObject source){
         if(ticket!=generation||isFinishing()||isDestroyed())return;
@@ -169,7 +186,7 @@ public final class PlayerActivity extends Screen {
         if(player==null)return;
         long at=player.getCurrentPosition(),duration=player.getDuration();if(at>0||position<0)position=Math.max(0,at);
         if(player.getPlaybackState()==Player.STATE_ENDED)position=0;
-        if(dlna&&resumeKey!=null){ResumeStore store=resumeStore();store.record(resumeKey,player.getPlaybackState()==Player.STATE_ENDED?Math.max(at,duration):at,duration>0?duration:0,System.currentTimeMillis());getSharedPreferences(RESUME_PREFS,0).edit().putString("places",store.json()).apply();}
+        if(dlna&&resumeKey!=null){ResumeStore store=resumeStore();store.record(resumeKey,player.getPlaybackState()==Player.STATE_ENDED?Math.max(at,duration):at,duration>0?duration:0,System.currentTimeMillis());ResumeStore.save(this,store);}
     }
     @Override protected void onResume(){super.onResume();if(player!=null&&playWhenReady)player.play();}
     /** Standby and anything covering the player pause it; onResume or a restart continues only if it was playing. */

@@ -9,7 +9,7 @@ import java.util.concurrent.*;
 public final class ServiceDiscoveryActivity extends Screen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();private String key;private TextView state;private boolean active;
     @Override public void onCreate(Bundle b){super.onCreate(b);key=getIntent().getStringExtra("key");if(key==null)key="ha";boolean ha=key.equals("ha");active=true;
-        page(ha?"Home Assistant":"Your Films & TV · "+(key.endsWith("child")?"Child":"Adult"));state=text("One moment...",20);
+        page(ha?"Home Assistant":"Your Films & TV · "+(key.endsWith("child")?"Kids":"Adults"));state=text("One moment...",20);
         try{if(!getIntent().getBooleanExtra("search",false)&&!new Vault(this).read(key).optString("base").isEmpty()){button("Back",this::finish);open(null,null,true);return;}}catch(Exception ignored){}
         List<LocalDiscovery.Found> ready=LocalDiscovery.fresh()?(ha?LocalDiscovery.haFound:LocalDiscovery.mediaFound):null;
         if(ready!=null&&!ready.isEmpty()){show(ready);return;}

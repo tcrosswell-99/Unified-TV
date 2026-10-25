@@ -176,6 +176,8 @@ public final class NowPlayingActivity extends Screen {
         return start(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
     }
     private boolean start(Intent i) {
+        // System settings: in Kids only behind the adult PIN, then the Kids guard lets them stay open a while.
+        if (Profiles.kids(this)) { if (i.resolveActivity(getPackageManager()) == null) return false; Launch.system(this, i, "This TV doesn't offer that setting"); return true; }
         try { startActivity(i); return true; } catch (ActivityNotFoundException | SecurityException e) { return false; }
     }
 
@@ -190,7 +192,7 @@ public final class NowPlayingActivity extends Screen {
     }
 
     private void press(int which) {
-        if (which == SETTINGS) { startActivity(new Intent(this, SettingsActivity.class)); return; }
+        if (which == SETTINGS) { EditLock.ask(this, () -> startActivity(new Intent(this, SettingsActivity.class))); return; }
         if (controller == null || now == null) return;
         MediaController.TransportControls tc = controller.getTransportControls();
         try {

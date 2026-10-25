@@ -101,7 +101,7 @@ public final class HouseholdActivity extends Screen {
         CheckBox reminders=new CheckBox(this);reminders.setText("Allow private reminder events from Home Assistant");reminders.setTextColor(-1);reminders.setChecked(config.optBoolean("reminders"));column.addView(reminders);
         reminders.setOnCheckedChangeListener((v,on)->saveFlag("reminders",on));
         button("Grant optional alert overlay permission",()->{
-            try{startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:"+getPackageName())));}catch(Exception e){note("Open this TV's special app access settings manually");}
+            Launch.unlocked(this,new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:"+getPackageName())),"Open this TV's special app access settings manually");
         });
         button("Start household alerts",()->{
             if(!Settings.canDrawOverlays(this)){note("Grant overlay permission first. No alert service started.");return;}

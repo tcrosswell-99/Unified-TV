@@ -20,4 +20,11 @@ public class SettingsJourneyTest {
     @Test public void vpnStatesRemainDistinctAndCannotImplyRoutingVerification(){
         java.util.Set<String> labels=new java.util.HashSet<>();for(VpnGate.State state:VpnGate.State.values())labels.add(VpnGate.statusLabel(state));assertEquals(4,labels.size());for(boolean routed:new boolean[]{false,true})assertTrue(VpnGate.explanation(true,routed).contains("Live TV stays locked"));
     }
+    @Test public void profilesOffersTheSwitchAndKidsSettingsAndDiagnosticsAreForAdults(){
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
+            SettingsActivity a=controller.get();View root=a.findViewById(android.R.id.content);
+            find(root,"Profiles").requestFocus();assertNotNull(find(root,"Switch profile"));assertNotNull(find(root,"Kids settings"));
+            find(root,"TV & performance").requestFocus();assertNotNull(find(root,"Owner diagnostics"));
+        }
+    }
 }

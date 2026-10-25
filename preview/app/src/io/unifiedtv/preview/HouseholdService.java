@@ -132,6 +132,7 @@ public final class HouseholdService extends Service {
             JSONObject before=data.optJSONObject("old_state"),after=data.optJSONObject("new_state");if(before==null||after==null)return;
             String entity=data.optString("entity_id");
             int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"));
+            if(kind!=AlertPolicy.RING_NONE)lastEvent(kind==AlertPolicy.RING_PRESS?"doorbell press":"person",now);
             if(kind==AlertPolicy.RING_PRESS){
                 String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}
             }else if(kind==AlertPolicy.RING_PERSON&&policy.acceptPerson(entity,now))person();
@@ -141,6 +142,8 @@ public final class HouseholdService extends Service {
             if(policy.ringing(now))policy.defer(data.optString("text"),fired);else if(policy.reminderAllowed(fired,now))reminder(data.optString("text"));
         }
     }
+    /** For Owner diagnostics: the kind and time of the last doorbell event that reached this TV. No entity, name or address. */
+    private void lastEvent(String kind,long at){getSharedPreferences("unified-tv-preview",0).edit().putString("householdLastEvent",kind).putLong("householdLastEventAt",at).apply();}
     private WindowManager.LayoutParams params(int w,int h,boolean focusable){
         WindowManager.LayoutParams p=new WindowManager.LayoutParams(w,h,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             focusable?WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL:WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
@@ -196,6 +199,8 @@ public final class HouseholdService extends Service {
      */
     private void person(){
         if(stopped||policy.emergency()||cameraOverlay!=null||!Settings.canDrawOverlays(this))return;
+        android.content.SharedPreferences prefs=getSharedPreferences("unified-tv-preview",0);
+        if(!AlertPolicy.personToastAllowed(Profiles.kids(prefs),prefs.getBoolean(AlertPolicy.KIDS_PERSON_PREF,true)))return;
         removeView(personToast,()->personToast=null);
         TextView toast=new TextView(this);toast.setText("Person at "+cameraName());toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(28,18,28,18);
         android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(28);g.setColor(0xE620293B);g.setStroke(2,0x40FFFFFF);toast.setBackground(g);

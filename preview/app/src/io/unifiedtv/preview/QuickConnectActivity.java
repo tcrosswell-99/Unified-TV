@@ -33,7 +33,7 @@ public final class QuickConnectActivity extends Screen {
             try{if(!QuickConnect.approved(pending,start.secret)){runOnUiThread(this::poll);return;}
                 JSONObject account=QuickConnect.account(pending,QuickConnect.authenticate(pending,start.secret),key.endsWith("child"));new Vault(this).save(key,account);
                 runOnUiThread(()->{if(!active)return;code.setText("");state.setText(account.optString("name").isEmpty()?"You're signed in.":"You're signed in as "+account.optString("name")+".");button("Done",this::finish).requestFocus();});}
-            catch(SecurityException e){runOnUiThread(()->{if(active){code.setText("");state.setText("That's an administrator account. The Child profile needs a restricted account: approve the code from a child's account instead.");}});}
+            catch(SecurityException e){runOnUiThread(()->{if(active){code.setText("");state.setText("That's an administrator account. Kids needs a restricted account: approve the code from a child's account instead.");}});}
             catch(Exception e){runOnUiThread(this::poll);}
         }),3000);
     }

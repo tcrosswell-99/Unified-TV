@@ -59,6 +59,12 @@ final class AlertPolicy {
         String words=(entity+" "+(a==null?"":a.optString("friendly_name",""))).toLowerCase(Locale.ROOT);
         return !words.contains("motion");
     }
+    /**
+     * Owner, 25 October 2026: "Show person alerts in Kids" (on unless an adult turns it off). Off means no person toast
+     * while Kids is watching. Only the person toast: doorbell presses (RING-03) and smoke/CO are the same in every profile.
+     */
+    static final String KIDS_PERSON_PREF="kidsPersonAlerts";
+    static boolean personToastAllowed(boolean kids,boolean showInKids){return !kids||showInKids;}
     private final LinkedHashMap<String,Long> people=new LinkedHashMap<>();
     /** RING-02: repeated person events from one entity within a minute are one visit, so one toast. */
     boolean acceptPerson(String entity,long now){

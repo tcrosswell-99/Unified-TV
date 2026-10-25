@@ -10,7 +10,8 @@ import java.util.*;
 /** Bounded local SSDP discovery and read-only ContentDirectory browsing. */
 final class DlnaClient {
     static final class Device {String name,location,control,service,udn;JSONObject json()throws Exception{return new JSONObject().put("name",name).put("location",location).put("control",control).put("service",service).put("udn",udn).put("enabled",true);}}
-    static final class Item {String id,title,url="",art="",year="";boolean folder;}
+    /** One entry. parent is the server's own parentID; ratings are its content ratings (upnp:rating), as sent. */
+    static final class Item {String id,title,url="",art="",year="",parent="",upnpClass="";boolean folder;final List<String> ratings=new ArrayList<>();}
     /** One Browse response. Paging follows the server's own counts: filtered entries must not end the list early. */
     static final class Page {final List<Item> items=new ArrayList<>();int returned,total;
         boolean more(int offset){return returned>0&&(total>0?offset+returned<total:returned>=PAGE);}
@@ -69,24 +70,53 @@ final class DlnaClient {
             Device d=new Device();d.name=value(root,"friendlyName");if(d.name.length()>80)d.name=d.name.substring(0,80);d.control=control.toString();d.location=location;d.service=type;d.udn=value(root,"UDN");return d;
         }}throw new IOException("No media directory");
     }
-    /** What a search heard: servers that answered but whose description could not be read are counted, not shown. */
-    static final class Report {int answered,unreadable;
-        /** "Nobody answered" and "a server answered but wouldn't talk to this TV" need different fixes. */
+    /**
+     * What a search heard. Servers that answered but whose description could not be read, and servers whose top level
+     * showed no folders at all (nothing to browse), are counted, never offered.
+     */
+    static final class Report {int answered,unreadable,empty;
+        /** "Nobody answered", "a server answered but wouldn't talk to this TV" and "nothing shared" need different fixes. */
         String plain(){
             if(unreadable>0)return "A media server answered, but didn't let the TV see its library. Check that its media service is running and that this TV is allowed, then search again.";
+            if(empty>0)return "A media server answered, but isn't sharing any folders yet. Check its media server settings, then search again.";
             return "No media server found. Check that the NAS media service is on and the TV is on the same home network. If NordVPN is on, allow devices on your home network.";
         }
     }
+    /** One server that answered a search, and how far it got: a readable description, then a top level with folders. */
+    static final class Check {final String location;Device device;int folders=-1;Check(String location){this.location=location;}}
+    /** Zero-configuration rule: offered only when its description validated AND its top level shows at least one folder. */
+    static List<Device> offered(List<Check> all,Report report){
+        List<Device> out=new ArrayList<>();Set<String> ids=new HashSet<>();if(report!=null)report.answered=all.size();
+        for(Check c:all){
+            if(c.device==null){if(report!=null)report.unreadable++;continue;}
+            if(c.folders<=0){if(report!=null)report.empty++;continue;}
+            if(ids.add(c.device.udn.isEmpty()?c.device.control:c.device.udn))out.add(c.device);
+        }
+        return out;
+    }
+    /** Folders in a Browse page: the catalogue check counts what a viewer could open. */
+    static int folders(Page page){int n=0;for(Item i:page.items)if(i.folder)n++;return n;}
+    /** Friendly names only, never an address; two servers with one name are told apart by number. */
+    static List<String> labels(List<Device> devices){
+        List<String> out=new ArrayList<>();Map<String,Integer> seen=new HashMap<>();
+        for(Device d:devices){String name=d.name==null||d.name.trim().isEmpty()?"Media server":d.name.trim();int n=seen.merge(name.toLowerCase(Locale.ROOT),1,Integer::sum);out.add(n==1?name:name+" ("+n+")");}
+        return out;
+    }
     static List<Device> discover(android.content.Context context,boolean thorough)throws Exception{return discover(context,thorough,null);}
-    static List<Device> discover(android.content.Context context,boolean thorough,Report report)throws Exception{
+    static List<Device> discover(android.content.Context context,boolean thorough,Report report)throws Exception{return offered(survey(context,thorough),report);}
+    /** Every server that answered, each described and given a root Browse (bounded: eight servers, fifteen seconds). */
+    static List<Check> survey(android.content.Context context,boolean thorough)throws Exception{
         Set<String> locations=new LinkedHashSet<>();try(DatagramSocket socket=new DatagramSocket()){LocalDiscovery.bind(context,socket);
             socket.setSoTimeout(500);byte[] message=("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:schemas-upnp-org:device:MediaServer:1\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
             socket.send(new DatagramPacket(message,message.length,InetAddress.getByName("239.255.255.250"),1900));listen(socket,locations,4500);
             // Multicast can be lost to a VPN or a router setting; UPnP devices also answer a search sent straight to them.
             if(locations.isEmpty()&&thorough&&context!=null){for(InetAddress a:LocalDiscovery.neighbours(LocalDiscovery.address(context)))try{socket.send(new DatagramPacket(message,message.length,a,1900));}catch(IOException ignored){}listen(socket,locations,3000);}
         }
-        List<Device> devices=new ArrayList<>();Set<String> ids=new HashSet<>();long deadline=System.currentTimeMillis()+15000;if(report!=null)report.answered=locations.size();
-        for(String location:locations){if(Thread.currentThread().isInterrupted()||System.currentTimeMillis()>deadline)break;try{Device d=describe(location);if(ids.add(d.udn.isEmpty()?d.control:d.udn))devices.add(d);}catch(Exception ignored){if(report!=null)report.unreadable++;}}return devices;
+        List<Check> out=new ArrayList<>();long deadline=System.currentTimeMillis()+15000;
+        for(String location:locations){if(Thread.currentThread().isInterrupted()||System.currentTimeMillis()>deadline)break;Check c=new Check(location);out.add(c);
+            try{c.device=describe(location);}catch(Exception ignored){continue;}
+            try{c.folders=folders(browse(c.device.json(),"0",0));}catch(Exception ignored){c.folders=-1;}}
+        return out;
     }
     private static void listen(DatagramSocket socket,Set<String> locations,long window){
         long end=System.currentTimeMillis()+window;while(System.currentTimeMillis()<end&&!Thread.currentThread().isInterrupted()){try{byte[] b=new byte[16384];DatagramPacket p=new DatagramPacket(b,b.length);socket.receive(p);String location=location(new String(b,0,p.getLength(),StandardCharsets.UTF_8),p.getAddress());if(location!=null&&locations.size()<8)locations.add(location);}catch(SocketTimeoutException ignored){}catch(Exception ignored){}}
@@ -98,9 +128,17 @@ final class DlnaClient {
     static String escape(String s){return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;");}
     static Page browse(JSONObject source,String id,int offset)throws Exception{return parse(browseResult(source,id,offset,PAGE),local(source.getString("control")));}
     /** One raw Browse response, for callers that read other kinds of item (the Wallpaper's pictures: PhotoSource). */
-    static byte[] browseResult(JSONObject source,String id,int offset,int count)throws Exception{
+    static byte[] browseResult(JSONObject source,String id,int offset,int count)throws Exception{return browseResult(source,id,offset,count,"BrowseDirectChildren");}
+    /**
+     * One object's own entry (BrowseMetadata): its parentID, ratings and stream. The Kids check at play time walks these
+     * up to a Kids folder. Null when the server returns nothing playable or browsable for that id.
+     */
+    static Item metadata(JSONObject source,String id)throws Exception{
+        Page p=parse(browseResult(source,id,0,0,"BrowseMetadata"),local(source.getString("control")));return p.items.isEmpty()?null:p.items.get(0);
+    }
+    private static byte[] browseResult(JSONObject source,String id,int offset,int count,String flag)throws Exception{
         String service=source.getString("service");if(!service.matches("urn:schemas-upnp-org:service:ContentDirectory:[1-3]"))throw new IOException("Unsupported media service");
-        String body="<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><u:Browse xmlns:u=\""+service+"\"><ObjectID>"+escape(id)+"</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter><StartingIndex>"+Math.max(0,offset)+"</StartingIndex><RequestedCount>"+Math.max(1,Math.min(200,count))+"</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>";
+        String body="<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><u:Browse xmlns:u=\""+service+"\"><ObjectID>"+escape(id)+"</ObjectID><BrowseFlag>"+flag+"</BrowseFlag><Filter>*</Filter><StartingIndex>"+Math.max(0,offset)+"</StartingIndex><RequestedCount>"+(flag.equals("BrowseMetadata")?0:Math.max(1,Math.min(200,count)))+"</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>";
         return request(source.getString("control"),service+"#Browse",body);
     }
     /**
@@ -132,6 +170,9 @@ final class DlnaClient {
         for(Node node=didl.getFirstChild();node!=null&&page.items.size()<PAGE;node=node.getNextSibling()){if(!(node instanceof Element))continue;Element e=(Element)node;Item item=new Item();item.id=e.getAttribute("id");item.title=title(value(e,"title"));item.folder="container".equals(e.getLocalName());if(item.id.isEmpty()||item.id.length()>1024)continue;
             if(!item.folder){NodeList resources=e.getElementsByTagNameNS("*","res");for(int i=0;i<resources.getLength();i++){Element res=(Element)resources.item(i);String protocol=res.getAttribute("protocolInfo");if(protocol.startsWith("http-get:")&&protocol.contains("video/")){String u=sameHost(origin,res.getTextContent());if(!u.isEmpty()){item.url=u;break;}}}if(item.url.isEmpty())continue;}
             item.art=sameHost(origin,value(e,"albumArtURI"));String date=value(e,"date");if(date.matches("\\d{4}.*"))item.year=date.substring(0,4);
+            item.parent=e.getAttribute("parentID");if(item.parent.length()>1024)item.parent="";item.upnpClass=value(e,"class").trim();
+            // upnp:rating is the content rating (UPnP ContentDirectory); star scores live in other fields and are not read.
+            NodeList ratings=e.getElementsByTagNameNS("*","rating");for(int i=0;i<ratings.getLength()&&item.ratings.size()<4;i++){String r=ratings.item(i).getTextContent().trim();if(!r.isEmpty())item.ratings.add(r.length()>32?r.substring(0,32):r);}
             page.items.add(item);
         }if(page.returned==0)page.returned=page.items.size();return page;
     }

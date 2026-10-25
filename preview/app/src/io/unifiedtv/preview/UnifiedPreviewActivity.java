@@ -62,10 +62,17 @@ public final class UnifiedPreviewActivity extends Activity {
     @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
         LiveTvGuard.stop(this);
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
+        guarded();
+    }
+    /** The Kids app guard brought Home back: say why, briefly and kindly, with the dock as it was. */
+    private void guarded(){
+        if(surface==null||!getIntent().hasExtra("kidsGuard"))return;String app=getIntent().getStringExtra("kidsGuard");getIntent().removeExtra("kidsGuard");
+        surface.home();surface.info((app==null||app.isEmpty()?"That app":app)+" isn't on the Kids list. Ask an adult.");
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent);
         // As the chosen Home: the Home button lands on the main screen with the same app still in focus (spec 28.3).
         if (intent.hasCategory(Intent.CATEGORY_HOME) && surface != null) surface.home(); }
+    // (A return from the Kids app guard arrives here too and is explained in onResume.)
     @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
 
 
@@ -123,6 +130,12 @@ public final class UnifiedPreviewActivity extends Activity {
         private Bitmap coast;
         private int index = -1, appIndex = 0, menuIndex = 0, lifted = -1;
         private boolean apps = false, menu = false, moving = false;
+        /**
+         * The top row (owner, 25 October 2026): Up from the dock moves into it, onto the controls (gear) as before; Left
+         * reaches the profile name ("Adults" or "Kids"), where OK opens Who's watching. Down or Back returns to the same tile.
+         */
+        private boolean header = false; private int headerIndex = 1;
+        static final int HEADER_PROFILE = 0, HEADER_CONTROLS = 1;
         private boolean okDown, held;
         private long focusAt, fadeAt;
         // Spec 32: an app's scene follows focus at once and crossfades in 400 ms; a title's poster scene waits for a short
@@ -171,7 +184,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable hold = () -> {
             if (okDown && !held) {
                 held = true;
-                if (index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menu = true; menuIndex = 0; invalidate(); }); }
+                if (!header && index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menu = true; menuIndex = 0; invalidate(); }); }
             }
         };
         private final Runnable clockTick = new Runnable() {
@@ -187,7 +200,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (apps || menu || moving) return;
             if (shelf) {
                 if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); }
-                else commitScene("neutral", libraryReady ? "View all your films and TV" : "Set up Your Films & TV");
+                else commitScene("neutral", libraryReady ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
             } else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
             else commitScene("neutral", "");
         };
@@ -215,7 +228,8 @@ public final class UnifiedPreviewActivity extends Activity {
             android.view.accessibility.AccessibilityManager am = (android.view.accessibility.AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
             String words = title;
-            if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
+            if (header) words = headerIndex == HEADER_PROFILE ? "Profile: " + Profiles.label(Profiles.current(prefs)) + ". Press OK to switch." : "Controls: apps, settings and more. Press OK.";
+            else if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
             else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
             if (words.equals(spoken)) return;
             spoken = words; setContentDescription(words); announceForAccessibility(words);
@@ -255,7 +269,7 @@ public final class UnifiedPreviewActivity extends Activity {
             index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
             if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
             prefs.edit().putString("scene",scene).apply();
-            setContentDescription("Unified TV Home. Left and Right choose apps. Up opens controls. Down reveals your films and TV. Hold OK to edit.");
+            setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the profile and controls. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(2);
         }
@@ -271,7 +285,7 @@ public final class UnifiedPreviewActivity extends Activity {
             formerScene=null;fadeAt=0;if(shelf)loadPosters();invalidate();
         }
         void home() {
-            handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false;
+            handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false; header = false;
             if (moving) goBack();
             if (shelf) { shelf = false; shelfAt = 0; }
             messageUntil = 0; moved(); invalidate();
@@ -315,7 +329,7 @@ public final class UnifiedPreviewActivity extends Activity {
             }
             Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.UK)));
             List<Item> defaults=new ArrayList<>();
-            for(String id:new String[]{"smartutube","netflix","disney","bbc","live","music"}) defaults.add(defaultItem(id));
+            for(String id:new String[]{"smartutube","netflix","disney","bbc","live","music",DockPolicy.LIBRARY}) defaults.add(defaultItem(id));
             if(Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults.add(defaultItem("xbox"));
             if(prefs.getString("room","").equals("frame")) defaults.add(defaultItem("tvplus"));
             Set<String> canonical=new HashSet<>();for(Item item:defaults)if(item.pkg!=null)canonical.add(item.pkg);
@@ -352,6 +366,7 @@ public final class UnifiedPreviewActivity extends Activity {
                         0xFFE85C75, 0xFF8E2548);
                 case "xbox": return new Item(id, "Xbox", null, 0xFF14783F, 0xFF07351E, null);
                 case "tvplus": return new Item(id, "Samsung TV Plus", null, 0xFF154477, 0xFF07192F, null);
+                case DockPolicy.LIBRARY: return new Item(id, "Library", null, 0xFF3A4A60, 0xFF141B27, null);
                 default:
                     for (Item x : installed) if (x.id.equals(id)) return x;
                     return null;
@@ -388,7 +403,7 @@ public final class UnifiedPreviewActivity extends Activity {
                     okDown = true;
                     held = false;
                     handler.removeCallbacks(hold);
-                    if (!moving && !menu && !shelf) handler.postDelayed(hold, HOLD_MS);
+                    if (!moving && !menu && !shelf && !header) handler.postDelayed(hold, HOLD_MS);
                 } else if (!down) {
                     handler.removeCallbacks(hold);
                     if (okDown && !held && !e.isCanceled()) confirm();
@@ -407,6 +422,13 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 invalidate(); return true;
             }
+            if (header) {
+                if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_DOWN) { header = false; moved(); }
+                else if (code == KeyEvent.KEYCODE_DPAD_LEFT && headerIndex != HEADER_PROFILE) { headerIndex = HEADER_PROFILE; speak(sceneTitle); }
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && headerIndex != HEADER_CONTROLS) { headerIndex = HEADER_CONTROLS; speak(sceneTitle); }
+                else if (code == KeyEvent.KEYCODE_MENU) controls();
+                invalidate(); return true;
+            }
             if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
             if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) controls(); return true; }
             if (menu) { int n = MENU.length;
@@ -418,7 +440,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) shift(1);
                 return true;
             }
-            if (code == KeyEvent.KEYCODE_DPAD_UP) controls();
+            if (code == KeyEvent.KEYCODE_DPAD_UP) { header = true; headerIndex = HEADER_CONTROLS; speak(sceneTitle); }
             else if (code == KeyEvent.KEYCODE_DPAD_DOWN) openShelf();
             else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (!dock.isEmpty()) {
@@ -434,6 +456,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void confirm() {
             if (shelf) { openEntry(); return; }
+            if (header) { if (headerIndex == HEADER_PROFILE) Profiles.choose(activity); else controls(); invalidate(); return; }
             if (menu) {
                 menu = false;
                 if (menuIndex == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
@@ -449,7 +472,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
 
             } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
-            else info("Use Left or Right to choose an app, or Up to find apps");
+            else info("Use Left or Right to choose an app, or Up then OK to find apps");
             invalidate();
         }
 
@@ -489,7 +512,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 actions.toArray(new String[0]), (dialog,which) -> {
                 if(which==0) activity.startActivity(new Intent(activity,AppsActivity.class));
                 if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
-                if(which==2) SettingsActivity.chooseProfile(activity);
+                if(which==2) Profiles.choose(activity);
                 if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
                 if(which==4) activity.startActivity(new Intent(activity,VoiceActivity.class));
                 String picked=actions.get(which);
@@ -499,8 +522,9 @@ public final class UnifiedPreviewActivity extends Activity {
             }).show();
         }
         private void launch(Item item) {
+            if(DockPolicy.LIBRARY.equals(item.id)){Launch.library(activity);return;}
             if("music".equals(item.id)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
-            if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { HouseholdActivity.action(activity, item.id); return; }
+            if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { String no = Launch.kidsRefusal(activity, item.id, item.name); if (no != null) { info(no); return; } HouseholdActivity.action(activity, item.id); return; }
             // Live TV and every other app go through one gate (Launch.open): protection, not appearance (docs/VPN_PROTECTION.md).
             boolean live = "live".equals(item.id);
             String pkg = live && item.pkg == null ? LiveTvProtection.livePackage(activity) : item.pkg;
@@ -650,12 +674,30 @@ public final class UnifiedPreviewActivity extends Activity {
             type.setTextSize(22); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
             float vpnRight = 1650, vpnLeft = vpnRight - type.measureText(vpn);
             boolean airplay = AirPlayReceiver.ready;
-            float left = (airplay ? vpnLeft - 64 : vpnLeft) - 30;
+            // The profile name sits first in the group: always visible, and focusable from the top row.
+            String who = Profiles.label(Profiles.current(prefs));
+            type.setTextSize(24); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            float whoRight = (airplay ? vpnLeft - 64 : vpnLeft) - 34, whoLeft = whoRight - type.measureText(who) - 30;
+            float left = whoLeft - 26;
             glass(c, left, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
+            person(c, whoLeft + 10, 104);
+            text(c, who, whoLeft + 30, 114, 24, WHITE, true, Paint.Align.LEFT);
             if (airplay) airPlay(c, vpnLeft - 38, 104);
             text(c, vpn, vpnLeft, 114, 22, WHITE, false, Paint.Align.LEFT);
             microphone(c, 1696, 104);
             gear(c, 1773, 104);
+            if (header) {
+                // One lifted lens on the focused item of the top row, with a crisp outline (stronger with high contrast).
+                if (headerIndex == HEADER_PROFILE) rect.set(whoLeft - 12, 74, whoRight + 12, 134); else rect.set(1743, 74, 1803, 134);
+                paint.setShader(null); paint.setColor(0x3DFFFFFF); c.drawRoundRect(rect, 24, 24, paint);
+                boolean strong = prefs.getBoolean("highContrast", false);
+                outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3); c.drawRoundRect(rect, 24, 24, outline); outline.setStrokeWidth(2);
+            }
+        }
+        private void person(Canvas c, float cx, float cy) {
+            iconPaint(235, false);
+            c.drawCircle(cx, cy - 7, 6, icon);
+            rect.set(cx - 11, cy + 3, cx + 11, cy + 25); c.drawArc(rect, 180, 180, false, icon);
         }
         /** Spec 7: a small glass card under the clock: the match, then "Kick-off 19:45" or a red-dot "Live". Never a score. */
         private void drawMatchday(Canvas c, FixturePolicy.Card m) {
@@ -727,7 +769,7 @@ public final class UnifiedPreviewActivity extends Activity {
             final int count = dock.size();
             if (count == 0) {
                 glass(c, 230, 795, 1690, 1000, 36, 0x92434B57, 0x70FFFFFF);
-                text(c, "No Home apps. Press Up to choose some.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
+                text(c, "No Home apps. Press Up, then OK, to choose some.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
                 return;
             }
             int visible = Math.min(6,count);
@@ -743,7 +785,7 @@ public final class UnifiedPreviewActivity extends Activity {
             for (int i = first; i < first+visible; i++) {
                 float x = start + (i-first) * (cellWidth + gap);
                 float y = top + 31;
-                boolean selected = i == index;
+                boolean selected = i == index && !header;   // one focus at a time: in the top row the tile rests
                 float scale = selected ? 1.07f : 1;
                 if (selected && focusAt > 0 && !prefs.getBoolean("reduceMotion",false) && !prefs.getBoolean("lightweight",false)) {
                     float t = shelf ? 1 : Math.min(1, (now - focusAt) / (float) TILE_MS);
@@ -765,7 +807,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 card(c, x, y, x + cellWidth, y + 161, 27, item.top, item.bottom);
                 if(selected)glass(c,x,y,x+cellWidth,y+161,27,0,0);
 
-                if (item.icon != null && item.pkg != null) {
+                if (DockPolicy.LIBRARY.equals(item.id)) libraryGlyph(c, x + cellWidth / 2, y + 80);
+                else if (item.icon != null && item.pkg != null) {
                     int size = Math.round(Math.min(98, cellWidth - 60));
                     int cx = Math.round(x + cellWidth / 2), cy = Math.round(y + 82);
                     item.icon.setBounds(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
@@ -793,6 +836,13 @@ public final class UnifiedPreviewActivity extends Activity {
             outline.setColor(0x9acbd8e7);outline.setStrokeWidth(2);c.drawPath(down,outline);
         }
 
+        /** Library: three posters on a shelf, drawn (no font glyph that a TV might lack). */
+        private void libraryGlyph(Canvas c, float cx, float cy) {
+            iconPaint(240, false); icon.setStrokeWidth(5);
+            for (int k = -1; k <= 1; k++) { rect.set(cx + k * 30 - 12, cy - 34 + Math.abs(k) * 6, cx + k * 30 + 12, cy + 28); c.drawRoundRect(rect, 4, 4, icon); }
+            c.drawLine(cx - 52, cy + 40, cx + 52, cy + 40, icon); icon.setStrokeWidth(3);
+        }
+
         private final Path cardClip = new Path();
         /** One row of the household's own titles. The focused poster lifts; the rest recede but never vanish (spec 4.6). */
         private void drawShelf(Canvas c, long now, float reveal) {
@@ -818,7 +868,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (i < posters.size()) poster(c, posters.get(i), x, top, w, h);
                 else {
                     glass(c, x, top, x + w, top + h, 22, 0, 0);
-                    text(c, libraryReady ? "View All" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
+                    text(c, libraryReady ? "View All" : Profiles.kids(prefs) ? "Ask an adult" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
                     text(c, "Films & TV", x + w / 2, top + h / 2 + 32, 24, MUTED, false, Paint.Align.CENTER);
                 }
                 if (!selected && shelf) { paint.setShader(null); paint.setColor(0x52000000); rect.set(x, top, x + w, top + h); c.drawRoundRect(rect, 22, 22, paint); }
@@ -887,9 +937,9 @@ public final class UnifiedPreviewActivity extends Activity {
             Intent next;
             if (posterIndex < posters.size()) {
                 HomeShelf.Poster p = posters.get(posterIndex);
-                if (!p.folder && !p.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", p.url).putExtra("title", p.title);
+                if (!p.folder && !p.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", p.url).putExtra("title", p.title).putExtra("dlnaItem", p.id).putExtra("root", p.root);
                 else next = new Intent(activity, DlnaLibraryActivity.class).putExtra("folder", p.id).putExtra("name", p.title).putExtra("fromShelf", true).putExtra("root", p.root);
-            } else next = libraryReady ? new Intent(activity, LibraryActivity.class) : new Intent(activity, DlnaLibraryActivity.class).putExtra("setup", true);
+            } else { Launch.library(activity); return; }
             try { activity.startActivity(next); activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out); }
             catch (RuntimeException e) { info("Unable to open Films & TV"); }
         }

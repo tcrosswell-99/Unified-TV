@@ -41,6 +41,15 @@
         android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
       <intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter>
     </service>
+    <!-- Kids app guard (KidsGuardService): optional, off until an adult switches it on in Kids settings and allows it in
+         the TV's accessibility settings. Only the system can bind it (the permission). Not a hard lock: see KidsGuard. -->
+    <service android:name=".KidsGuardService" android:exported="true" android:label="@string/kids_guard_label"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/kids_guard"/>
+    </service>
+    <activity android:name=".KidsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".OwnerDiagnosticsActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape"/>

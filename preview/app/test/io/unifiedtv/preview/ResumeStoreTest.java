@@ -25,4 +25,17 @@ public class ResumeStoreTest {
         assertEquals(600_000,store.position(ResumeStore.key("film"+(ResumeStore.MAX+14)),20_000));
     }
     @Test public void damagedStoreStartsEmpty(){assertEquals(0,new ResumeStore("{not json").size());}
+    // Owner, 25 October 2026: Adults and Kids keep separate places; everything saved before then was an adult's.
+    @Test public void eachProfileHasItsOwnStore(){
+        assertEquals("places-adults",ResumeStore.prefsKey("adult"));assertEquals("places-kids",ResumeStore.prefsKey("child"));
+        assertEquals("unknown values are Adults, as the profile itself is",ResumeStore.prefsKey(null),ResumeStore.prefsKey("adult"));
+        assertNotEquals(ResumeStore.LEGACY,ResumeStore.prefsKey("child"));
+    }
+    @Test public void legacyPlacesMoveToAdultsAndTheNewerPlaceWins(){
+        ResumeStore legacy=new ResumeStore("");legacy.record(ResumeStore.key("a"),600_000,6_000_000,1000);legacy.record(ResumeStore.key("b"),700_000,6_000_000,1000);
+        ResumeStore adults=new ResumeStore("");adults.record(ResumeStore.key("b"),900_000,6_000_000,5000);
+        ResumeStore merged=new ResumeStore(ResumeStore.merge(legacy.json(),adults.json()));
+        assertEquals(600_000,merged.position(ResumeStore.key("a"),6000));assertEquals("the newer adult place is kept",900_000,merged.position(ResumeStore.key("b"),6000));
+        assertEquals(2,new ResumeStore(ResumeStore.merge(legacy.json(),"")).size());assertEquals(0,new ResumeStore(ResumeStore.merge("{broken","")).size());
+    }
 }

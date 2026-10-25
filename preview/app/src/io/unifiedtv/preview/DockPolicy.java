@@ -6,9 +6,13 @@ import java.util.*;
  * Spec 3.3 / P05-03: a fresh install gets the curated defaults; after that the owner's own edits stand. Room-only
  * shortcuts never leak to another TV, a curated app is never on Home twice under its package name, and nothing that
  * isn't a curated id or a package name survives.
+ *
+ * "library" (owner, 25 October 2026) is Unified TV's own Library entry: not in the defaults (existing layouts are
+ * unchanged), offered in every room from Apps, and placed, moved or removed like any tile.
  */
 final class DockPolicy {
     static final String[] CURATED={"smartutube","netflix","disney","bbc","live","music"};
+    static final String LIBRARY="library";
     private static final Map<String,String[]> PACKAGES=new LinkedHashMap<>();
     static{
         PACKAGES.put("smartutube",new String[]{"org.smarttube.beta","com.liskovsoft.smarttubetv.beta","com.liskovsoft.smarttubetv"});
@@ -29,6 +33,7 @@ final class DockPolicy {
     static boolean valid(String room,String id){
         if(id.equals("xbox"))return "sony".equals(room);
         if(id.equals("tvplus"))return "frame".equals(room);
+        if(id.equals(LIBRARY))return true;
         return Arrays.asList(CURATED).contains(id)||id.matches("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+");
     }
     /** saved == null: never edited, so the curated defaults. "" is a deliberate empty Home, kept as the owner left it. */

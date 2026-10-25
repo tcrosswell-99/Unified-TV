@@ -29,6 +29,9 @@ public final class MusicActivity extends Screen {
     /** Opens Amazon Music, or the TV's app store search for it when it isn't installed. */
     static void open(Activity a){
         Intent launch=find(a);
+        // Kids: Amazon Music only when an adult approved it, and never the app store (Launch is the one gate).
+        String no=Launch.kidsRefusal(a,launch==null||launch.getComponent()==null?"":launch.getComponent().getPackageName(),launch==null?"The app store":"Amazon Music");
+        if(no!=null){toast(a,no);return;}
         if(launch!=null){try{a.startActivity(launch);}catch(RuntimeException e){toast(a,"Amazon Music could not be opened");}}
         else{try{a.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("market://search?q=Amazon%20Music")));}catch(RuntimeException e){toast(a,"Open the TV's app store to find Amazon Music");}}
     }

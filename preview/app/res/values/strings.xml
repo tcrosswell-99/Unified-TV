@@ -1,2 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><string name="app_name">Unified TV Preview</string></resources>
+<resources>
+  <string name="app_name">Unified TV Preview</string>
+  <string name="kids_guard_label">Unified TV Kids guard</string>
+  <string name="kids_guard_description">While the Kids profile is on in Unified TV, brings Unified TV Home back when an app an adult has not allowed for Kids comes to the front. It reads only which app is in front: no screen content, keys or text. It does nothing in the Adults profile or while an adult has it switched off in Unified TV.</string>
+</resources>
