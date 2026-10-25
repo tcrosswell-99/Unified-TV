@@ -62,6 +62,8 @@ $tv = "<the TV's address>:5555"
    ```
 
    **Expected:** `Success`, then Unified TV opens on the TV.
+
+   If it fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE ... signatures do not match`, that is expected: each GitHub build signs the review build with a new temporary test key, so one review build cannot update another (seen on the TCL, 25 October 2026). Remove only the review build, using the command under "To remove the review build" below, then run this step again without `-r`. This clears only the review build's own settings; the preview and the TV's own Home are untouched. Settings surviving an update can only be tested with the launcher signed with your own key ([SIGNING.md](SIGNING.md)).
 5. **Repeat step 3.** **Expected:** the same versionName and firstInstallTime: the preview was not touched.
 6. **Press Home on the remote.** **Expected:** the TV's own Home appears; installing changed nothing.
 7. **Work through the checks** in [PREVIEW_0_5_TESTS.md](PREVIEW_0_5_TESTS.md): Home, Films & TV, Apps, NAS playback, and the alarm test under Settings → Notifications → Doorbell, reminders & room setup.
