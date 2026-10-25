@@ -43,4 +43,30 @@ public class DockPolicyTest {
         assertEquals(Arrays.asList("library","netflix"),DockPolicy.order("sony","library,netflix,library"));
         assertEquals("netflix",DockPolicy.remove(Arrays.asList("library","netflix"),"library"));
     }
+    // v3.4.6 UX-DOCK-08..10, SET-BUILD-04: the dock size is respected and a full dock is never overwritten silently.
+    @Test public void addingRespectsTheDockSize(){
+        List<String> six=Arrays.asList("netflix","bbc","music","library","live","disney");
+        assertNull("six of six: the household must choose a replacement",DockPolicy.add("tcl",six,"com.spotify.tv.android",6));
+        assertEquals("netflix,bbc,music,library,live,disney,com.spotify.tv.android",DockPolicy.add("tcl",six,"com.spotify.tv.android",8));
+        assertEquals("already on Home: unchanged",String.join(",",six),DockPolicy.add("tcl",six,"com.netflix.ninja",6));
+        assertEquals(Arrays.asList("netflix","bbc"),DockPolicy.visible(Arrays.asList("netflix","bbc","music"),2));
+    }
+    @Test public void replacingTakesThePlaceAndNeverDuplicates(){
+        List<String> dock=Arrays.asList("netflix","bbc","music");
+        assertEquals("netflix,com.spotify.tv.android,music",DockPolicy.replace("tcl",dock,"bbc","com.spotify.tv.android"));
+        assertEquals("moving a tile already on Home","music,bbc",DockPolicy.replace("tcl",dock,"netflix","music"));
+        assertEquals("unknown old tile: unchanged","netflix,bbc,music",DockPolicy.replace("tcl",dock,"disney","com.spotify.tv.android"));
+        assertEquals("not for this room: unchanged","netflix,bbc,music",DockPolicy.replace("tcl",dock,"bbc","xbox"));
+        assertEquals("itself: unchanged","netflix,bbc,music",DockPolicy.replace("tcl",dock,"bbc","bbc"));
+    }
+    @Test public void placingFillsFreePlacesOnlyAndReportsTheRest(){
+        List<String> left=new ArrayList<>();
+        assertEquals(Arrays.asList("netflix","bbc","com.spotify.tv.android","music"),DockPolicy.place("tcl",Arrays.asList("netflix","bbc"),Arrays.asList("com.spotify.tv.android","music","netflix"),4,left));
+        assertTrue(left.isEmpty());
+        List<String> full=DockPolicy.place("tcl",Arrays.asList("netflix","bbc","live","library","disney"),Arrays.asList("com.spotify.tv.android","music"),6,left);
+        assertEquals(6,full.size());assertEquals(Arrays.asList("music"),left);
+        assertEquals("never auto-filled to eight",Arrays.asList("netflix"),DockPolicy.place("tcl",Arrays.asList("netflix"),Collections.emptyList(),8,null));
+        assertEquals(Arrays.asList("bbc","netflix"),DockPolicy.move(Arrays.asList("netflix","bbc"),0,1));
+        assertEquals("unchanged at the end",Arrays.asList("netflix","bbc"),DockPolicy.move(Arrays.asList("netflix","bbc"),1,1));
+    }
 }

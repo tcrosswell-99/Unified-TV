@@ -17,10 +17,13 @@ final class DockPolicy {
     /** Tiles Unified TV draws itself, with their palettes (AmbientMesh) and package names; not a default dock. */
     static final String[] KNOWN={"smartutube","netflix","disney","bbc","live","music"};
     static final String LIBRARY="library";
+    /** How many tiles a fresh install suggests: six, whatever the dock size (DockCapacity); eight places are never auto-filled. */
     static final int SLOTS=6;
     private static final Map<String,String[]> PACKAGES=new LinkedHashMap<>();
     static{
-        PACKAGES.put("smartutube",new String[]{"org.smarttube.beta","com.liskovsoft.smarttubetv.beta","com.liskovsoft.smarttubetv"});
+        // SmartTube is not in the Play Store; these are the ids its own releases have used. org.smarttube.stable and
+        // com.teamsmart.videomanager.tv are UNVERIFIED on a real TV (recognised only if installed; never installed by us).
+        PACKAGES.put("smartutube",new String[]{"org.smarttube.beta","com.liskovsoft.smarttubetv.beta","com.liskovsoft.smarttubetv","org.smarttube.stable","com.teamsmart.videomanager.tv"});
         PACKAGES.put("netflix",new String[]{"com.netflix.ninja"});
         PACKAGES.put("disney",new String[]{"com.disney.disneyplus"});
         PACKAGES.put("bbc",new String[]{"uk.co.freeview.bbc","bbc.iplayer.android","bbc.iplayer.android.tv"});
@@ -71,4 +74,38 @@ final class DockPolicy {
     }
     static String add(String room,List<String> dock,String id){String c=canonical(id);List<String> next=new ArrayList<>(dock);if(valid(room,c)&&!next.contains(c))next.add(c);return String.join(",",next);}
     static String remove(List<String> dock,String id){String c=canonical(id);List<String> next=new ArrayList<>(dock);next.remove(c);return String.join(",",next);}
+
+    // --- Dock size (DockCapacity, UX-DOCK-08..10): the household's list may be longer than a profile's places.
+    /** The tiles a profile with this many places shows: the first ones, in order. */
+    static List<String> visible(List<String> dock,int capacity){return new ArrayList<>(dock.subList(0,Math.min(dock.size(),Math.max(0,capacity))));}
+    static boolean full(List<String> dock,int capacity){return dock.size()>=capacity;}
+    /** Adds into a free place; null when every place is taken (the household chooses a replacement, never us). */
+    static String add(String room,List<String> dock,String id,int capacity){
+        String c=canonical(id);int at=dock.indexOf(c);
+        if(at>=0&&at<capacity)return String.join(",",dock);
+        if(full(dock,capacity))return null;
+        return add(room,dock,id);
+    }
+    /** {@code id} takes {@code old}'s place; old leaves Home (it stays installed and in Apps). Unchanged if either is unusable. */
+    static String replace(String room,List<String> dock,String old,String id){
+        String c=canonical(id),o=canonical(old);List<String> next=new ArrayList<>(dock);int at=next.indexOf(o);
+        if(at<0||c.equals(o)||!valid(room,c))return String.join(",",next);
+        next.remove(c);at=next.indexOf(o);next.set(at,c);return String.join(",",next);
+    }
+    /**
+     * The wanted tiles added in order while places are free; those that did not fit are added to {@code left}, for the
+     * household to place by replacing a tile or to keep in Apps. Tiles already on Home stay where they are.
+     */
+    static List<String> place(String room,List<String> dock,List<String> wanted,int capacity,List<String> left){
+        List<String> next=new ArrayList<>(dock);
+        for(String id:wanted){String c=canonical(id);if(!valid(room,c)||visible(next,capacity).contains(c))continue;
+            if(next.size()<capacity&&!next.contains(c))next.add(c);else if(left!=null&&!left.contains(c))left.add(c);}
+        return next;
+    }
+    /** Moves the tile at {@code from} one place earlier (-1) or later (+1); unchanged at either end. */
+    static List<String> move(List<String> dock,int from,int delta){
+        List<String> next=new ArrayList<>(dock);int to=from+delta;
+        if(from>=0&&from<next.size()&&to>=0&&to<next.size())Collections.swap(next,from,to);
+        return next;
+    }
 }

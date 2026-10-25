@@ -132,4 +132,37 @@ public class RemoteJourneyTest {
         int before=(Integer)field("index");press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_BACK);
         assertEquals(false,field("header"));assertEquals(before,field("index"));assertFalse(activity.isFinishing());
     }
+    // v3.4.6 UX-DOCK-08/09: eight places add empty ones only; focus moves across the household's tiles and skips them.
+    @Test public void eightPlacesAddEmptyPlacesThatFocusSkips()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putString(DockCapacity.key("adult"),"8").putInt(DockCapacity.SCHEMA_KEY,1).commit();controller.pause().resume();
+        assertEquals(8,field("capacity"));assertEquals("never auto-filled",6,((java.util.List<?>)field("dock")).size());
+        for(int i=0;i<10;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertEquals("the last tile, not an empty place",5,field("index"));
+        press(KeyEvent.KEYCODE_DPAD_UP);assertEquals("Up still reaches the pill",true,field("header"));press(KeyEvent.KEYCODE_DPAD_DOWN);
+        assertEquals(SEEDED,activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));
+    }
+    @Test public void sixPlacesKeepTheOtherTilesSavedButOffThisHome()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putString("dock",SEEDED+",library").putString(DockCapacity.key("adult"),"6").putInt(DockCapacity.SCHEMA_KEY,1).commit();controller.pause().resume();
+        assertEquals(6,((java.util.List<?>)field("dock")).size());
+        hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        String saved=activity.getSharedPreferences("unified-tv-preview",0).getString("dock","");
+        assertTrue(saved.startsWith("netflix,smartutube,"));assertTrue("the seventh tile is kept, not dropped",saved.endsWith(",library"));
+    }
+    @Test public void eachProfileHasItsOwnDockSize()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putString(DockCapacity.key("adult"),"8").putInt(DockCapacity.SCHEMA_KEY,1).putString(Profiles.PREF,Profiles.CHILD).commit();controller.pause().resume();
+        assertEquals("Kids keeps the default",6,field("capacity"));
+    }
+    // UX-BUILD-01: a fresh install is offered Build My TV once; it never blocks Home.
+    @Test public void aFreshInstallIsOfferedBuildMyTvOnce()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();controller.pause().resume();
+        assertEquals(true,field("offer"));press(KeyEvent.KEYCODE_DPAD_CENTER);
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);assertEquals(BuildMyTvActivity.class.getName(),started.getComponent().getClassName());
+        controller.pause().resume();assertEquals("never again",false,field("offer"));
+    }
+    @Test public void theOfferStepsAsideForAnyOtherKey()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();controller.pause().resume();
+        assertEquals(true,field("offer"));press(KeyEvent.KEYCODE_BACK);assertEquals(false,field("offer"));assertFalse("Back only put the card away",activity.isFinishing());
+        assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+    }
+    @Test public void anEarlierInstallIsNotOffered()throws Exception{assertEquals(false,field("offer"));}
 }

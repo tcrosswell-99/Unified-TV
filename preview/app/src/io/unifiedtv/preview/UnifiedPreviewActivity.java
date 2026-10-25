@@ -125,6 +125,9 @@ public final class UnifiedPreviewActivity extends Activity {
         private final RectF rect = new RectF();
         private final List<Item> installed = new ArrayList<>();
         private final List<Item> dock = new ArrayList<>();
+        /** The profile's dock size (DockCapacity: 6 or 8) and the saved tiles beyond it, kept in order but not shown. */
+        private int capacity = DockCapacity.DEFAULT;
+        private final List<String> overflow = new ArrayList<>();
         private List<Item> beforeMove;
         private Bitmap coast;
         private int index = -1, appIndex = 0, menuIndex = 0, lifted = -1;
@@ -135,6 +138,17 @@ public final class UnifiedPreviewActivity extends Activity {
          * tile. Which icons, in what order: HomeUtilities, from the household's Navigation & Shortcuts setting.
          */
         private boolean header = false; private int headerIndex = 0;
+        /**
+         * UX-BUILD-01 / SET-BUILD-06: on a fresh install, once, a small card offers Build My TV. OK opens it; Back or any
+         * other key puts it away (that key still does its usual job); it also goes by itself. It never blocks Home, never
+         * returns once seen, and Build My TV stays in Settings > Apps & Shortcuts.
+         */
+        private boolean offer = false;
+        private final Runnable offerGone = () -> { offer = false; invalidate(); };
+        private void offerOnce() {
+            if (offer || !HubBuilder.shouldOffer(prefs)) return;
+            offer = true; HubBuilder.markOffered(prefs); handler.removeCallbacks(offerGone); handler.postDelayed(offerGone, 20_000L);
+        }
         private List<String> pill = HomeUtilities.DEFAULT;
         /** Read on refresh, not per frame: AirPin LITE's package (null if absent) and whether NordVPN is installed. */
         private String airPin; private boolean nordVpn;
@@ -287,6 +301,7 @@ public final class UnifiedPreviewActivity extends Activity {
             index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
             if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
             prefs.edit().putString("scene",scene).apply();
+            offerOnce();
             setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the utilities and Settings. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(2);
@@ -300,7 +315,7 @@ public final class UnifiedPreviewActivity extends Activity {
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
-            formerScene=null;fadeAt=0;if(shelf)loadPosters();invalidate();
+            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();invalidate();
         }
         void home() {
             handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false; header = false;
@@ -355,6 +370,9 @@ public final class UnifiedPreviewActivity extends Activity {
             installed.removeIf(item->canonical.contains(item.pkg));installed.addAll(0,defaults);
         }
 
+        /** {package: name} of the installed apps (read on refresh, not per frame). */
+        private java.util.Map<String, String> launchable() { java.util.Map<String, String> out = new java.util.HashMap<>(); for (Item x : installed) if (x.pkg != null) out.put(x.pkg, x.name); return out; }
+
         private Item installedMatch(String[] exact, String query) {
             for (String pkg : exact) for (Item x : installed) if (pkg.equals(x.pkg)) return x;
             for (Item x : installed) if (x.name.toLowerCase(Locale.ROOT).contains(query)) return x;
@@ -397,7 +415,11 @@ public final class UnifiedPreviewActivity extends Activity {
             // Never edited: suggestions from the apps on this TV (SET-011). Edited: exactly the household's list.
             String saved=prefs.contains("dock")?prefs.getString("dock",""):null;List<String> suggested=new ArrayList<>();
             if(saved==null){Set<String> pkgs=new HashSet<>();for(Item x:installed)if(x.pkg!=null)pkgs.add(x.pkg);suggested=DockPolicy.suggest(room,pkgs,!LiveTvProtection.livePackage(activity).isEmpty());}
+            // UX-DOCK-08: this profile's 6 or 8 places; tiles past them (the other profile's larger dock, or an earlier
+            // install's longer list) stay saved in order but off this Home, and are written back unchanged by saveDock.
+            capacity=DockCapacity.get(prefs,Profiles.current(prefs));overflow.clear();
             for(String id:DockPolicy.order(room,saved,suggested)) {
+                if(dock.size()>=capacity){overflow.add(id);continue;}
                 Item item=defaultItem(id);if(item!=null)dock.add(item);
             }
         }
@@ -408,6 +430,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (out.length() != 0) out.append(',');
                 out.append(item.id);
             }
+            for (String id : overflow) { if (out.length() != 0) out.append(','); out.append(id); }
             prefs.edit().putString("dock", out.toString()).putInt("focus", index).apply();
         }
 
@@ -419,6 +442,14 @@ public final class UnifiedPreviewActivity extends Activity {
                 code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER &&
                 code != KeyEvent.KEYCODE_BACK && code != KeyEvent.KEYCODE_MENU) return false;
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+            if (offer && !menu && !moving) {
+                if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
+                    if (!down && e.getRepeatCount() == 0) { offer = false; handler.removeCallbacks(offerGone); EditLock.ask(activity, () -> BuildMyTvActivity.start(activity)); invalidate(); }
+                    return true;
+                }
+                if (code == KeyEvent.KEYCODE_BACK) { if (down) { offer = false; handler.removeCallbacks(offerGone); invalidate(); } return true; }
+                if (down) { offer = false; handler.removeCallbacks(offerGone); }
+            }
             if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
                 if (down && e.getRepeatCount() == 0) {
                     okDown = true;
@@ -537,7 +568,12 @@ public final class UnifiedPreviewActivity extends Activity {
         }
         private void launch(Item item) {
             if(DockPolicy.LIBRARY.equals(item.id)){Launch.library(activity);return;}
-            if("music".equals(item.id)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
+            // SET-BUILD-10: the shared Music tile opens the profile's chosen Music app (Build My TV), still through Launch; with
+            // nothing chosen, or something already playing, it opens Music as before.
+            if("music".equals(item.id)){
+                String chosen=HubBuilder.musicPackage(prefs,Profiles.current(prefs),launchable());
+                if(chosen!=null&&MediaWatch.best(activity)==null){String why=Launch.open(activity,chosen,"Music");if(why!=null&&!why.isEmpty())info(why);return;}
+                activity.startActivity(new Intent(activity,MusicActivity.class));return;}
             if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { String no = Launch.kidsRefusal(activity, item.id, item.name); if (no != null) { info(no); return; } HouseholdActivity.action(activity, item.id); return; }
             // Live TV and every other app go through one gate (Launch.open): protection, not appearance (docs/VPN_PROTECTION.md).
             boolean live = "live".equals(item.id);
@@ -584,6 +620,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (menu) drawMenu(c);
             if (moving) drawHint(c, "Left / Right: move     OK: save     Back: cancel");
 
+            if (offer && !menu && !moving && !shelf) drawOffer(c);
             if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
             float dim = oledDim(now);
             if (dim > 0) { paint.setShader(null); paint.setColor(Color.argb(Math.round(255 * dim), 0, 0, 0)); c.drawRect(-4, -4, W + 4, H + 4, paint); }
@@ -818,6 +855,11 @@ public final class UnifiedPreviewActivity extends Activity {
             }
         }
 
+        /**
+         * UX-DOCK-08/09: one centred glass dock with the profile's 6 or 8 places (DockCapacity); eight scale the six-place
+         * tile and spacing, so both fit the safe area with no scrolling or clipping. Empty places are faint wells that focus
+         * never lands on; the household's tiles fill them from the left.
+         */
         private void drawDock(Canvas c, long now, boolean resting) {
             final int count = dock.size();
             if (count == 0) {
@@ -825,19 +867,19 @@ public final class UnifiedPreviewActivity extends Activity {
                 text(c, "No apps on Home yet. Add them in Settings > Apps & Shortcuts.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
                 return;
             }
-            int visible = Math.min(6,count);
-            int first = Math.max(0,Math.min(count-visible,index-visible/2));
-            float full = visible * 190 + Math.max(0, visible - 1) * 24 + 70;
-            float left = (W - full) / 2;
-            float top = 747, bottom = 1005;
-            glass(c, left, top, left + full, bottom, 37, 0x54465669, 0x20FFFFFF);
-            float gap = 24, cellWidth = 190;
-            cellWidth = Math.min(190, cellWidth);
-            float total = visible * cellWidth + (visible - 1) * gap;
-            float start = (W - total) / 2;
-            for (int i = first; i < first+visible; i++) {
-                float x = start + (i-first) * (cellWidth + gap);
-                float y = top + 31;
+            final int places = capacity;   // loadDock keeps the list within it
+            final float s = DockCapacity.scale(places), cell = DockCapacity.TILE * s, cy = 858;
+            float full = DockCapacity.width(places), left = (W - full) / 2;
+            glass(c, left, cy - 111 * s, left + full, 1005, 37, 0x54465669, 0x20FFFFFF);
+            String mode = labels(); int labelSize = DockCapacity.labelSize(places);
+            for (int i = 0; i < places; i++) {
+                float x = DockCapacity.slotLeft(places, i, W), mid = x + cell / 2;
+                float tileTop = cy - 80 * s, tileBottom = cy + 81 * s, r = 27 * s;
+                if (i >= count) {   // an empty place: a faint well, never focusable, never filled for the household
+                    rect.set(x, tileTop, x + cell, tileBottom); paint.setShader(null); paint.setColor(0x12FFFFFF); c.drawRoundRect(rect, r, r, paint);
+                    outline.setColor(0x26FFFFFF); outline.setStrokeWidth(1.5f); c.drawRoundRect(rect, r, r, outline); outline.setStrokeWidth(2);
+                    continue;
+                }
                 boolean selected = i == index && !header;   // one focus at a time: in the top row the tile rests
                 float scale = selected ? 1.07f : 1;
                 if (selected && focusAt > 0 && !prefs.getBoolean("reduceMotion",false) && !prefs.getBoolean("lightweight",false)) {
@@ -847,88 +889,48 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 Item item = dock.get(i);
                 c.save();
-                c.scale(scale, scale, x + cellWidth / 2, y + 80);
+                c.scale(scale, scale, mid, cy);
                 if(selected){
                     // A soft halo in the app's own colour behind the lifted tile (spec 32.3).
                     int glow=AmbientMesh.accent(item.id)&0x00FFFFFF;
-                    paint.setShader(new android.graphics.RadialGradient(x+cellWidth/2,y+80,170,new int[]{0x5A000000|glow,0x00000000|glow},null,Shader.TileMode.CLAMP));
-                    c.drawCircle(x+cellWidth/2,y+80,170,paint);paint.setShader(null);
-                    c.save();c.translate(x+cellWidth/2,y+177);c.scale(1,.27f);
-                    paint.setShader(new android.graphics.RadialGradient(0,0,155,new int[]{0x68000000,0x00000000},null,Shader.TileMode.CLAMP));
-                    c.drawCircle(0,0,155,paint);c.restore();paint.setShader(null);c.translate(0,-12);
+                    paint.setShader(new android.graphics.RadialGradient(mid,cy,170*s,new int[]{0x5A000000|glow,0x00000000|glow},null,Shader.TileMode.CLAMP));
+                    c.drawCircle(mid,cy,170*s,paint);paint.setShader(null);
+                    c.save();c.translate(mid,cy+97*s);c.scale(1,.27f);
+                    paint.setShader(new android.graphics.RadialGradient(0,0,155*s,new int[]{0x68000000,0x00000000},null,Shader.TileMode.CLAMP));
+                    c.drawCircle(0,0,155*s,paint);c.restore();paint.setShader(null);c.translate(0,-12*s);
                 }
                 // UX-ICON-01..03: one neutral glass tile for every app, a simple white glyph on it; never text or a full-colour icon.
-                card(c, x, y, x + cellWidth, y + 161, 27, 0x40FFFFFF, 0x1FFFFFFF);
-                if(selected)glass(c,x,y,x+cellWidth,y+161,27,0,0);
-                tileGlyph(c, item, x + cellWidth / 2, y + 80);
+                card(c, x, tileTop, x + cell, tileBottom, r, 0x40FFFFFF, 0x1FFFFFFF);
+                if(selected)glass(c,x,tileTop,x+cell,tileBottom,r,0,0);
+                c.save(); c.scale(s, s, mid, cy); tileGlyph(c, item, mid, cy); c.restore();
                 if (selected) {
                     // A crisp, luminous outline on the focused tile, brighter still with high contrast.
                     boolean strong = prefs.getBoolean("highContrast",false);
                     outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3);
-                    c.drawRoundRect(x - 5, y - 5, x + cellWidth + 5, y + 166, 31, 31, outline);
+                    c.drawRoundRect(x - 5 * s, tileTop - 5 * s, x + cell + 5 * s, tileBottom + 5 * s, 31 * s, 31 * s, outline);
                     outline.setStrokeWidth(2);
                 }
                 c.restore();
                 // UX-ICON-05: labels outside the tiles, as the profile chose (Focused only by default); the tiles never move.
-                if (DockLabels.shows(labels(), i, header || shelf ? -1 : index)) text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
+                // Long names end in an ellipsis within their own place (Always show) or two places (the one focused label).
+                if (DockLabels.shows(mode, i, header || shelf ? -1 : index)) {
+                    type.setTextSize(labelSize); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+                    text(c, DockLabels.fit(item.name, DockCapacity.labelWidth(places, !DockLabels.ALWAYS.equals(mode)), measure), mid, 982, labelSize, WHITE, false, Paint.Align.CENTER);
+                }
             }
             if (!resting) return;
             Path down=new Path();down.moveTo(947,1035);down.lineTo(960,1046);down.lineTo(973,1035);
             outline.setColor(0x9acbd8e7);outline.setStrokeWidth(2);c.drawPath(down,outline);
         }
 
-        /**
-         * The tile's glyph (DockLabels.glyph): original, simple vector symbols drawn here in white; no brand artwork is copied.
-         * An app without one of its own shows its installed icon small and in greyscale, so it never reads as a full-colour square.
-         */
-        private final android.graphics.ColorMatrixColorFilter grey = new android.graphics.ColorMatrixColorFilter(new android.graphics.ColorMatrix(new float[]{
-                .30f,.59f,.11f,0,20, .30f,.59f,.11f,0,20, .30f,.59f,.11f,0,20, 0,0,0,.9f,0}));
+        /** Measures a label in the current type, for DockLabels.fit (made once, not per frame). */
+        private final java.util.function.ToDoubleFunction<String> measure = t -> type.measureText(t);
+
+        /** The tile's glyph (DockLabels.glyph, drawn by DockGlyphs): original, simple vector symbols; no brand artwork is copied. */
         private void tileGlyph(Canvas c, Item item, float cx, float cy) {
             String g = DockLabels.glyph(item.pkg != null && !DockPolicy.canonical(item.pkg).equals(item.id) ? item.pkg : item.id);
             if ("mono".equals(g) && item.pkg != null) g = DockLabels.glyph(item.pkg);
-            iconPaint(240, false); icon.setStrokeWidth(5);
-            switch (g) {
-                case "shelf": libraryGlyph(c, cx, cy); break;
-                case "play":   // a screen with a play triangle
-                    rect.set(cx - 44, cy - 32, cx + 44, cy + 28); c.drawRoundRect(rect, 12, 12, icon); c.drawLine(cx - 18, cy + 40, cx + 18, cy + 40, icon);
-                    iconPaint(240, true); glyph.reset(); glyph.moveTo(cx - 10, cy - 16); glyph.lineTo(cx + 16, cy - 2); glyph.lineTo(cx - 10, cy + 12); glyph.close(); c.drawPath(glyph, icon); break;
-                case "n":   // a plain geometric N
-                    icon.setStrokeWidth(13); icon.setStrokeCap(Paint.Cap.SQUARE); glyph.reset(); glyph.moveTo(cx - 20, cy + 38); glyph.lineTo(cx - 20, cy - 38); glyph.lineTo(cx + 20, cy + 38); glyph.lineTo(cx + 20, cy - 38); c.drawPath(glyph, icon); break;
-                case "arcplus":   // an arc over a plus
-                    rect.set(cx - 46, cy - 30, cx + 46, cy + 50); c.drawArc(rect, 200, 140, false, icon);
-                    c.drawLine(cx, cy - 4, cx, cy + 32, icon); c.drawLine(cx - 18, cy + 14, cx + 18, cy + 14, icon); break;
-                case "blocks":   // three square blocks
-                    iconPaint(240, true); for (int k = -1; k <= 1; k++) { rect.set(cx + k * 32 - 13, cy - 13, cx + k * 32 + 13, cy + 13); c.drawRoundRect(rect, 3, 3, icon); } break;
-                case "broadcast":   // a mast with waves
-                    iconPaint(240, true); c.drawCircle(cx, cy - 6, 8, icon); iconPaint(240, false); icon.setStrokeWidth(5);
-                    rect.set(cx - 26, cy - 32, cx + 26, cy + 20); c.drawArc(rect, 200, 140, false, icon); rect.set(cx - 42, cy - 48, cx + 42, cy + 36); c.drawArc(rect, 205, 130, false, icon);
-                    c.drawLine(cx, cy + 2, cx - 16, cy + 40, icon); c.drawLine(cx, cy + 2, cx + 16, cy + 40, icon); break;
-                case "note":   // a beamed pair of notes
-                    iconPaint(240, true); c.drawCircle(cx - 20, cy + 26, 11, icon); c.drawCircle(cx + 22, cy + 18, 11, icon);
-                    iconPaint(240, false); icon.setStrokeWidth(6); c.drawLine(cx - 10, cy + 26, cx - 10, cy - 30, icon); c.drawLine(cx + 32, cy + 18, cx + 32, cy - 38, icon); c.drawLine(cx - 10, cy - 30, cx + 32, cy - 38, icon); break;
-                case "controller":   // a game pad
-                    rect.set(cx - 46, cy - 22, cx + 46, cy + 26); c.drawRoundRect(rect, 22, 22, icon);
-                    c.drawLine(cx - 28, cy + 2, cx - 12, cy + 2, icon); c.drawLine(cx - 20, cy - 6, cx - 20, cy + 10, icon);
-                    iconPaint(240, true); c.drawCircle(cx + 18, cy - 2, 5, icon); c.drawCircle(cx + 30, cy + 8, 5, icon); break;
-                case "screen":   // a TV
-                    rect.set(cx - 44, cy - 32, cx + 44, cy + 26); c.drawRoundRect(rect, 10, 10, icon); c.drawLine(cx - 20, cy + 40, cx + 20, cy + 40, icon); break;
-                case "playcircle":
-                    c.drawCircle(cx, cy, 40, icon); iconPaint(240, true); glyph.reset(); glyph.moveTo(cx - 12, cy - 18); glyph.lineTo(cx + 20, cy); glyph.lineTo(cx - 12, cy + 18); glyph.close(); c.drawPath(glyph, icon); break;
-                case "chevron":
-                    icon.setStrokeWidth(10); glyph.reset(); glyph.moveTo(cx - 14, cy - 34); glyph.lineTo(cx + 18, cy); glyph.lineTo(cx - 14, cy + 34); c.drawPath(glyph, icon); break;
-                default:
-                    if (item.icon != null) {
-                        Drawable d = item.icon.mutate(); d.setColorFilter(grey);
-                        d.setBounds(Math.round(cx - 34), Math.round(cy - 34), Math.round(cx + 34), Math.round(cy + 34)); d.draw(c);
-                    } else { c.drawCircle(cx, cy, 30, icon); }   // nothing to show yet: a plain ring, never letters
-            }
-            icon.setStrokeWidth(3); icon.setStrokeCap(Paint.Cap.ROUND);
-        }
-        /** Library: three posters on a shelf, drawn (no font glyph that a TV might lack). */
-        private void libraryGlyph(Canvas c, float cx, float cy) {
-            iconPaint(240, false); icon.setStrokeWidth(5);
-            for (int k = -1; k <= 1; k++) { rect.set(cx + k * 30 - 12, cy - 34 + Math.abs(k) * 6, cx + k * 30 + 12, cy + 28); c.drawRoundRect(rect, 4, 4, icon); }
-            c.drawLine(cx - 52, cy + 40, cx + 52, cy + 40, icon); icon.setStrokeWidth(3);
+            DockGlyphs.draw(c, g, cx, cy, icon, glyph, rect, item.icon);
         }
 
         private final Path cardClip = new Path();
@@ -1054,6 +1056,13 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void drawHint(Canvas c, String s) {
             text(c, s, 960, 1057, 21, 0xEEFFFFFF, false, Paint.Align.CENTER);
+        }
+
+        /** The one-time Build My TV card (offerOnce): small, above the dock, gone after a key or twenty seconds. */
+        private void drawOffer(Canvas c) {
+            glass(c, 560, 560, 1360, 690, 28, 0xDF111A2B, 0x88FFFFFF);
+            text(c, "Build My TV  ·  optional", 960, 612, 30, WHITE, true, Paint.Align.CENTER);
+            text(c, "OK: choose your music, films and apps     Back: not now", 960, 658, 23, MUTED, false, Paint.Align.CENTER);
         }
 
         private void drawNotice(Canvas c, String s) {

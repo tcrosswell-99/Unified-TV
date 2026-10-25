@@ -11,18 +11,25 @@ import java.util.*;
  * Unified TV's own entries come first (Library, and Live TV, Xbox or TV Plus where the room has them), so a removed one
  * can always be put back. In Kids only the apps an adult approved are listed; opening is still checked by Launch, because
  * a hidden tile is not a lock.
+ *
+ * Dock size (v3.4.6 UX-DOCK-08, SET-BUILD-04): "On Home" means on this profile's visible dock (DockCapacity, 6 or 8
+ * places). Adding to a full dock never overwrites a tile by itself: the household picks the tile to replace (it stays
+ * installed and here in Apps), or keeps the app in Apps.
  */
 public final class AppsActivity extends Screen {
     private SharedPreferences prefs;private String room;
     @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("unified-tv-preview",0);room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");show(null);}
     private List<String> dock(){return HouseholdSettings.dock(this,room);}
+    private int capacity(){return DockCapacity.get(prefs,Profiles.current(prefs));}
+    /** The tiles this profile's Home shows. */
+    private List<String> onHome(){return DockPolicy.visible(dock(),capacity());}
     private void show(String focus){
         boolean kids=Profiles.kids(prefs);java.util.Set<String> approved=KidsPolicy.apps(prefs.getString(KidsPolicy.APPS_PREF,""));
         page("Apps");text(kids?"Apps an adult has allowed for Kids. Ask an adult to add more.":"Hold OK on an app to add it to Home or remove it.",17);
         PackageManager pm=getPackageManager();Map<String,ResolveInfo> apps=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=String.valueOf(r.loadLabel(pm));if(!apps.containsKey(label+"\u0000"+r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r);}
-        List<String> home=dock();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;Button target=null;
+        List<String> home=onHome();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;Button target=null;
         // Unified TV's own shortcuts (no app of their own) come first, so a removed one can always be put back.
         List<String> own=DockPolicy.shortcuts(room);
         for(String id:own){String label=SHORTCUTS.getOrDefault(id,id);
@@ -52,12 +59,22 @@ public final class AppsActivity extends Screen {
     }
     private void launch(String pkg,String label){String why=Launch.open(this,pkg,label);if(why!=null&&!why.isEmpty())note(why);}
     private void menu(String pkg,String label){
-        boolean onHome=dock().contains(DockPolicy.canonical(pkg));
+        boolean onHome=onHome().contains(DockPolicy.canonical(pkg));
         String[] actions={"Open",onHome?"Remove from Home":"Add to Home","App information","Cancel"};
         new android.app.AlertDialog.Builder(this).setTitle(label).setItems(actions,(d,which)->{
             if(which==0){if(SHORTCUTS.containsKey(pkg))shortcut(pkg);else launch(pkg,label);}
-            else if(which==1)EditLock.ask(this,()->{String next=onHome?DockPolicy.remove(dock(),pkg):DockPolicy.add(room,dock(),pkg);prefs.edit().putString("dock",next).apply();note(onHome?"Removed from Home":"Added to Home");show(pkg);});
+            else if(which==1)EditLock.ask(this,()->{String next=onHome?DockPolicy.remove(dock(),pkg):DockPolicy.add(room,dock(),pkg,capacity());
+                if(next==null){full(pkg,label);return;}
+                prefs.edit().putString("dock",next).apply();note(onHome?"Removed from Home":"Added to Home");show(pkg);});
             else if(which==2){if(SHORTCUTS.containsKey(pkg))note(label+" is a Unified TV shortcut");else Launch.info(this,pkg);}
         }).show();
+    }
+    /** Home is full: replace a tile the household picks, or keep the app in Apps. Cancel changes nothing. */
+    private void full(String pkg,String label){
+        List<String> shown=onHome();String[] names=new String[shown.size()];for(int i=0;i<names.length;i++)names[i]=DockCapacity.name(this,shown.get(i));
+        new android.app.AlertDialog.Builder(this).setTitle("Home is full ("+shown.size()+" of "+capacity()+"). Replace which tile with "+label+"?").setItems(names,(d,n)->{
+            prefs.edit().putString("dock",DockPolicy.replace(room,dock(),shown.get(n),pkg)).apply();
+            note(names[n]+" left Home and stays here in Apps");show(pkg);
+        }).setNegativeButton("Keep in Apps",null).show();
     }
 }

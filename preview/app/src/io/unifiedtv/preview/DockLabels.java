@@ -11,8 +11,10 @@ import java.util.*;
  * Composition rule (no label twice): the title above the dock shows the focused app's name only when no label is shown
  * under its tile (hidden), so a focused app is always identifiable, and never in two places at once.
  *
- * Tiles never show text or a full-colour app icon: each draws a simple original glyph (glyph()); an app with no glyph of
- * its own draws its installed icon in monochrome, small, on the same glass tile.
+ * Tiles never show text or a full-colour app icon: each draws a simple original glyph (glyph(), drawn by DockGlyphs); an app
+ * with no glyph of its own draws its installed icon in monochrome, small, on the same glass tile. With eight places
+ * (DockCapacity) and Always show, a long name is shortened with an ellipsis to its own place; the one focused label may
+ * use two places' width.
  */
 final class DockLabels {
     private DockLabels(){}
@@ -26,16 +28,30 @@ final class DockLabels {
     static boolean shows(String v,int i,int focused){switch(value(v)){case ALWAYS:return true;case HIDDEN:return false;default:return i==focused;}}
     /** Whether the title above the dock names the focused app (the composition rule above). */
     static boolean titleAbove(String v){return HIDDEN.equals(value(v));}
+    /** The name as it fits in {@code max} (as measured by {@code width}): whole, or shortened at the end with an ellipsis. */
+    static String fit(String name,float max,java.util.function.ToDoubleFunction<String> width){
+        String s=name==null?"":name.trim();if(width.applyAsDouble(s)<=max)return s;
+        for(int n=s.length()-1;n>0;n--){String t=s.substring(0,n).trim()+"\u2026";if(width.applyAsDouble(t)<=max)return t;}
+        return "\u2026";
+    }
 
-    /** The original glyph each tile draws, by tile id or package; "mono" for an app without one of its own. */
+    /**
+     * The original glyph each tile draws (DockGlyphs), by tile id or package; "mono" for an app without one of its own.
+     * SmartTube and YouTube never share a glyph (UX-ICON-07): SmartTube's is its own motion-play mark, YouTube's a screen.
+     * Music services each get their own, so two on Home stay apart (SET-BUILD-10).
+     */
     static String glyph(String id){
-        switch(id){
-            case "smartutube":case "com.google.android.youtube.tv":case "com.google.android.youtube.tvkids":return "play";
+        switch(DockPolicy.canonical(id)){
+            case "smartutube":return "smarttube";
+            case "com.google.android.youtube.tv":case "com.google.android.youtube.tvkids":return "play";
             case "netflix":return "n";
             case "disney":return "arcplus";
             case "bbc":return "blocks";
             case "live":return "broadcast";
-            case "music":case "com.spotify.tv.android":return "note";
+            case "music":return "note";
+            case "com.spotify.tv.android":return "eq";
+            case "com.apple.android.music":return "singlenote";
+            case "com.google.android.youtube.tvmusic":return "vinyl";
             case "xbox":return "controller";
             case "tvplus":case "com.apple.atve.androidtv.appletv":return "screen";
             case "com.amazon.amazonvideo.livingroom":return "playcircle";
@@ -44,5 +60,5 @@ final class DockLabels {
             default:return "mono";
         }
     }
-    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","n","arcplus","blocks","broadcast","note","controller","screen","playcircle","chevron","shelf","mono")));
+    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","smarttube","n","arcplus","blocks","broadcast","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
 }
