@@ -96,10 +96,34 @@ final class DlnaClient {
         for(String line:reply.split("\r?\n"))if(line.toLowerCase(Locale.ROOT).startsWith("location:")){try{String location=line.substring(9).trim();URI u=local(location);return InetAddress.getByName(u.getHost()).equals(from)?location:null;}catch(Exception e){return null;}}return null;
     }
     static String escape(String s){return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;");}
-    static Page browse(JSONObject source,String id,int offset)throws Exception{
+    static Page browse(JSONObject source,String id,int offset)throws Exception{return parse(browseResult(source,id,offset,PAGE),local(source.getString("control")));}
+    /** One raw Browse response, for callers that read other kinds of item (the Wallpaper's pictures: PhotoSource). */
+    static byte[] browseResult(JSONObject source,String id,int offset,int count)throws Exception{
         String service=source.getString("service");if(!service.matches("urn:schemas-upnp-org:service:ContentDirectory:[1-3]"))throw new IOException("Unsupported media service");
-        String body="<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><u:Browse xmlns:u=\""+service+"\"><ObjectID>"+escape(id)+"</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter><StartingIndex>"+Math.max(0,offset)+"</StartingIndex><RequestedCount>"+PAGE+"</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>";
-        return parse(request(source.getString("control"),service+"#Browse",body),local(source.getString("control")));
+        String body="<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><u:Browse xmlns:u=\""+service+"\"><ObjectID>"+escape(id)+"</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter><StartingIndex>"+Math.max(0,offset)+"</StartingIndex><RequestedCount>"+Math.max(1,Math.min(200,count))+"</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>";
+        return request(source.getString("control"),service+"#Browse",body);
+    }
+    /**
+     * A picture straight into a file, never into memory: camera originals can be far larger than request()'s 4 MB. Local
+     * servers only, no redirects, and a hard byte limit; a partial file is deleted.
+     */
+    static void download(String url,File out,long max)throws Exception{
+        URI uri=local(url);android.net.Network net=lan;HttpURLConnection c=(HttpURLConnection)(net!=null?net.openConnection(uri.toURL()):uri.toURL().openConnection());c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(8000);
+        boolean done=false;
+        try{int code=c.getResponseCode();if(code!=200)throw new Failure(Failure.classify(code,""));
+            long length=c.getContentLengthLong();if(length>max)throw new Failure(Failure.SERVER);
+            try(InputStream in=c.getInputStream();OutputStream o=new FileOutputStream(out)){byte[] b=new byte[16384];long total=0;int n;while((n=in.read(b))!=-1){total+=n;if(total>max)throw new Failure(Failure.SERVER);if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();o.write(b,0,n);}}
+            done=true;
+        }catch(Failure f){throw f;}catch(IOException e){throw new Failure(Failure.UNREACHABLE);}
+        finally{c.disconnect();if(!done)out.delete();}
+    }
+    /** The same server (matched by its UDN, never by name) at a new local address, or null. */
+    static JSONObject relocate(android.content.Context context,JSONObject from)throws Exception{
+        String udn=from.optString("udn");if(udn.isEmpty())return null;
+        for(Device d:discover(context,false)){
+            if(udn.equals(d.udn)&&!d.control.equals(from.optString("control"))&&d.service.equals(from.optString("service"))){JSONObject copy=new JSONObject(from.toString());copy.put("control",d.control).put("location",d.location);return copy;}
+        }
+        return null;
     }
     /** Same-host local video resources and artwork only; everything else on the page is counted but not shown. */
     static Page parse(byte[] soap,URI origin)throws Exception{

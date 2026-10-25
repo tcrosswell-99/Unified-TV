@@ -32,6 +32,7 @@
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
     <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".WallpaperActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".PhotoFoldersActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".NowPlayingActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".RemoteCheckActivity" android:exported="false" android:screenOrientation="landscape"/>
     <!-- Lets Unified TV see the TV's media sessions once the owner allows notification access. It reads no

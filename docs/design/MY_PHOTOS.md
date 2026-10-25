@@ -1,6 +1,6 @@
 # My Photos on the Wallpaper: access design
 
-The owner decided on 25 October 2026 that Synology photos follow as a separate task, **with the access method designed first**. This is that design. Nothing here is built yet. Register rows WP-03, WP-10 and WP-11 stay `not_started` until it is approved and implemented.
+The owner decided on 25 October 2026 that Synology photos follow as a separate task, **with the access method designed first**. This is that design. The owner approved it the same day, and **Phase 1 (DLNA picture folders) is built on Android** (`PhotoSource`, `PhotoCache`, `PhotoFoldersActivity`, `WallpaperPolicy`); it is unit-tested only. The app has Adult and Child profiles and no Guest profile yet: anything but Adult gets Artwork. Phase 2 (Synology Photos albums) is not built. Status: register rows WP-03, WP-10 and WP-11.
 
 ## What it has to do (spec 33.2 to 33.4, WP-03, WP-10, WP-11)
 

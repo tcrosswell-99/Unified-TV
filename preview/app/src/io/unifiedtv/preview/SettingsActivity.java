@@ -75,13 +75,27 @@ public final class SettingsActivity extends Screen {
         text(AirPlayReceiver.ready?"AirPlay from iPhone: ready"+(AirPlayReceiver.advertisedAs.isEmpty()?".":", shown on iPhones as \""+AirPlayReceiver.advertisedAs+"\"."):"AirPlay from iPhone: AirPin LITE is installed but isn't offering AirPlay on the network right now. Open it once, and check its own setting to start with the TV.",16);
         button("Open AirPin LITE",()->{String error=Launch.open(this,pkg,"AirPin LITE");if(error!=null&&!error.isEmpty())note(error);});
     }
-    /** Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). */
+    /**
+     * Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). My Photos
+     * (docs/design/MY_PHOTOS.md) is offered to the adult profile only, after a privacy confirmation; Child sees Artwork.
+     */
     private void wallpaper(){
         SharedPreferences p=getSharedPreferences("unified-tv-preview",0);
-        String source=WallpaperPolicy.source(p.getString("wallpaperSource",null)),clock=WallpaperPolicy.clock(p.getString("wallpaperClock",null));
+        String profile=p.getString("profile",WallpaperPolicy.ADULT);boolean adult=WallpaperPolicy.photosAllowed(profile);
+        String saved=WallpaperPolicy.source(p.getString("wallpaperSource",null)),source=WallpaperPolicy.sourceFor(saved,profile),clock=WallpaperPolicy.clock(p.getString("wallpaperClock",null));
         int idle=WallpaperPolicy.idle(p.getInt("wallpaperIdle",-1)),slide=WallpaperPolicy.slide(p.getInt("wallpaperSlide",0));
         text("Wallpaper: pictures and a clock when Home is left alone. Not Samsung Art Mode.",17);
-        button("Wallpaper: "+WallpaperPolicy.sourceLabel(source),()->choose("Wallpaper",new String[]{"Artwork","Off"},n->p.edit().putString("wallpaperSource",n==0?WallpaperPolicy.ARTWORK:WallpaperPolicy.OFF).apply()));
+        String[] sources=adult?new String[]{"Artwork","My Photos","Off"}:new String[]{"Artwork","Off"};
+        button("Wallpaper: "+WallpaperPolicy.sourceLabel(source),()->choose("Wallpaper",sources,n->{String pick=sources[n];
+            if(pick.equals("My Photos"))EditLock.ask(this,this::myPhotos);else p.edit().putString("wallpaperSource",pick.equals("Off")?WallpaperPolicy.OFF:WallpaperPolicy.ARTWORK).apply();}));
+        if(WallpaperPolicy.PHOTOS.equals(saved)&&!adult)text("The Child profile shows Artwork, never personal photos.",16);
+        if(WallpaperPolicy.PHOTOS.equals(source)){
+            text(WallpaperPolicy.PHOTOS_LIMIT,16);
+            int chosen=0;try{org.json.JSONArray r=new Vault(this).read("photos").optJSONArray("roots");chosen=r==null?0:r.length();}catch(Exception ignored){}
+            button(chosen==0?"Choose photo folders":"Photo folders: "+chosen+" chosen",()->EditLock.ask(this,()->startActivity(new Intent(this,PhotoFoldersActivity.class))));
+            toggle("Keep a copy for when the NAS is off","wallpaperKeepPhotos",on->{if(!on)new Thread(()->new PhotoCache(new java.io.File(getNoBackupFilesDir(),"photos"),PhotoCache.LIMIT).clear(),"photo-cache").start();});
+            text("Copies stay on this TV only, up to about 200 MB. Without them, Artwork shows while the NAS is off.",15);
+        }
         button("Clock: "+WallpaperPolicy.clockLabel(clock),()->choose("Clock",new String[]{WallpaperPolicy.clockLabel(WallpaperPolicy.AUTO),WallpaperPolicy.clockLabel(WallpaperPolicy.SIMPLE),WallpaperPolicy.clockLabel(WallpaperPolicy.NONE)},n->p.edit().putString("wallpaperClock",new String[]{WallpaperPolicy.AUTO,WallpaperPolicy.SIMPLE,WallpaperPolicy.NONE}[n]).apply()));
         String[] idles=new String[WallpaperPolicy.IDLE_MINUTES.length];for(int i=0;i<idles.length;i++)idles[i]=WallpaperPolicy.idleLabel(WallpaperPolicy.IDLE_MINUTES[i]);
         button("Start: "+WallpaperPolicy.idleLabel(idle).toLowerCase(java.util.Locale.UK),()->choose("Start the Wallpaper",idles,n->p.edit().putInt("wallpaperIdle",WallpaperPolicy.IDLE_MINUTES[n]).apply()));
@@ -89,10 +103,19 @@ public final class SettingsActivity extends Screen {
         button("Change picture every "+WallpaperPolicy.slideLabel(slide),()->choose("Change picture every",slides,n->p.edit().putInt("wallpaperSlide",WallpaperPolicy.SLIDE_SECONDS[n]).apply()));
         if(!WallpaperPolicy.OFF.equals(source))button("Start Wallpaper now",()->startActivity(new Intent(this,WallpaperActivity.class)));
     }
+    /** Spec 33.2.6: a clear local privacy confirmation before personal photos appear on a shared TV. */
+    private void myPhotos(){
+        new AlertDialog.Builder(this).setTitle("Show my photos on this TV?").setMessage("Only the folders you choose are shown, and only in the adult profile; the Child profile shows Artwork. Nothing is uploaded.\n\n"+WallpaperPolicy.PHOTOS_LIMIT)
+            .setPositiveButton("Show my photos",(d,w)->{getSharedPreferences("unified-tv-preview",0).edit().putString("wallpaperSource",WallpaperPolicy.PHOTOS).apply();
+                int chosen=0;try{org.json.JSONArray r=new Vault(this).read("photos").optJSONArray("roots");chosen=r==null?0:r.length();}catch(Exception ignored){}
+                if(chosen==0)startActivity(new Intent(this,PhotoFoldersActivity.class));if(category==3)show(3);})
+            .setNegativeButton("Cancel",null).show();
+    }
     private void choose(String title,String[] options,java.util.function.IntConsumer pick){
         new AlertDialog.Builder(this).setTitle(title).setItems(options,(d,n)->{pick.accept(n);show(3);}).show();
     }
-    private void toggle(String name,String key){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,false));c.setOnCheckedChangeListener((v,on)->getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply());c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
+    private void toggle(String name,String key){toggle(name,key,on->{});}
+    private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,false));c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
     /** Recording is an adult's statement that the network-level check passed on this TV; versions are captured automatically. */
     private void protection(){
         String live=LiveTvProtection.livePackage(this);org.json.JSONObject saved=LiveTvProtection.saved(this);

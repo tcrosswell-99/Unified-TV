@@ -90,13 +90,7 @@ public final class DlnaLibraryActivity extends Screen {
         handler.postDelayed(()->{if(active(ticket)&&done.compareAndSet(false,true)){if(task!=null)task.cancel(true);failed(ticket,state,new DlnaClient.Failure(DlnaClient.Failure.UNREACHABLE));}},LOAD_LIMIT_MS);
     }
     /** The same server (matched by its UDN, never by name) at a new local address, or null. */
-    private JSONObject relocate(JSONObject from)throws Exception{
-        String udn=from.optString("udn");if(udn.isEmpty())return null;
-        for(DlnaClient.Device d:DlnaClient.discover(getApplicationContext(),false)){
-            if(udn.equals(d.udn)&&!d.control.equals(from.optString("control"))&&d.service.equals(from.optString("service"))){JSONObject copy=new JSONObject(from.toString());copy.put("control",d.control).put("location",d.location);return copy;}
-        }
-        return null;
-    }
+    private JSONObject relocate(JSONObject from)throws Exception{return DlnaClient.relocate(getApplicationContext(),from);}
     /** Saves the server's new address for this library; folders and their IDs are unchanged. */
     private void keep(JSONObject relocated){source=relocated;if(!setup)try{new Vault(this).save("dlna",source);}catch(Exception ignored){/* Still usable for this visit. */}}
     private void failed(int ticket,TextView state,Exception e){
