@@ -152,6 +152,19 @@ These checks cover only what the status *says*. They are not a protection test. 
 
 Depth clock (WP-04, WP-05): not testable yet; no picture has a prepared mask. My Photos (WP-03, WP-10, WP-11): not built.
 
+## AirPlay indicator (GATE-AIRPLAY-01, AT-64)
+
+1. With AirPin LITE opened once and running, go to Unified TV Home and wait up to two minutes.
+   - **Pass:** the AirPlay glyph appears to the left of VPN in the top-right glass group, white and slightly transparent.
+   - **Record:** if it never appears, whether your iPhone's Control Centre → Screen Mirroring lists the TV. If the iPhone sees it but Unified TV doesn't, Android can't see the TV's own AirPlay service, and the check needs another method.
+2. Force-stop AirPin LITE (Settings → Apps → AirPin LITE → Force stop), return Home and wait up to two minutes.
+   - **Pass:** the glyph disappears completely; no grey icon.
+3. Restart the TV and open Unified TV without opening AirPin.
+   - **Record:** whether the glyph appears, and whether the iPhone can see the TV. That shows whether AirPin starts with the TV.
+4. Cast a video from the iPhone, then stop.
+   - **Record:** that AirPin takes over the screen and that Back or Home returns to Unified TV.
+5. Settings → Connections: the AirPlay line matches what the header shows; **Open AirPin LITE** opens it.
+
 ## Films & TV from Home (P05-02, spec 4.6)
 
 1. With the NAS set up, press Down on Home.

@@ -32,7 +32,8 @@ public final class SettingsActivity extends Screen {
             button("Home Assistant",()->startActivity(new Intent(this,ServiceDiscoveryActivity.class)));
             button("Your Films & TV",()->startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("setup",true)));
             button("Media server accounts",()->new AlertDialog.Builder(this).setTitle("Media account").setItems(new String[]{"Adult","Child"},(d,n)->connection(n==0?"media-adult":"media-child")).show());
-            button("Connected services",this::services);break;
+            button("Connected services",this::services);
+            airPlay();break;
         case 1:
             text("Current profile: "+(EditLock.child(this)?"Child":"Adult"),18);
             button("Switch profile",()->chooseProfile(this));button("Set or change adult PIN",()->EditLock.ask(this,()->EditLock.set(this)));
@@ -65,6 +66,13 @@ public final class SettingsActivity extends Screen {
     }
     private void services(){detail="services";heading("Connected services","Available services on this Android TV");button("NordVPN",()->VpnGate.show(this));button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));button("AirPlay receiver",this::airplay);}
     private void airplay(){android.content.pm.PackageManager pm=getPackageManager();Intent q=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(q,0))if(ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT).contains("airpin")){Intent i=pm.getLeanbackLaunchIntentForPackage(ri.activityInfo.packageName);if(i!=null){startActivity(i);return;}}note("No supported receiver found");}
+    /** Spec 7.1: AirPlay through AirPin LITE. Setup happens in AirPin itself; Unified TV only reports what it can confirm. */
+    private void airPlay(){
+        String pkg=AirPlayReceiver.installed(this);
+        if(pkg==null){text("AirPlay from iPhone: install AirPin LITE from the TV's app store to receive AirPlay.",16);return;}
+        text(AirPlayReceiver.ready?"AirPlay from iPhone: ready"+(AirPlayReceiver.advertisedAs.isEmpty()?".":", shown on iPhones as \""+AirPlayReceiver.advertisedAs+"\"."):"AirPlay from iPhone: AirPin LITE is installed but isn't offering AirPlay on the network right now. Open it once, and check its own setting to start with the TV.",16);
+        button("Open AirPin LITE",()->{String error=Launch.open(this,pkg,"AirPin LITE");if(error!=null&&!error.isEmpty())note(error);});
+    }
     /** Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). */
     private void wallpaper(){
         SharedPreferences p=getSharedPreferences("unified-tv-preview",0);

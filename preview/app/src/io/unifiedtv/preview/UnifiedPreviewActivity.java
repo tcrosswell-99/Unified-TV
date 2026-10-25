@@ -46,7 +46,7 @@ import java.util.TimeZone;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
+    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.checkedAt=0;AirPlayReceiver.refresh(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
     @Override protected void onStop(){VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     /** Idle on Home: the Wallpaper (spec 33; artwork by default), or with Wallpaper off, the owner's gallery if one is set. */
@@ -163,6 +163,7 @@ public final class UnifiedPreviewActivity extends Activity {
             @Override public void run() {
                 invalidate();
                 fixture();
+                AirPlayReceiver.refresh(activity, Preview.this::postInvalidate);
                 handler.postDelayed(this, 60_000L);
             }
         };
@@ -442,6 +443,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private void controls() {
             java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Apps", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
             if(!fixture.isEmpty())actions.add("Matchday Live TV - protection required");
+            final String airPin=AirPlayReceiver.installed(activity);
+            if(airPin!=null)actions.add("AirPlay from iPhone");
             new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
                 actions.toArray(new String[0]), (dialog,which) -> {
                 if(which==0) activity.startActivity(new Intent(activity,AppsActivity.class));
@@ -449,7 +452,9 @@ public final class UnifiedPreviewActivity extends Activity {
                 if(which==2) SettingsActivity.chooseProfile(activity);
                 if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
                 if(which==4) activity.startActivity(new Intent(activity,VoiceActivity.class));
-                if(which==5) VpnGate.show(activity);
+                String picked=actions.get(which);
+                if(picked.startsWith("Matchday")) VpnGate.show(activity);
+                if(picked.equals("AirPlay from iPhone")){String error=Launch.open(activity,airPin,"AirPin LITE");if(error!=null&&!error.isEmpty())info(error);}
             }).show();
         }
         private void launch(Item item) {
@@ -587,10 +592,53 @@ public final class UnifiedPreviewActivity extends Activity {
             SimpleDateFormat df = new SimpleDateFormat("HH:mm", Locale.UK);
             df.setTimeZone(TimeZone.getTimeZone("Europe/London"));
             text(c, df.format(System.currentTimeMillis()), 96, 142, 66, WHITE, false, Paint.Align.LEFT);
-            glass(c, 1498, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
-            text(c, VpnGate.label(activity), 1450, 114, 22, WHITE, false, Paint.Align.LEFT);
-            text(c, "○", 1696, 115, 43, WHITE, false, Paint.Align.CENTER);
-            text(c, "⚙", 1773, 114, 43, WHITE, false, Paint.Align.CENTER);
+            // One glass group, laid out from the right: Settings, voice, VPN, and AirPlay only while it is really ready.
+            String vpn = VpnGate.label(activity);
+            type.setTextSize(22); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            float vpnRight = 1650, vpnLeft = vpnRight - type.measureText(vpn);
+            boolean airplay = AirPlayReceiver.ready;
+            float left = (airplay ? vpnLeft - 64 : vpnLeft) - 30;
+            glass(c, left, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
+            if (airplay) airPlay(c, vpnLeft - 38, 104);
+            text(c, vpn, vpnLeft, 114, 22, WHITE, false, Paint.Align.LEFT);
+            microphone(c, 1696, 104);
+            gear(c, 1773, 104);
+        }
+        private final Paint icon = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path glyph = new Path();
+        private void iconPaint(int alpha, boolean fill) {
+            icon.setColor(WHITE); icon.setAlpha(alpha); icon.setStyle(fill ? Paint.Style.FILL : Paint.Style.STROKE);
+            icon.setStrokeWidth(3); icon.setStrokeCap(Paint.Cap.ROUND); icon.setStrokeJoin(Paint.Join.ROUND);
+            icon.setShadowLayer(1.5f, 0, 1, 0x80000000);   // a microscopic shadow keeps it legible on bright pictures
+        }
+        /**
+         * AirPlay ready (spec 7.1): a screen with an upward triangle, solid white at about 70 % with a tiny shadow. Drawn
+         * only when AirPin LITE is confirmed to be offering AirPlay on the network; otherwise nothing is drawn at all.
+         */
+        private void airPlay(Canvas c, float cx, float cy) {
+            iconPaint(179, false);
+            glyph.reset();   // the screen, open at the bottom where the triangle sits
+            glyph.moveTo(cx - 9, cy + 11); glyph.lineTo(cx - 18, cy + 11); glyph.quadTo(cx - 21, cy + 11, cx - 21, cy + 8);
+            glyph.lineTo(cx - 21, cy - 12); glyph.quadTo(cx - 21, cy - 15, cx - 18, cy - 15); glyph.lineTo(cx + 18, cy - 15);
+            glyph.quadTo(cx + 21, cy - 15, cx + 21, cy - 12); glyph.lineTo(cx + 21, cy + 8); glyph.quadTo(cx + 21, cy + 11, cx + 18, cy + 11);
+            glyph.lineTo(cx + 9, cy + 11); c.drawPath(glyph, icon);
+            iconPaint(179, true);
+            glyph.reset(); glyph.moveTo(cx, cy + 3); glyph.lineTo(cx + 11, cy + 17); glyph.lineTo(cx - 11, cy + 17); glyph.close();
+            c.drawPath(glyph, icon);
+        }
+        private void microphone(Canvas c, float cx, float cy) {
+            iconPaint(235, false);
+            c.drawRoundRect(cx - 7, cy - 18, cx + 7, cy + 4, 7, 7, icon);
+            rect.set(cx - 13, cy - 8, cx + 13, cy + 12); c.drawArc(rect, 0, 180, false, icon);
+            c.drawLine(cx, cy + 12, cx, cy + 19, icon); c.drawLine(cx - 7, cy + 19, cx + 7, cy + 19, icon);
+        }
+        private void gear(Canvas c, float cx, float cy) {
+            iconPaint(235, false);
+            c.drawCircle(cx, cy, 11, icon); c.drawCircle(cx, cy, 4.5f, icon);
+            for (int i = 0; i < 8; i++) {
+                double a = Math.PI * i / 4;
+                c.drawLine(cx + (float) (Math.cos(a) * 13), cy + (float) (Math.sin(a) * 13), cx + (float) (Math.cos(a) * 18), cy + (float) (Math.sin(a) * 18), icon);
+            }
         }
 
         private void drawDock(Canvas c, long now, boolean resting) {
