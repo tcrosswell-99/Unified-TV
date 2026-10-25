@@ -13,6 +13,7 @@ import android.widget.*;
 public class SettingsJourneyTest {
     private Button find(View v,String name){if(v instanceof Button&&name.contentEquals(((Button)v).getText()))return (Button)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){Button b=find(((ViewGroup)v).getChildAt(i),name);if(b!=null)return b;}return null;}
     private TextView text(View v,String start){if(v instanceof TextView&&((TextView)v).getText().toString().startsWith(start))return (TextView)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){TextView t=text(((ViewGroup)v).getChildAt(i),start);if(t!=null)return t;}return null;}
+    private static String describe(View v){return v==null?"nothing":v.getClass().getSimpleName()+(v instanceof TextView?" '"+((TextView)v).getText()+"'":"");}
     private SharedPreferences prefs(){return RuntimeEnvironment.getApplication().getSharedPreferences("unified-tv-preview",0);}
     @Before public void clean(){prefs().edit().clear().commit();}
 
@@ -28,7 +29,8 @@ public class SettingsJourneyTest {
         try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
             SettingsActivity a=controller.get();View root=a.findViewById(android.R.id.content);Button appearance=find(root,"Appearance & Home");appearance.requestFocus();
             assertNotNull(find(root,"Gallery & slideshow"));assertNull(find(root,"Set up Home Assistant"));
-            appearance.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT));assertFalse(appearance.hasFocus());
+            boolean handled=appearance.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT));
+            assertFalse("Right handled="+handled+", focus now on "+describe(a.getCurrentFocus())+", touch mode="+appearance.isInTouchMode(),appearance.hasFocus());
             a.onBackPressed();assertTrue(appearance.hasFocus());
             // SET-008: an integration that isn't set up offers "Set up", not empty switches.
             find(root,"Smart Home").requestFocus();assertNotNull(find(root,"Set up Home Assistant"));assertNull(find(root,"Gallery & slideshow"));

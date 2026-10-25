@@ -51,7 +51,11 @@ android {
         unitTests.includeAndroidResources = true
         // A test that never returns (an endless animation under Robolectric, a lost socket) fails here instead of
         // holding CI for hours.
-        unitTests.all { timeout = java.time.Duration.ofMinutes(10) }
+        unitTests.all {
+            timeout = java.time.Duration.ofMinutes(10)
+            // Failures print their message and stack in the CI log, which is often the only report that can be read.
+            testLogging { events 'failed'; exceptionFormat 'full' }
+        }
     }
 }
 dependencies {
