@@ -131,7 +131,8 @@ final class HubBuilder {
     static String key(String profile){return KEY+"."+Profiles.stored(profile);}
     static State load(SharedPreferences p,String profile){return parse(p.getString(key(profile),null));}
     static void save(SharedPreferences p,String profile,State s){p.edit().putString(key(profile),s.toJson()).apply();}
-    /** The one-time Home card: Adults, a fresh install (no dock saved yet), never offered, never started. */
+    /** A fresh install for the guided setup (FirstRun.shouldStart): Adults, no dock saved yet, never offered, never started.
+     *  OFFERED also covers the one-time Home card earlier versions showed, so a TV that saw it isn't asked again. */
     static boolean shouldOffer(SharedPreferences p){
         return !Profiles.kids(p)&&!p.getBoolean(OFFERED,false)&&!p.contains("dock")&&NOT_STARTED.equals(load(p,Profiles.ADULT).status);
     }

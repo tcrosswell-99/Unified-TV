@@ -13,10 +13,22 @@ def previewKey = ['UNIFIEDTV_PREVIEW_KEYSTORE', 'UNIFIEDTV_PREVIEW_KEYSTORE_PASS
         .collectEntries { name -> [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).getOrElse('')] }
 def hasPreviewKey = previewKey.values().every { !it.trim().isEmpty() }
 
+// Build identity for Settings > Updates & About (the owner couldn't tell builds apart: all said 0.5-preview). From CI's
+// GITHUB_SHA (first 7 characters) and GITHUB_RUN_NUMBER; "local" otherwise. Checked to be plain hex and digits; no secret.
+def buildSha = providers.environmentVariable('GITHUB_SHA').getOrElse('').trim().toLowerCase()
+buildSha = buildSha ==~ /[0-9a-f]{7,40}/ ? buildSha.substring(0, 7) : 'local'
+def buildRun = providers.environmentVariable('GITHUB_RUN_NUMBER').getOrElse('').trim()
+buildRun = buildRun ==~ /[0-9]{1,10}/ ? buildRun : 'local'
+def buildDate = new Date().format('yyyy-MM-dd', TimeZone.getTimeZone('UTC'))
+
 android {
     namespace 'io.unifiedtv.preview'
     compileSdk 35
-    defaultConfig { minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    defaultConfig { minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        buildConfigField 'String', 'BUILD_SHA', "\"${buildSha}\""
+        buildConfigField 'String', 'BUILD_RUN', "\"${buildRun}\""
+        buildConfigField 'String', 'BUILD_DATE', "\"${buildDate}\"" }
+    buildFeatures { buildConfig true }
     sourceSets {
         main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }
         launcher { manifest.srcFile 'launcher/AndroidManifest.xml'; res.srcDirs = ['launcher/res'] }

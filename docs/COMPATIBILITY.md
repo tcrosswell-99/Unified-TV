@@ -30,6 +30,13 @@ These changes are checked by code review, unit tests and CI only. **None has bee
 | Add-on fixes (for example `addons/frigate-glance`) | Code review, unit tests where the add-on has them | On any real TV |
 | Launcher on Android 10 only applies a theme written by the theme tools | Code review, unit tests | On a real Android 10 TV |
 | Recovery records tied to the TV's identity; restore stops without a record unless `RESTORE_WITHOUT_RECORD=1` | Python tests against a fake TV | A full disable and restore on real hardware |
+| Preview, owner's TCL test of c62956e (25 October 2026): media server requests go round a VPN that refuses a way round it, and say "NordVPN is blocking your home network" instead of "isn't answering" | Unit tests with fake connections | With NordVPN connected on the TCL, with and without NordVPN's local network setting |
+| Preview: "Make Unified TV the Home screen" never opens the TV's own Home by itself, brings Unified TV's Home back after Android's choice, and says "This TV keeps its own Home button" when Android records the choice but the Home button ignores it | Robolectric tests (role held, Home resolving to another launcher) | The Home role dialog and the Home button on the TCL (BeyondTV4, Android 11) |
+| Preview: Ask your TV hands over to the TV's own voice screen when the pane hears nothing, uses words already heard, and offers assistant setup on the phone (assistant details saved only; answering questions is **not tested**) | Robolectric tests with Robolectric's speech recogniser | The TCL remote's microphone, both routes |
+| Preview: white brand marks on the YouTube, Netflix, Disney+ and BBC iPlayer tiles; Live TV a TV set; app icon and TV banner | Rendered to PNG under Robolectric and inspected | Legibility at viewing distance and the icon in the TCL's app list |
+| Preview: NordVPN's country as a small round flag beside the VPN shield, read from NordVPN's own notification | Unit tests of the notification wording | NordVPN's real notification text and the TCL's flag emoji |
+| Preview: phone setup accepts the TV's own address however the phone writes it, closes a browser's https:// attempt at once, one QR code with numbered steps, API-Football VPN/proxy refusals said plainly | Unit tests | A real phone (iPhone and Android) on the household network, with and without NordVPN |
+| Preview: build identity (commit, CI run, date) in Updates & About | Unit test of the wording | A CI-built APK on the TV |
 
 ## Planned household modules
 

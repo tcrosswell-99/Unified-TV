@@ -88,9 +88,37 @@ final class PhoneSetup {
     /** The Home Assistant to offer: the saved address, else what the quiet look-ahead found, else a short look now. */
     static String found(Context c) {
         try { String saved = new Vault(c).read("ha").optString("base"); if (!saved.isEmpty()) return saved; } catch (Exception ignored) {}
+        String recent = lastFound; if (recent != null && System.currentTimeMillis() - lastFoundAt < 60_000) return recent;
         List<LocalDiscovery.Found> ready = LocalDiscovery.fresh() ? LocalDiscovery.haFound : null;
         if (ready == null || ready.isEmpty()) ready = LocalDiscovery.homeAssistant(c, false);
-        return ready == null || ready.isEmpty() ? null : ready.get(0).base;
+        String base = ready == null || ready.isEmpty() ? null : ready.get(0).base;
+        if (base != null) { lastFound = base; lastFoundAt = System.currentTimeMillis(); }
+        return base;
+    }
+    /** The last look, shared by the TV screen and the phone page for a minute, so they name the same Home Assistant. */
+    private static volatile String lastFound; private static volatile long lastFoundAt;
+
+    /**
+     * The found Home Assistant as the household knows it (owner, 25 October 2026): "homeassistant.local" when that name
+     * leads to the same address, else the address as found. Looked up once per address; a .local lookup is bounded.
+     */
+    static String haName(String base) {
+        if (base == null) return null;
+        String known = names.get(base); if (known != null) return known;
+        known = haName(base, LocalDiscovery::named); names.put(base, known); return known;
+    }
+    private static final java.util.Map<String, String> names = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Pure: {@code resolve} answers a host name's addresses (empty when it can't). */
+    static String haName(String base, java.util.function.Function<String, List<java.net.InetAddress>> resolve) {
+        if (base == null) return null;
+        try {
+            java.net.URI u = java.net.URI.create(base); String host = u.getHost(); if (host == null) return base;
+            String port = u.getPort() > 0 && u.getPort() != 8123 ? ":" + u.getPort() : "";
+            if (host.equalsIgnoreCase("homeassistant.local")) return "homeassistant.local" + port;
+            java.net.InetAddress at = java.net.InetAddress.getByName(host.replaceAll("^\\[|\\]$", ""));
+            for (java.net.InetAddress a : resolve.apply("homeassistant.local")) if (a.equals(at)) return "homeassistant.local" + port;
+            return host + port;
+        } catch (Exception e) { return base; }
     }
 
     /** Saved exactly as the app keeps Home Assistant: one Vault record; the alert service reconnects with it. */
@@ -120,7 +148,7 @@ final class PhoneSetup {
     /** The subnet prefix of the TV's own address (24 when Android doesn't say). */
     static int prefix(Context c, Inet4Address tv) {
         try {
-            ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE); Network n = LocalDiscovery.lan(c);
+            ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE); Network n = LocalDiscovery.home(c);
             LinkProperties link = n == null || cm == null ? null : cm.getLinkProperties(n);
             if (link != null) for (LinkAddress a : link.getLinkAddresses()) if (tv.equals(a.getAddress())) return a.getPrefixLength();
         } catch (RuntimeException ignored) {}

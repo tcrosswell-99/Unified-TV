@@ -43,6 +43,8 @@ final class Posters {
 
     private final Context app;private final File dir;private final PhotoCache disk;private final Handler main=new Handler(Looper.getMainLooper());
     private final LruCache<String,Bitmap> memory;
+    /** MemoryBudget: JPEG pictures at 16 bits a pixel (2 GB TVs), and the poster size actually shown on this screen. */
+    private final boolean opaque565;private final int posterW,posterH;
     private final LinkedBlockingDeque<Runnable> lookupQueue=new LinkedBlockingDeque<>(),pictureQueue=new LinkedBlockingDeque<>();
     private final ThreadPoolExecutor lookups=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,lookupQueue),pictures=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,pictureQueue);
     private final Map<String,List<Callback>> waiting=new HashMap<>();
@@ -52,10 +54,26 @@ final class Posters {
 
     private Posters(Context app){
         this.app=app;dir=new File(app.getFilesDir(),"posters");disk=new PhotoCache(new File(dir,"img"),DISK);
-        int budget=(int)Math.min(24L*1024*1024,Runtime.getRuntime().maxMemory()/8);
-        memory=new LruCache<String,Bitmap>(Math.max(4*1024*1024,budget)){@Override protected int sizeOf(String k,Bitmap b){return b.getByteCount();}};
+        MemoryBudget budget=MemoryBudget.get(app);opaque565=budget.opaque565();
+        memory=new LruCache<String,Bitmap>(budget.imageCacheBytes(Runtime.getRuntime().maxMemory())){@Override protected int sizeOf(String k,Bitmap b){return b.getByteCount();}};
+        android.util.DisplayMetrics m=app.getResources().getDisplayMetrics();int[] shown=shownPoster(m.widthPixels,m.heightPixels);posterW=shown[0];posterH=shown[1];
         lookups.allowCoreThreadTimeOut(true);pictures.allowCoreThreadTimeOut(true);
     }
+
+    /**
+     * The largest a poster is shown on this screen: the library's tile (208 x 312 at 1080p) lifted on focus, at most
+     * 300 x 450. Pictures are decoded at this size (Images), never larger.
+     */
+    static int[] shownPoster(int screenW,int screenH){
+        float unit=Math.max(.5f,Math.min(screenW/1920f,screenH/1080f));
+        return new int[]{Math.min(POSTER_W,Math.round(SHOWN_W*unit)),Math.min(POSTER_H,Math.round(SHOWN_H*unit))};
+    }
+    static final int SHOWN_W=226,SHOWN_H=338;
+    /** The memory cache's limit and use in bytes (for tests and Owner diagnostics). */
+    int cacheLimit(){return memory.maxSize();}
+    int cacheUsed(){return memory.size();}
+    /** onTrimMemory (PreviewApp): every decoded picture when no screen shows them; half when memory runs low. Disk stays. */
+    static void trim(boolean hidden){Posters p;synchronized(Posters.class){p=instance;}if(p==null)return;if(hidden)p.memory.evictAll();else p.memory.trimToSize(p.memory.maxSize()/2);}
 
     // --- the household's key
     /** The household's TMDB key or token from the Vault ("tmdb", "key"); empty when there is none. */
@@ -87,8 +105,8 @@ final class Posters {
             Tmdb.Match m=match(job);String path=m!=null?m.poster:"";boolean none=noPicture(job.udn,job.lookupKey);
             submit(pictures,pictureQueue,urgent,()->{
                 Bitmap out=null;
-                if(!path.isEmpty())out=tmdbImage(path,"w342",POSTER_W,POSTER_H);
-                if(out==null&&!none&&!job.serverArt.isEmpty())out=serverImage(job.serverArt,POSTER_W,POSTER_H);
+                if(!path.isEmpty())out=tmdbImage(path,"w342",posterW,posterH);
+                if(out==null&&!none&&!job.serverArt.isEmpty())out=serverImage(job.serverArt,posterW,posterH);
                 if(out!=null)memory.put(k,out);deliver(k,out);
             });
         });
@@ -97,22 +115,39 @@ final class Posters {
      * The tile's background: its TMDB backdrop, or its poster softened. Light mode (Lightweight rendering, a low-memory TV)
      * always uses the softened poster: one small picture, no large decode.
      */
-    void backdrop(LibraryCatalogue.Card card,String udn,boolean light,Callback cb){
+    void backdrop(LibraryCatalogue.Card card,String udn,boolean light,Callback cb){backdrop(card,udn,light,cb,false);}
+    /**
+     * The library's background for the tile in focus (module 05: asked the moment focus moves, no settle delay). Only the
+     * newest matters: an earlier one still waiting in the queue is dropped (its callers hear null), so a run of fast
+     * presses looks up and decodes one background, not one per tile passed.
+     */
+    void latestBackdrop(LibraryCatalogue.Card card,String udn,boolean light,Callback cb){backdrop(card,udn,light,cb,true);}
+    private Runnable queuedBackdrop;private String queuedBackdropKey;
+    private void backdrop(LibraryCatalogue.Card card,String udn,boolean light,Callback cb,boolean latestOnly){
         String k=(light?"bl:":"b:")+card.lookupKey();Bitmap b=memory.get(k);if(b!=null){cb.done(b);return;}
+        if(latestOnly)dropQueuedBackdrop(k);
         if(!wait(k,cb))return;
         LookupJob job=new LookupJob(card,udn);
-        submit(lookups,lookupQueue,true,()->{
+        Runnable lookup=()->{
             Tmdb.Match m=match(job);String back=m!=null&&!light?m.backdrop:"",poster=m!=null?m.poster:"";boolean none=noPicture(job.udn,job.lookupKey);
             submit(pictures,pictureQueue,true,()->{
                 Bitmap out=null;
                 if(!back.isEmpty())out=tmdbImage(back,"w780",BACK_W,BACK_H);
                 if(out==null){Bitmap p=memory.get("p:"+job.lookupKey);
-                    if(p==null&&!poster.isEmpty())p=tmdbImage(poster,"w342",POSTER_W,POSTER_H);
-                    if(p==null&&!none&&!job.serverArt.isEmpty())p=serverImage(job.serverArt,POSTER_W,POSTER_H);
+                    if(p==null&&!poster.isEmpty())p=tmdbImage(poster,"w342",posterW,posterH);
+                    if(p==null&&!none&&!job.serverArt.isEmpty())p=serverImage(job.serverArt,posterW,posterH);
                     if(p!=null){memory.put("p:"+job.lookupKey,p);out=Backdrops.fromPoster(p);}}
                 if(out!=null)memory.put(k,out);deliver(k,out);
             });
-        });
+        };
+        if(latestOnly)synchronized(this){queuedBackdrop=lookup;queuedBackdropKey=k;}
+        submit(lookups,lookupQueue,true,lookup);
+    }
+    private void dropQueuedBackdrop(String next){
+        Runnable r;String k;synchronized(this){r=queuedBackdrop;k=queuedBackdropKey;queuedBackdrop=null;queuedBackdropKey=null;}
+        if(r==null)return;
+        if(k.equals(next)){synchronized(this){if(queuedBackdrop==null){queuedBackdrop=r;queuedBackdropKey=k;}}return;}
+        if(lookupQueue.remove(r))deliver(k,null);   // not started yet: nothing was looked up or decoded for it
     }
     /** Warms the cache for tiles about to be seen (not urgent; nothing is shown). */
     void prefetch(List<LibraryCatalogue.Card> cards,String udn){for(LibraryCatalogue.Card c:cards)if(memory.get("p:"+c.lookupKey())==null)poster(c,udn,false,null);}
@@ -158,18 +193,18 @@ final class Posters {
         try{File f=disk.file(k);
             if(!f.isFile()){Tmdb t=tmdb();if(t==null)return null;byte[] data=t.image(path,size);disk.put(k,o->o.write(data));}
             else disk.touch(f);
-            return decode(f,w,h);}catch(Exception e){return null;}
+            return decode(f,w,h,opaque565);}catch(Exception e){return null;}
     }
     private Bitmap serverImage(String url,int w,int h){
         String k="nas:"+url;
         try{File f=disk.file(k);
             if(!f.isFile()){byte[] data=DlnaClient.request(url,null,null);disk.put(k,o->o.write(data));}
             else disk.touch(f);
-            return decode(f,w,h);}catch(Exception e){return null;}
+            return decode(f,w,h,opaque565);}catch(Exception e){return null;}
     }
-    private static Bitmap decode(File f,int w,int h)throws IOException{
+    private static Bitmap decode(File f,int w,int h,boolean opaque565)throws IOException{
         byte[] data;try(InputStream in=new FileInputStream(f)){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);data=out.toByteArray();}
-        return Images.decode(data,w,h);
+        return Images.decode(data,w,h,opaque565);
     }
 
     // --- the match list on disk

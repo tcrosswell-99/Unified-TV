@@ -60,7 +60,7 @@ final class DockLabels {
             case "netflix":return "n";
             case "disney":return "arcplus";
             case "bbc":return "blocks";
-            case "live":return "broadcast";
+            case "live":return "tvset";
             case "music":return "note";
             case "com.spotify.tv.android":return "eq";
             case "com.apple.android.music":return "singlenote";
@@ -73,5 +73,5 @@ final class DockLabels {
             default:return "mono";
         }
     }
-    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","n","arcplus","blocks","broadcast","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
+    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","n","arcplus","blocks","tvset","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
 }

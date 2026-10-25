@@ -12,18 +12,53 @@ import java.util.concurrent.*;
 /** Finds household servers without anyone typing an address. Home network only, bounded in hosts, time and bytes. */
 final class LocalDiscovery {
     static final class Found {final String name,base;Found(String name,String base){this.name=name;this.base=base;}}
-    /** The Wi-Fi/Ethernet network under any VPN: discovery must reach the home network, not the tunnel. */
-    static Network lan(Context c){
+    /** The household's Wi-Fi/Ethernet network, for its addresses (phone setup, the /24 search); never the VPN tunnel. */
+    static Network home(Context c){
         try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);if(cm==null)return null;
             for(Network n:cm.getAllNetworks()){NetworkCapabilities caps=cm.getNetworkCapabilities(n);if(caps!=null&&!caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)||caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)))return n;}
         }catch(RuntimeException ignored){}return null;
+    }
+    /**
+     * What lan() last found (owner's TCL, 25 October 2026: the media server "wasn't answering" once NordVPN connected).
+     * vpn: a VPN was up. blocked: requests to the home network had to take the default route through it, because the
+     * VPN refuses apps a way round it (binding to Wi-Fi fails with EPERM) or no home network was seen. With NordVPN's own
+     * "allow local network" setting on, that default route still reaches the home network; without it, nothing does.
+     * vpnApp names the VPN when it can be told ("NordVPN" when NordVPN is installed), else "".
+     */
+    static volatile boolean vpn,blocked;static volatile String vpnApp="";
+    /** Whether the household's home-network servers are probably cut off by a VPN, not switched off. */
+    static boolean vpnInTheWay(){return vpn&&blocked;}
+    /**
+     * The network for requests to home-network servers: Wi-Fi/Ethernet under any VPN, so the home network is reached
+     * directly; null (the default route) when there is no VPN, or when the VPN refuses a way round it, which is what
+     * lets NordVPN's own local-network allowance work instead of every request failing at once.
+     */
+    static Network lan(Context c){
+        Network n=home(c);boolean tunnel=false;
+        try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if(cm!=null)for(Network x:cm.getAllNetworks()){NetworkCapabilities caps=cm.getNetworkCapabilities(x);if(caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)){tunnel=true;break;}}
+        }catch(RuntimeException ignored){}
+        vpn=tunnel;
+        if(!tunnel){blocked=false;return n;}
+        vpnApp=nordVpn(c)?"NordVPN":"";
+        Network usable=n!=null&&bindable(n)?n:null;blocked=usable==null;return usable;
+    }
+    /** A VPN that forbids bypass refuses any socket bound to another network; one throwaway UDP socket tells, without sending. */
+    static boolean bindable(Network n){try(DatagramSocket probe=new DatagramSocket()){n.bindSocket(probe);return true;}catch(Exception e){return false;}}
+    static boolean nordVpn(Context c){
+        try{android.content.pm.PackageManager pm=c.getPackageManager();return pm.getLeanbackLaunchIntentForPackage(LiveTvProtection.NORDVPN)!=null||pm.getLaunchIntentForPackage(LiveTvProtection.NORDVPN)!=null;}catch(RuntimeException e){return false;}
+    }
+    /** A connection refused by the VPN's no-bypass rule (EPERM when binding to the home network), not by the server. */
+    static boolean refused(Throwable e){
+        for(Throwable t=e;t!=null;t=t.getCause()){String m=t.getMessage();if(m!=null&&(m.contains("EPERM")||m.contains("Operation not permitted")||m.startsWith("Binding socket")))return true;if(t.getCause()==t)break;}
+        return false;
     }
     /** Best effort: a VPN that forbids bypass refuses this, and discovery then uses the default route as before. */
     static void bind(Context c,DatagramSocket socket){Network n=c==null?null:lan(c);if(n!=null)try{n.bindSocket(socket);}catch(Exception ignored){}}
     static HttpURLConnection open(Context c,URL url)throws IOException{Network n=c==null?null:lan(c);return (HttpURLConnection)(n!=null?n.openConnection(url):url.openConnection());}
     /** The TV's own private IPv4 address on the home network, or null. */
     static Inet4Address address(Context c){
-        try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=lan(c);LinkProperties link=n==null||cm==null?null:cm.getLinkProperties(n);
+        try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=home(c);LinkProperties link=n==null||cm==null?null:cm.getLinkProperties(n);
             if(link!=null)for(LinkAddress a:link.getLinkAddresses())if(a.getAddress() instanceof Inet4Address&&a.getAddress().isSiteLocalAddress())return (Inet4Address)a.getAddress();
         }catch(RuntimeException ignored){}return null;
     }
@@ -45,7 +80,7 @@ final class LocalDiscovery {
         for(Found f:mdns(c,"_home-assistant._tcp.",5000))found.put(f.base,f);if(!found.isEmpty())return new ArrayList<>(found.values());
         for(InetAddress a:named("homeassistant.local"))if(a instanceof Inet4Address&&a.isSiteLocalAddress())probeHa(c,a,found);
         if(!found.isEmpty()||!thorough)return new ArrayList<>(found.values());
-        sweep(neighbours(address(c)),a->{try(Socket s=new Socket()){Network n=lan(c);if(n!=null)try{n.bindSocket(s);}catch(Exception ignored){}s.connect(new InetSocketAddress(a,8123),300);}catch(Exception e){return;}probeHa(c,a,found);});
+        Network n=lan(c);sweep(neighbours(address(c)),a->{try(Socket s=new Socket()){if(n!=null)try{n.bindSocket(s);}catch(Exception ignored){}s.connect(new InetSocketAddress(a,8123),300);}catch(Exception e){return;}probeHa(c,a,found);});
         return new ArrayList<>(found.values());
     }
     /** A .local lookup can hang on firmware without mDNS name resolution: give it three seconds. */

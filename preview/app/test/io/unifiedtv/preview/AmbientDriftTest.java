@@ -20,7 +20,7 @@ public class AmbientDriftTest {
     private UnifiedPreviewActivity open(){controller=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup();View content=controller.get().findViewById(android.R.id.content);content.measure(View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY));content.layout(0,0,1920,1080);return controller.get();}
     private static AmbientLayer layer(UnifiedPreviewActivity a){ViewGroup stack=(ViewGroup)((ViewGroup)a.findViewById(android.R.id.content)).getChildAt(0);return (AmbientLayer)stack.getChildAt(0);}
     /** The first light of the group on show (the top child of the layer). */
-    private static View light(AmbientLayer layer){ViewGroup group=(ViewGroup)layer.getChildAt(layer.getChildCount()-1);for(int i=0;i<group.getChildCount();i++)if(group.getChildAt(i).getTag() instanceof AmbientMesh.Light)return group.getChildAt(i);throw new AssertionError("no light");}
+    private static View light(AmbientLayer layer){ViewGroup group=layer.shown();for(int i=0;i<group.getChildCount();i++)if(group.getChildAt(i).getTag() instanceof AmbientMesh.Light)return group.getChildAt(i);throw new AssertionError("no light");}
     private static void wait(int ms){Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMillis(ms));}
     private static float[] at(View v){return new float[]{v.getTranslationX(),v.getTranslationY(),v.getScaleX()};}
     private static boolean moved(float[] a,float[] b){return Math.abs(a[0]-b[0])>.5f||Math.abs(a[1]-b[1])>.5f||Math.abs(a[2]-b[2])>.0005f;}

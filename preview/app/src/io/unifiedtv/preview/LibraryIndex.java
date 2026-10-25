@@ -42,9 +42,11 @@ final class LibraryIndex {
             if(!ratings.isEmpty())o.put("r",new JSONArray(ratings));if(!pathIds.isEmpty()){o.put("pn",new JSONArray(pathNames));o.put("pi",new JSONArray(pathIds));}
             return o;
         }
-        static Entry of(JSONObject o,String root){
-            Entry e=new Entry();e.id=o.optString("i");e.root=root;e.title=o.optString("t");e.url=o.optString("u");e.art=o.optString("a");e.upnpClass=o.optString("c");e.seen=o.optLong("s");
-            strings(o.optJSONArray("r"),e.ratings);strings(o.optJSONArray("pn"),e.pathNames);strings(o.optJSONArray("pi"),e.pathIds);
+        static Entry of(JSONObject o,String root){return of(o,root,null);}
+        /** With {@code pool}, repeated words (folder names and ids, ratings, classes) are kept once for the whole list. */
+        static Entry of(JSONObject o,String root,Map<String,String> pool){
+            Entry e=new Entry();e.id=o.optString("i");e.root=root;e.title=o.optString("t");e.url=o.optString("u");e.art=o.optString("a");e.upnpClass=one(pool,o.optString("c"));e.seen=o.optLong("s");
+            strings(o.optJSONArray("r"),e.ratings,pool);strings(o.optJSONArray("pn"),e.pathNames,pool);strings(o.optJSONArray("pi"),e.pathIds,pool);
             while(e.pathIds.size()<e.pathNames.size())e.pathNames.remove(e.pathNames.size()-1);while(e.pathNames.size()<e.pathIds.size())e.pathIds.remove(e.pathIds.size()-1);
             return e;
         }
@@ -84,7 +86,7 @@ final class LibraryIndex {
         Root out=new Root(rootId);out.at=now;out.created=previous!=null&&previous.created>0?previous.created:now;
         Map<String,Long> seenBefore=new HashMap<>();if(previous!=null)for(Entry e:previous.entries)seenBefore.put(e.id,e.seen);
         Deque<Frame> stack=new ArrayDeque<>();stack.push(new Frame(rootId,new ArrayList<>(),new ArrayList<>(),0));
-        Set<String> visited=new HashSet<>(),urls=new HashSet<>();int folders=0,requests=0;Browser b=browser;
+        Set<String> visited=new HashSet<>(),urls=new HashSet<>();int folders=0,requests=0;Browser b=browser;int maxTitles=MemoryBudget.current().libraryTitles();
         while(!stack.isEmpty()){
             if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
             Frame f=stack.pop();if(!visited.add(f.id))continue;folders++;
@@ -107,7 +109,7 @@ final class LibraryIndex {
                     List<String> names=new ArrayList<>(f.names),ids=new ArrayList<>(f.ids);names.add(i.title);ids.add(i.id);
                     next.add(new Frame(i.id,names,ids,f.depth+1));continue;
                 }
-                if(out.entries.size()>=MAX_TITLES){out.complete=false;break;}
+                if(out.entries.size()>=maxTitles){out.complete=false;break;}
                 String rel=rel(i.url);if(rel.isEmpty()||!urls.add(rel))continue;
                 Entry e=new Entry();e.id=i.id;e.root=rootId;e.title=i.title==null?"":i.title;e.url=rel;e.art=rel(i.art);e.upnpClass=i.upnpClass==null?"":i.upnpClass;
                 e.ratings.addAll(i.ratings);e.pathNames.addAll(f.names);e.pathIds.addAll(f.ids);Long s=seenBefore.get(i.id);e.seen=s==null?now:s;
@@ -121,7 +123,8 @@ final class LibraryIndex {
         return out;
     }
     private static String lower(String s){return s==null?"":s.trim().toLowerCase(Locale.ROOT);}
-    private static void strings(JSONArray a,List<String> into){if(a!=null)for(int i=0;i<a.length()&&i<64;i++)into.add(a.optString(i));}
+    private static void strings(JSONArray a,List<String> into,Map<String,String> pool){if(a!=null)for(int i=0;i<a.length()&&i<64;i++)into.add(one(pool,a.optString(i)));}
+    private static String one(Map<String,String> pool,String s){if(pool==null||s==null)return s;String kept=pool.putIfAbsent(s,s);return kept==null?s:kept;}
 
     // --- storage
     static String json(Index index)throws JSONException{
@@ -130,11 +133,11 @@ final class LibraryIndex {
         return new JSONObject().put("v",1).put("roots",roots).toString();
     }
     static Index parse(String json){
-        Index index=new Index();
+        Index index=new Index();Map<String,String> pool=new HashMap<>();
         try{JSONObject o=new JSONObject(json);if(o.optInt("v")!=1)return index;JSONObject roots=o.optJSONObject("roots");if(roots==null)return index;
             for(Iterator<String> it=roots.keys();it.hasNext();){String id=it.next();JSONObject r=roots.optJSONObject(id);if(r==null)continue;Root root=new Root(id);
                 root.at=r.optLong("at");root.created=r.optLong("created");root.complete=r.optBoolean("complete",true);JSONArray items=r.optJSONArray("items");
-                if(items!=null)for(int i=0;i<items.length();i++){JSONObject e=items.optJSONObject(i);if(e!=null&&!e.optString("i").isEmpty())root.entries.add(Entry.of(e,id));}
+                if(items!=null)for(int i=0;i<items.length();i++){JSONObject e=items.optJSONObject(i);if(e!=null&&!e.optString("i").isEmpty())root.entries.add(Entry.of(e,id,pool));}
                 index.roots.put(id,root);}
         }catch(Exception ignored){/* A damaged list is rebuilt. */}
         return index;
@@ -209,6 +212,11 @@ final class LibraryIndex {
             return keep(next,lib);
         }
     }
+    /**
+     * onTrimMemory (PreviewApp): no screen is showing, so the saved list held in memory goes; it is read back from this
+     * TV's storage the next time Home's row or the library asks (a walk in progress keeps its own copy).
+     */
+    static void trim(){synchronized(MEMORY){memory=null;memoryKey=null;}}
     /** Settings > Privacy (or a reset): forget every saved list. */
     static void clear(Context c){synchronized(MEMORY){memory=null;memoryKey=null;File[] fs=new File(c.getFilesDir(),"library").listFiles();if(fs!=null)for(File x:fs)x.delete();}}
 }

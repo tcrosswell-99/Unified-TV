@@ -25,7 +25,8 @@ final class SetupPages {
     private TextView haLine, phoneStatus, teamProgress;
     final HouseholdPage household;
     private PhoneSetup phone;
-    private boolean signupCode;
+    /** The Home Assistant phone setup found, as the household knows it (PhoneSetup.haName); null until looked. */
+    private String haShown; private boolean haNaming;
     /** Team picker inside its task: a league opened, or the letters searched; Back clears them first. */
     private int teamLeague; private String teamQuery, teamProblem; private int teamReady = -1;
     private final TeamList.Listener teamListener;
@@ -69,7 +70,7 @@ final class SetupPages {
 
     /** Called on every render: a phone session lives only while its own page is showing. */
     void showing(String task) {
-        if (phone != null && !(task != null && task.equals("phone-" + phone.kind))) { phone.stop(); phone = null; signupCode = false; }
+        if (phone != null && !(task != null && task.equals("phone-" + phone.kind))) { phone.stop(); phone = null; }
         if (!SettingsActivity.TEAM.equals(task)) { teamLeague = 0; teamQuery = null; }
         if (!SettingsActivity.HOUSEHOLD.equals(task)) household.reset();
     }
@@ -81,7 +82,7 @@ final class SetupPages {
         return false;
     }
     /** The screen left (Home pressed, another app): an unfinished phone session ends now. */
-    void paused() { if (phone != null && !phone.succeeded()) { phone.stop(); phone = null; signupCode = false; } }
+    void paused() { if (phone != null && !phone.succeeded()) { phone.stop(); phone = null; } }
     void close() { if (phone != null) phone.stop(); phone = null; TeamList.unlisten(teamListener); worker.shutdownNow(); household.close(); }
 
     void task(String task) {
@@ -216,26 +217,31 @@ final class SetupPages {
     }
 
     // ------------------------------------------------------------------ Phone setup
+    /**
+     * One phone setup screen (owner, 25 October 2026: "couldn't tell what to do or what each QR opens"): numbered plain
+     * steps, then ONE QR code that always opens this TV's setup page (it is never swapped for a sign-up page; the phone
+     * page links there), "Opens a setup page on this TV" under it, and the typed address with the 6-digit code only as a
+     * small fallback. One session per screen: it lives while this page shows.
+     */
     private void phonePage(String kind) {
         if (Profiles.kids(a)) { a.text("An adult can set this up in Adults.", 16); return; }
         if (PhoneService.of(a.getApplicationContext(), kind) == null) { a.text("This service can't be set up on this TV.", 16); return; }
-        if (phone == null) { if (PhoneService.BACKUP.equals(kind)) SettingsBackup.discard(); phone = PhoneSetup.start(a, kind, s -> phoneChanged(s)); }
+        if (phone == null) { if (PhoneService.BACKUP.equals(kind)) SettingsBackup.discard(); phone = PhoneSetup.start(a, kind, s -> phoneChanged(s)); haShown = null; }
         PhoneService service = phone.service;
         a.text(service.tvIntro, 16);
+        if (PhoneService.HA.equals(kind) && !phone.succeeded()) haLine(a.text(haShown == null ? "Looking for Home Assistant on your home network…" : foundWords(haShown), 17));
         boolean live = !phone.over() && phone.link() != null;
         if (live) {
-            boolean signup = signupCode && service.signup != null;
-            FrameLayout holder = new FrameLayout(a); QrView qr = new QrView(a); int side = a.px(330);
-            qr.setText(signup ? service.signup : phone.link(), signup ? "Code to scan for the " + service.signupLabel : "Code to scan with your phone");
+            String[] steps = steps(service);
+            for (int i = 0; i < steps.length; i++) a.text(steps[i], 17);
+            FrameLayout holder = new FrameLayout(a); QrView qr = new QrView(a); int side = a.px(300);
+            qr.setText(phone.link(), QR_LABEL);
             holder.addView(qr, new FrameLayout.LayoutParams(side, side, Gravity.CENTER));
             a.column.addView(holder, new LinearLayout.LayoutParams(-1, side + a.px(12)));
-            if (signup) a.text("Scan to open the " + service.signupLabel + ". When you have your key, show the setup code again.", 16);
-            else {
-                a.text("Scan with your phone's camera. Or open this address on your phone:", 16);
-                TextView address = a.text(phone.origin().replaceFirst("^http://", ""), 19); address.setTypeface(Typeface.MONOSPACE);
-                a.text("and enter the code:", 16);
-                TextView code = a.text(spaced(phone.code()), 24); code.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)); code.setLetterSpacing(.25f);
-            }
+            TextView under = a.text(OPENS, 17); under.setGravity(Gravity.CENTER_HORIZONTAL);
+            a.text(fallback(phone.origin(), phone.code()), 14).setTypeface(Typeface.MONOSPACE);
+            // Owner's TCL, 25 October 2026: with NordVPN connected, the phone may not reach the TV at all.
+            if (VpnGate.tunnel(a)) a.text(VPN_HINT, 15);
         }
         phoneStatus = a.text(phone.status(), 19); phoneStatus.setFocusable(false);
         if (phone.succeeded()) {
@@ -245,12 +251,35 @@ final class SetupPages {
             a.button("Done", a::back);
             return;
         }
-        if (live && service.signup != null) a.button(signupCode ? "Show the setup code" : "No account yet? Show the sign-up page code", () -> { signupCode = !signupCode; a.refresh(); });
         if (phone.over()) a.button("Start again", () -> { if (phone != null) phone.stop(); phone = null; a.redraw(); });
         else a.button("Cancel", a::back);
         if (PhoneSetup.TMDB.equals(kind) && TmdbKey.saved(a)) a.button("Remove the film poster key", () -> new AlertDialog.Builder(a).setTitle("Remove the film poster key?")
             .setMessage("Film posters and details stop updating. Posters already shown may stay until the library refreshes.").setPositiveButton("Remove", (d, w) -> { TmdbKey.forget(a); a.note("Film poster key removed."); a.refresh(); }).setNegativeButton("Cancel", null).show());
+        if (PhoneService.ASSISTANT.equals(kind) && Assistant.configured(a)) a.button("Remove the assistant details", () -> new AlertDialog.Builder(a).setTitle("Remove the assistant details?")
+            .setMessage("Ask your TV keeps opening apps and finding films.").setPositiveButton("Remove", (d, w) -> { Assistant.forget(a); a.note("Assistant details removed."); a.refresh(); }).setNegativeButton("Cancel", null).show());
         if (live) a.text("Your phone needs to be on the same home network as this TV. This code works for 10 minutes, once.", 15);
+    }
+    static final String QR_LABEL = "Code to scan with your phone: opens a setup page on this TV", OPENS = "Opens a setup page on this TV",
+        VPN_HINT = "If your phone can't open the page, NordVPN may be blocking your home network. Allow local network devices in NordVPN, or disconnect it for a moment.";
+    /** The TV's numbered steps for a service. */
+    static String[] steps(PhoneService service) {
+        String[] out = new String[service.tvSteps.length];
+        for (int i = 0; i < out.length; i++) out[i] = (i + 1) + ". " + service.tvSteps[i];
+        return out;
+    }
+    /** The small typed fallback; the address is the TV's own, so it is introduced as such (it is not a mistake). */
+    static String fallback(String origin, String code) {
+        return "No camera? On your phone, open this TV's address " + (origin == null ? "" : origin.replaceFirst("^http://", "")) + " and enter the code " + spaced(code) + ".";
+    }
+    static String foundWords(String name) { return name.isEmpty() ? "Home Assistant wasn't found yet. Your phone can enter its address." : "We found Home Assistant at " + name + ". Tap Sign in on your phone."; }
+    /** Looks up, once per session and off the main thread, which Home Assistant the phone page will offer, by name. */
+    private void haLine(TextView line) {
+        if (haShown != null || haNaming) return;
+        haNaming = true; android.content.Context app = a.getApplicationContext();
+        worker.execute(() -> {
+            String base = PhoneSetup.found(app), name = base == null ? "" : PhoneSetup.haName(base);
+            a.runOnUiThread(() -> { haNaming = false; haShown = name == null ? "" : name; if (line.isAttachedToWindow()) line.setText(foundWords(haShown)); });
+        });
     }
     static String spaced(String code) { return code == null || code.length() != 6 ? String.valueOf(code) : code.substring(0, 3) + " " + code.substring(3); }
 
@@ -270,6 +299,7 @@ final class SetupPages {
         } else {
             ApiFootball.Budget b = FixtureFeed.budget(a);
             a.text("Football fixtures: ready · " + b.used + " of " + ApiFootball.DAILY_LIMIT + " requests used today", 19).setFocusable(false);
+            String refused = FixtureFeed.problem(a); if (refused != null) a.text(refused, 16);
         }
         boolean calendar = false; try { calendar = !new Vault(a).read("household").optString("calendar").isEmpty(); } catch (Exception ignored) {}
         if (api) a.button("Your team: " + (team == null ? "choose from a list" : team.displayName), () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.TEAM)));

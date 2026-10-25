@@ -8,20 +8,44 @@ import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.service.notification.NotificationListenerService;
+import android.service.notification.StatusBarNotification;
 import java.util.Collections;
 import java.util.List;
 
 /**
  * Lets Unified TV see which app is playing music and press its own Play, Pause and Skip (spec 11, Music). Android only
  * shares media sessions with an app the owner has allowed to see notifications, so this listener exists for that
- * permission alone. It reads no notification, stores nothing and sends nothing anywhere: as soon as Android connects
- * it, it asks to be disconnected again, so notifications are never delivered to it. The approval itself is what
- * MediaSessionManager checks, and it stays in place until the owner withdraws it.
+ * permission. The approval itself is what MediaSessionManager checks, and it stays in place until the owner withdraws it.
+ *
+ * One notification is read (owner request, 25 October 2026): NordVPN's own, for the country beside Home's VPN shield
+ * (NordCountry). Only when NordVPN is installed does the listener stay connected; every other app's notification is
+ * ignored the moment it arrives, and only NordVPN's country code is kept, in memory. Nothing is stored or sent anywhere.
+ * Without NordVPN it asks to be disconnected as soon as Android connects it, as before.
  */
 public final class MediaWatch extends NotificationListenerService {
     @Override public void onListenerConnected() {
         super.onListenerConnected();
+        if (LocalDiscovery.nordVpn(this)) {
+            try { StatusBarNotification[] now = getActiveNotifications(); NordCountry.code = null; if (now != null) for (StatusBarNotification n : now) posted(n); }
+            catch (RuntimeException ignored) {}
+            return;
+        }
         try { requestUnbind(); } catch (RuntimeException ignored) { /* stays connected but still reads nothing */ }
+    }
+    @Override public void onListenerDisconnected() { NordCountry.code = null; super.onListenerDisconnected(); }
+    @Override public void onNotificationPosted(StatusBarNotification n) { posted(n); }
+    @Override public void onNotificationRemoved(StatusBarNotification n) {
+        if (n != null && LiveTvProtection.NORDVPN.equals(n.getPackageName())) NordCountry.code = null;
+    }
+    /** NordVPN's notification only: its country, or nothing when it doesn't say connected. Others are not read. */
+    private static void posted(StatusBarNotification n) {
+        if (n == null || !LiveTvProtection.NORDVPN.equals(n.getPackageName())) return;
+        android.os.Bundle x = n.getNotification() == null ? null : n.getNotification().extras;
+        if (x == null) return;
+        CharSequence[] texts = {x.getCharSequence(android.app.Notification.EXTRA_TITLE), x.getCharSequence(android.app.Notification.EXTRA_TEXT),
+            x.getCharSequence(android.app.Notification.EXTRA_SUB_TEXT), x.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)};
+        String iso = NordCountry.from(texts);
+        if (iso != null) NordCountry.code = iso; else if (NordCountry.stopped(texts)) NordCountry.code = null;   // other NordVPN notices change nothing
     }
 
     static ComponentName component(Context c) { return new ComponentName(c, MediaWatch.class); }

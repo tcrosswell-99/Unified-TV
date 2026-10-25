@@ -29,7 +29,13 @@ import java.util.ArrayList;
  * it was (same tile, same light). An app opened from here closes the pane behind it.
  *
  * Listening happens inside the pane through the TV's own speech service (Android's SpeechRecognizer, after the household
- * allows the microphone once). Where the TV has no such service, Speak opens the TV's own voice screen instead, as before.
+ * allows the microphone once). Where the TV has no such service, or it hears nothing (owner's TCL, 25 October 2026: "I
+ * didn't catch that" twice; a remote's microphone often reaches only the TV's own voice screen), Speak falls back by
+ * itself to the TV's own voice screen (ACTION_RECOGNIZE_SPEECH) and returns to the pane with its words. Once that has
+ * worked where the pane heard nothing, this TV goes straight to its own voice screen next time.
+ *
+ * With no household assistant set up (Assistant), the pane offers "Set up your assistant on your phone"; local requests
+ * work either way.
  *
  * Honest limits (AGENTS rule 1): only a few TV requests are understood here (VoiceCommand). General questions to an AI
  * assistant (OpenAI or Claude) are NOT connected: that needs the household's own protected relay first (PRODUCT_SPEC
@@ -49,6 +55,9 @@ public final class VoiceActivity extends Activity {
     private SharedPreferences prefs; private float unit;
     private TextView state, answer; private EditText query; private Button speak; private Level level; private View pane;
     private SpeechRecognizer recogniser; private boolean listening;
+    /** This press of Speak: the latest partial words heard, and whether the TV's own voice screen was already tried. */
+    private String heard = ""; private boolean systemTried, paneFailed;
+    static final String SYSTEM_FIRST = "voice.systemScreen", SET_UP = "Set up your assistant on your phone";
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -78,7 +87,11 @@ public final class VoiceActivity extends Activity {
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, -2, 1); half.setMargins(0, 0, px(8), 0); actions.addView(speak, half);
         half = new LinearLayout.LayoutParams(0, -2, 1); half.setMargins(px(8), 0, 0, 0); actions.addView(go, half);
         LinearLayout.LayoutParams row = new LinearLayout.LayoutParams(-1, -2); row.setMargins(0, px(14), 0, 0); box.addView(actions, row);
-        TextView note = label(LIMITS + " " + SPEECH, 16, SettingsGlass.GROUP); note.setPadding(0, px(16), 0, 0); box.addView(note);
+        if (!Assistant.configured(this)) {
+            // OD-17: the assistant is set up on the phone; local requests keep working without it.
+            Button setup = button(SET_UP, this::setUpAssistant); LinearLayout.LayoutParams wide = new LinearLayout.LayoutParams(-1, -2); wide.setMargins(0, px(14), 0, 0); box.addView(setup, wide);
+        }
+        TextView note = label(LIMITS + " " + (Assistant.configured(this) ? Assistant.SAVED_NOT_TESTED : Assistant.NOT_SET_UP) + " " + SPEECH, 16, SettingsGlass.GROUP); note.setPadding(0, px(16), 0, 0); box.addView(note);
         // Under the pill, right-aligned with it (Home's pill ends 103 px from the right at 1080p), never over the dock.
         FrameLayout.LayoutParams at = new FrameLayout.LayoutParams(px(660), -2, Gravity.TOP | Gravity.END); at.setMargins(0, px(168), px(95), 0);
         root.addView(box, at);
@@ -118,8 +131,23 @@ public final class VoiceActivity extends Activity {
     }
 
     // --- Listening
+    private void setUpAssistant() {
+        try { startActivity(new Intent(this, SettingsActivity.class).putExtra("task", "phone-" + PhoneService.ASSISTANT)); } catch (RuntimeException ignored) {}
+        close();
+    }
+    /**
+     * Errors after which the TV's own voice screen is tried: nothing matched, nothing heard, no audio or a client fault.
+     * Permission and busy errors are explained instead.
+     */
+    static boolean fallBack(int error) {
+        return error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_CLIENT;
+    }
+    /** What to use from a listen: its final words, else the last partial words heard, else "" (then fall back). */
+    static String words(String result, String partial) { return result != null && !result.trim().isEmpty() ? result.trim() : partial == null ? "" : partial.trim(); }
     private void speak() {
         if (listening) { stopListening(true); return; }
+        heard = ""; systemTried = false; paneFailed = false;
+        if (prefs.getBoolean(SYSTEM_FIRST, false)) { systemVoice(); return; }
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC); return; }
             listen();
@@ -157,22 +185,39 @@ public final class VoiceActivity extends Activity {
         @Override public void onEndOfSpeech() { if (listening) { stopListening(true); show("One moment…", ""); } }
         @Override public void onError(int error) {
             stopListening(false);
+            String partial = words(null, heard);
+            if (!partial.isEmpty() && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) { use(partial); return; }
+            if (fallBack(error) && !systemTried) { paneFailed = true; systemVoice(); return; }
             show(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ? "I didn't catch that." : "Listening isn't working right now.",
                 error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ? "Allow the microphone for Unified TV in the TV's app settings, or type your request." : "Press Speak to try again, or type your request.");
         }
-        @Override public void onResults(Bundle b) { stopListening(false); String words = first(b); if (words.isEmpty()) { show("I didn't catch that.", "Press Speak to try again, or type your request."); return; } query.setText(words); ask(); }
-        @Override public void onPartialResults(Bundle b) { String words = first(b); if (!words.isEmpty() && listening) show("“" + words + "”", ""); }
+        @Override public void onResults(Bundle b) {
+            stopListening(false); String words = words(first(b), heard);
+            if (!words.isEmpty()) { use(words); return; }
+            if (!systemTried) { paneFailed = true; systemVoice(); return; }
+            show("I didn't catch that.", "Press Speak to try again, or type your request.");
+        }
+        @Override public void onPartialResults(Bundle b) { String words = first(b); if (!words.isEmpty()) heard = words; if (!words.isEmpty() && listening) show("“" + words + "”", ""); }
         @Override public void onEvent(int type, Bundle b) {}
     };
     private static String first(Bundle b) { ArrayList<String> words = b == null ? null : b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION); return words == null || words.isEmpty() || words.get(0) == null ? "" : words.get(0).trim(); }
-    /** No speech service inside the pane on this TV: the TV's own voice screen, as before. */
+    private void use(String words) { query.setText(words); ask(); }
+    /** No speech service inside the pane, or it heard nothing: the TV's own voice screen, which then returns here. */
     private void systemVoice() {
+        systemTried = true; show("Listening with your TV's voice screen…", "");
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-GB").putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         try { startActivityForResult(i, SYSTEM_VOICE); } catch (RuntimeException e) { show("This TV has no voice input for apps.", "Type your request with the remote instead."); }
     }
     @Override protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
-        if (req == SYSTEM_VOICE && result == RESULT_OK && data != null) { ArrayList<String> words = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS); if (words != null && !words.isEmpty()) { query.setText(words.get(0)); ask(); } }
+        if (req != SYSTEM_VOICE) return;
+        handler.removeCallbacks(idle); handler.postDelayed(idle, IDLE_MS);   // back over Home, the pane's own time starts again
+        ArrayList<String> got = result == RESULT_OK && data != null ? data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) : null;
+        String words = got == null || got.isEmpty() || got.get(0) == null ? "" : got.get(0).trim();
+        if (words.isEmpty()) { show("I didn't catch that.", "Press Speak to try again, or type your request."); return; }
+        // The pane heard nothing but the TV's own screen did: on this TV, go straight there next time.
+        if (paneFailed) prefs.edit().putBoolean(SYSTEM_FIRST, true).apply();
+        use(words);
     }
 
     // --- Requests (VoiceCommand: an allowlist; nothing unrecognised acquires any authority)

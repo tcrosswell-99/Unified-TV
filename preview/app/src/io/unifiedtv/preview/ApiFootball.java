@@ -41,13 +41,27 @@ final class ApiFootball {
     /** A refusal the API reported, by its error key only ("requests", "token", ...); never the key or the message. */
     static final class Refused extends IOException {final String reason;Refused(String reason){super("API-Football refused the request: "+reason);this.reason=reason;}
         boolean quota(){return reason.contains("requests")||reason.contains("rateLimit")||reason.equals("429");}
-        boolean key(){return reason.contains("token")||reason.contains("key")||reason.equals("401")||reason.equals("403");}}
+        boolean key(){return reason.contains("token")||reason.contains("key")||reason.equals("401")||reason.equals("403");}
+        /** The API's words named a proxy or VPN (only this marker is kept, never its message). */
+        boolean proxy(){return reason.contains(PROXY);}
+        /**
+         * Refused because of where the request came from, not the key (owner, 25 October 2026: API-Football's dashboard
+         * says "It seems that you are using a Proxy or a VPN"): proxy or VPN wording, or an "access" error or HTTP 403
+         * while this TV's own traffic goes through a VPN.
+         */
+        boolean vpn(boolean vpnActive){return proxy()||(vpnActive&&(reason.contains("access")||reason.equals("403")));}}
+    static final String PROXY="proxy";
+    static final String VPN_WORDS="API-Football refused the request because NordVPN is on. Fixtures update when NordVPN is off, or allow API-Football in NordVPN's split tunnelling if it offers it.";
+    /** Whether an error's wording points at a proxy or VPN; the wording itself is never kept or shown. */
+    static boolean proxyWords(String text){String t=text==null?"":text.toLowerCase(Locale.ROOT);return t.contains("proxy")||t.contains("vpn");}
     /** Throws Refused when the body carries errors; otherwise the response array (possibly empty). */
     static JSONArray response(JSONObject body)throws Refused{
         if(body==null)throw new Refused("empty");
         Object errors=body.opt("errors");
-        if(errors instanceof JSONObject&&((JSONObject)errors).length()>0){List<String> keys=new ArrayList<>();for(Iterator<String> it=((JSONObject)errors).keys();it.hasNext();)keys.add(it.next());Collections.sort(keys);throw new Refused(String.join(",",keys));}
-        if(errors instanceof JSONArray&&((JSONArray)errors).length()>0)throw new Refused("errors");
+        if(errors instanceof JSONObject&&((JSONObject)errors).length()>0){List<String> keys=new ArrayList<>();boolean proxy=false;
+            for(Iterator<String> it=((JSONObject)errors).keys();it.hasNext();){String k=it.next();keys.add(k);proxy|=proxyWords(k)||proxyWords(((JSONObject)errors).optString(k));}
+            Collections.sort(keys);if(proxy)keys.add(PROXY);throw new Refused(String.join(",",keys));}
+        if(errors instanceof JSONArray&&((JSONArray)errors).length()>0)throw new Refused(proxyWords(errors.toString())?"errors,"+PROXY:"errors");
         JSONArray r=body.optJSONArray("response");return r==null?new JSONArray():r;
     }
 
@@ -186,12 +200,20 @@ final class ApiFootball {
         return new int[]{req==null?0:Math.max(0,req.optInt("current")),req==null?DAILY_LIMIT:req.optInt("limit_day",DAILY_LIMIT)};
     }
     /** What a failed check means to the household: a bad key, a busy service, or no connection. */
-    static PhoneFlows.Verdict verdict(Exception e){
+    static PhoneFlows.Verdict verdict(Exception e){return verdict(e,false);}
+    /** {@code vpnActive}: this TV's own traffic goes through a VPN now (VpnGate.routed). */
+    static PhoneFlows.Verdict verdict(Exception e,boolean vpnActive){
         if(e==null)return PhoneFlows.Verdict.OK;
+        if(e instanceof Refused&&((Refused)e).vpn(vpnActive))return PhoneFlows.Verdict.VPN;
         if(e instanceof Refused){Refused r=(Refused)e;return r.quota()?PhoneFlows.Verdict.BUSY:PhoneFlows.Verdict.REFUSED;}
         return PhoneFlows.Verdict.OFFLINE;
     }
 
+    /** The first 4 KB of an error body, only to look for proxy or VPN wording; never kept or shown. */
+    static String start(InputStream in){
+        if(in==null)return "";
+        try(InputStream i=in){byte[] b=new byte[4096];int total=0,n;while(total<b.length&&(n=i.read(b,total,b.length-total))!=-1)total+=n;return new String(b,0,total,StandardCharsets.UTF_8);}catch(IOException e){return "";}
+    }
     // --- network (the app's plain HttpURLConnection, as LocalApi: fixed origin, timeouts, no redirects, bounded size)
     static final int LIMIT=2*1024*1024;
     /** One GET to the fixed origin. Errors carry an HTTP code or the API's error key, never the key or the body. */
@@ -201,7 +223,8 @@ final class ApiFootball {
         HttpURLConnection c=(HttpURLConnection)new URL(BASE+pathAndQuery).openConnection();
         c.setConnectTimeout(8000);c.setReadTimeout(12000);c.setInstanceFollowRedirects(false);c.setRequestMethod("GET");c.setRequestProperty(HEADER,key.trim());c.setUseCaches(false);
         try{
-            int code=c.getResponseCode();if(code==429||code==401||code==403)throw new Refused(String.valueOf(code));
+            int code=c.getResponseCode();
+            if(code==429||code==401||code==403)throw new Refused(code==403&&proxyWords(start(c.getErrorStream()))?code+","+PROXY:String.valueOf(code));
             if(code<200||code>=300)throw new IOException("API-Football answered "+code);
             try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
                 byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>LIMIT)throw new IOException("Response too large");out.write(b,0,n);}

@@ -68,6 +68,15 @@ final class HomeShelf {
         LibraryCatalogue.Catalogue cat=LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(c),ResumeStore.load(c),System.currentTimeMillis());
         return fromCatalogue(cat,MAX);
     }
+    /**
+     * Home's one line when the row couldn't be loaded. A VPN in the way is named as the likely cause (owner's TCL,
+     * 25 October 2026), never "aren't answering", which reads as the media server being off.
+     */
+    static String unanswered(){return unanswered(LocalDiscovery.vpnInTheWay(),LocalDiscovery.vpnApp);}
+    static String unanswered(boolean vpn,String vpnApp){
+        if(!vpn)return "Your films and TV aren't answering right now. OK opens the Library to reconnect.";
+        return ("NordVPN".equals(vpnApp)?"NordVPN":"A VPN")+" is blocking your home network. OK opens the Library to see how to fix it.";
+    }
     /** A library is set up for whoever is watching: Kids folders (or a Kids media account) for Kids, the household's for Adults. */
     static boolean configured(Context c){
         try{

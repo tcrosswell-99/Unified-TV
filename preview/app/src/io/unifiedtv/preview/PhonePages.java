@@ -44,6 +44,11 @@ final class PhonePages {
         return "<a" + (button ? " class=\"button quiet\"" : "") + " href=\"" + esc(url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + esc(label) + "</a>";
     }
 
+    /** The one prominent external link on a page ("Get a free key"): a full-width button, new tab, no referrer. */
+    static String primary(String url, String label) {
+        return "<a class=\"button\" href=\"" + esc(url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + esc(label) + "</a>";
+    }
+
     /** The short typed address's first page: the TV's 6-digit code. */
     static String code(String problem) {
         return page("Enter the code on your TV", error(problem)

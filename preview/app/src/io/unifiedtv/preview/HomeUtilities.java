@@ -65,6 +65,8 @@ final class HomeUtilities {
             default:return id;
         }
     }
+    /** The microphone's focus label: local requests always work; general questions need the household's assistant. */
+    static String voiceLabel(boolean assistant){return assistant?"Ask your TV":"Ask your TV · apps and films (no assistant set up)";}
     static String name(String id){switch(id){case AIRPLAY:return "AirPlay";case VPN:return "NordVPN";case VOICE:return "Voice";case SETTINGS:return "Settings";default:return id;}}
 
     /**

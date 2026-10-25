@@ -323,7 +323,12 @@ public final class DlnaLibraryActivity extends Screen {
         PosterView v=new PosterView(this,unit,calm);v.showAction(title,detail);v.setOnClickListener(x->run.run());
         v.setOnFocusChangeListener((x,f)->{if(f){heroTitle.setText(title);heroMeta.setText(detail);heroText.setText("");focusKey="";wantedBack="";handler.removeCallbacks(backdropLater);toBack(null,"");}});return v;
     }
-    /** The highlighted title's words at once; its own background shortly after focus settles (never another title's). */
+    /**
+     * The highlighted title's words at once, and its own background asked for at the same moment (module 05 single focus
+     * timing contract: no settle delay; the former 160 ms wait is gone). The picture arrives asynchronously and crossfades in
+     * 280 ms; only the newest request is kept (Posters.latestBackdrop), so fast presses never queue a background per tile.
+     * Never another title's picture.
+     */
     private void hero(LibraryCatalogue.Card c){
         if(c==null){focusKey="";return;}
         focusKey=c.key();heroTitle.setText(c.name());
@@ -339,11 +344,11 @@ public final class DlnaLibraryActivity extends Screen {
         if(b!=null){toBack(b,c.key());return;}
         // Not ready: fade to the calm neutral scene at once (no stale picture), then the title's own when it arrives.
         if(!shownBack.isEmpty())toBack(null,"");
-        handler.postDelayed(backdropLater,calm?0:160);
+        backdrop(c);
     }
     private void backdrop(LibraryCatalogue.Card c){
         String key=c.key();
-        posters.backdrop(c,udn,light,bmp->{if(bmp!=null&&key.equals(wantedBack)&&key.equals(focusKey)){toBack(bmp,key);
+        posters.latestBackdrop(c,udn,light,bmp->{if(bmp!=null&&key.equals(wantedBack)&&key.equals(focusKey)){toBack(bmp,key);
             String[] details=posters.details(c,udn);if(details!=null&&!details[0].isEmpty()&&key.equals(focusKey))heroText.setText(details[0]);}});
     }
     /** Crossfades to a picture (null: the neutral scene). Reduce motion: no fade. */

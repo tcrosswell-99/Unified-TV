@@ -50,7 +50,8 @@ final class DlnaClient {
     static volatile android.net.Network lan;
     /** Why a media server request failed, in words a viewer can act on. The message never carries an address. */
     static final class Failure extends IOException {
-        static final int UNREACHABLE=1,REFUSED=2,MISSING=3,SERVER=4;
+        /** VPN: nothing answered while a VPN stood between the TV and the home network (LocalDiscovery.vpnInTheWay). */
+        static final int UNREACHABLE=1,REFUSED=2,MISSING=3,SERVER=4,VPN=5;
         final int kind;
         Failure(int kind){super("Media server request failed: "+kind);this.kind=kind;}
         /** HTTP status and, for a SOAP fault, the UPnP error code: 701/710 mean the object or folder no longer exists. */
@@ -60,8 +61,17 @@ final class DlnaClient {
             if(m.find()){int upnp=count(m.group(1));if(upnp==701||upnp==710)return MISSING;if(upnp==606)return REFUSED;}
             return SERVER;
         }
-        static String plain(int kind){
+        /**
+         * A request that got no answer: through the home network directly ({@code direct}), the server really didn't answer;
+         * through the default route while a VPN was in the way, the VPN is the likely cause, so the words never say the
+         * server is off (owner's TCL, 25 October 2026).
+         */
+        static int unanswered(boolean direct,boolean vpnInTheWay){return !direct&&vpnInTheWay?VPN:UNREACHABLE;}
+        static String plain(int kind){return plain(kind,LocalDiscovery.vpnApp);}
+        /** {@code vpnApp}: the VPN's name when it is known ("NordVPN"), else "". */
+        static String plain(int kind,String vpnApp){
             switch(kind){
+                case VPN:return blocked(vpnApp,"reach your media server","try again");
                 case UNREACHABLE:return "The media server isn't answering. Check that it is switched on and on your home network, then try again.";
                 case REFUSED:return "The media server refused this TV. Check that sharing with this TV is allowed in the server's media settings.";
                 case MISSING:return "This folder is no longer on the media server. It may have been moved, or the server was reset. An adult can choose the folders again.";
@@ -69,14 +79,45 @@ final class DlnaClient {
             }
         }
     }
+    /** "NordVPN is blocking your home network, so Unified TV can't {what}. In NordVPN's settings … then {then}." */
+    static String blocked(String vpnApp,String what,String then){
+        boolean nord="NordVPN".equals(vpnApp);
+        return (nord?"NordVPN is":"A VPN on this TV is")+" blocking your home network, so Unified TV can't "+what+". In "+(nord?"NordVPN's":"the VPN app's")
+            +" settings, allow devices on your local network"+(nord?" (often called Local network discovery)":"")+", then "+then+".";
+    }
+    /** Opens a connection on a network (null: the default route); tests replace it. */
+    interface Opener{HttpURLConnection open(URL url,android.net.Network network)throws IOException;}
+    static volatile Opener opener=(url,network)->(HttpURLConnection)(network!=null?network.openConnection(url):url.openConnection());
+    /** One request and its answer; {@code direct} is true when it went straight over the home network. */
+    interface Exchange<T>{T run(HttpURLConnection c,boolean direct)throws IOException;}
+    /**
+     * Every media server request (browsing, pictures, posters): straight over the home network (lan) when Android
+     * allows it, otherwise the default route. A VPN that refuses the bound connection (EPERM) gets one retry over the
+     * default route at once, and later requests skip straight to it (LocalDiscovery.blocked) until the network changes.
+     */
+    static <T> T exchange(URL url,Exchange<T> x)throws IOException{
+        android.net.Network net=lan;
+        if(net!=null&&!LocalDiscovery.blocked){
+            HttpURLConnection c=opener.open(url,net);
+            try{return x.run(c,true);}
+            catch(IOException e){if(e instanceof Failure||!LocalDiscovery.refused(e))throw e;LocalDiscovery.blocked=true;}
+            finally{c.disconnect();}
+        }
+        HttpURLConnection c=opener.open(url,null);
+        try{return x.run(c,false);}finally{c.disconnect();}
+    }
+    /** A connection-level problem: the VPN's refusal goes back to exchange() for its retry; anything else is a Failure. */
+    private static Failure failed(IOException e,boolean direct)throws IOException{
+        if(direct&&LocalDiscovery.refused(e))throw e;
+        return new Failure(Failure.unanswered(direct,LocalDiscovery.vpn));
+    }
     static byte[] request(String url,String action,String body)throws Exception{
-        URI uri=local(url);android.net.Network net=lan;HttpURLConnection c=(HttpURLConnection)(net!=null?net.openConnection(uri.toURL()):uri.toURL().openConnection());c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(6000);
+        return exchange(local(url).toURL(),(c,direct)->{c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(6000);
         try{if(body!=null){c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","text/xml; charset=utf-8");c.setRequestProperty("SOAPAction","\""+action+"\"");try(OutputStream out=c.getOutputStream()){out.write(body.getBytes(StandardCharsets.UTF_8));}}
             int code=c.getResponseCode();
             if(code!=200)throw new Failure(Failure.classify(code,code==500?fault(c):""));
             try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>4*1024*1024)throw new Failure(Failure.SERVER);out.write(b,0,n);}return out.toByteArray();}
-        }catch(Failure f){throw f;}catch(IOException e){throw new Failure(Failure.UNREACHABLE);}
-        finally{c.disconnect();}
+        }catch(Failure f){throw f;}catch(IOException e){throw failed(e,direct);}});
     }
     /** The start of a SOAP fault body, enough to read its UPnP error code. */
     private static String fault(HttpURLConnection c){
@@ -94,8 +135,11 @@ final class DlnaClient {
      * showed no folders at all (nothing to browse), are counted, never offered.
      */
     static final class Report {int answered,unreadable,empty;
+        /** Nothing answered while a VPN stood between the TV and the home network; vpnApp names it when known. */
+        boolean vpn;String vpnApp="";
         /** "Nobody answered", "a server answered but wouldn't talk to this TV" and "nothing shared" need different fixes. */
         String plain(){
+            if(answered==0&&vpn)return blocked(vpnApp,"find your media server","search again");
             if(unreadable>0)return "A media server answered, but didn't let the TV see its library. Check that its media service is running and that this TV is allowed, then search again.";
             if(empty>0)return "A media server answered, but isn't sharing any folders yet. Check its media server settings, then search again.";
             return "No media server found. Check that the NAS media service is on and the TV is on the same home network. If NordVPN is on, allow devices on your home network.";
@@ -122,7 +166,11 @@ final class DlnaClient {
         return out;
     }
     static List<Device> discover(android.content.Context context,boolean thorough)throws Exception{return discover(context,thorough,null);}
-    static List<Device> discover(android.content.Context context,boolean thorough,Report report)throws Exception{return offered(survey(context,thorough),report);}
+    static List<Device> discover(android.content.Context context,boolean thorough,Report report)throws Exception{
+        List<Device> out=offered(survey(context,thorough),report);
+        if(report!=null){report.vpn=LocalDiscovery.vpnInTheWay();report.vpnApp=LocalDiscovery.vpnApp;}
+        return out;
+    }
     /** Every server that answered, each described and given a root Browse (bounded: eight servers, fifteen seconds). */
     static List<Check> survey(android.content.Context context,boolean thorough)throws Exception{
         Set<String> locations=new LinkedHashSet<>();try(DatagramSocket socket=new DatagramSocket()){LocalDiscovery.bind(context,socket);
@@ -165,14 +213,15 @@ final class DlnaClient {
      * servers only, no redirects, and a hard byte limit; a partial file is deleted.
      */
     static void download(String url,File out,long max)throws Exception{
-        URI uri=local(url);android.net.Network net=lan;HttpURLConnection c=(HttpURLConnection)(net!=null?net.openConnection(uri.toURL()):uri.toURL().openConnection());c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(8000);
+        exchange(local(url).toURL(),(c,direct)->{c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(8000);
         boolean done=false;
         try{int code=c.getResponseCode();if(code!=200)throw new Failure(Failure.classify(code,""));
             long length=c.getContentLengthLong();if(length>max)throw new Failure(Failure.SERVER);
             try(InputStream in=c.getInputStream();OutputStream o=new FileOutputStream(out)){byte[] b=new byte[16384];long total=0;int n;while((n=in.read(b))!=-1){total+=n;if(total>max)throw new Failure(Failure.SERVER);if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();o.write(b,0,n);}}
             done=true;
-        }catch(Failure f){throw f;}catch(IOException e){throw new Failure(Failure.UNREACHABLE);}
-        finally{c.disconnect();if(!done)out.delete();}
+        }catch(Failure f){throw f;}catch(IOException e){throw failed(e,direct);}
+        finally{if(!done)out.delete();}
+        return null;});
     }
     /** The same server (matched by its UDN, never by name) at a new local address, or null. */
     static JSONObject relocate(android.content.Context context,JSONObject from)throws Exception{

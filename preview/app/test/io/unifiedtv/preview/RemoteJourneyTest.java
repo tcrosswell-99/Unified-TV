@@ -152,17 +152,23 @@ public class RemoteJourneyTest {
         activity.getSharedPreferences("unified-tv-preview",0).edit().putString(DockCapacity.key("adult"),"8").putInt(DockCapacity.SCHEMA_KEY,1).putString(Profiles.PREF,Profiles.CHILD).commit();controller.pause().resume();
         assertEquals("Kids keeps the default",6,field("capacity"));
     }
-    // UX-BUILD-01: a fresh install is offered Build My TV once; it never blocks Home.
-    @Test public void aFreshInstallIsOfferedBuildMyTvOnce()throws Exception{
+    // SET-010 (in place of the UX-BUILD-01 card): a fresh install opens the guided setup over Home once; Home stays.
+    @Test public void aFreshInstallOpensTheGuidedSetupOnce()throws Exception{
         activity.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();controller.pause().resume();
-        assertEquals(true,field("offer"));press(KeyEvent.KEYCODE_DPAD_CENTER);
-        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);assertEquals(BuildMyTvActivity.class.getName(),started.getComponent().getClassName());
-        controller.pause().resume();assertEquals("never again",false,field("offer"));
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull("the guided setup opened over Home",started);
+        assertEquals(FirstRunActivity.class.getName(),started.getComponent().getClassName());
+        assertNull("the whole setup, not one part",started.getStringExtra(FirstRunActivity.ONLY));
+        assertFalse("Home itself stays underneath",activity.isFinishing());
+        controller.pause().resume();assertNull("never again by itself",Shadows.shadowOf(activity).getNextStartedActivity());
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);assertNull("Home's keys open nothing else",Shadows.shadowOf(activity).getNextStartedActivity());
     }
-    @Test public void theOfferStepsAsideForAnyOtherKey()throws Exception{
-        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();controller.pause().resume();
-        assertEquals(true,field("offer"));press(KeyEvent.KEYCODE_BACK);assertEquals(false,field("offer"));assertFalse("Back only put the card away",activity.isFinishing());
+    @Test public void kidsIsNeverShownTheGuidedSetup()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().putString(Profiles.PREF,Profiles.CHILD).commit();controller.pause().resume();
         assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
-    @Test public void anEarlierInstallIsNotOffered()throws Exception{assertEquals(false,field("offer"));}
+    @Test public void anEarlierInstallIsNotOffered()throws Exception{
+        assertNull("a dock of its own: not asked",Shadows.shadowOf(activity).getNextStartedActivity());
+        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().putBoolean(HubBuilder.OFFERED,true).commit();controller.pause().resume();
+        assertNull("already saw the old Build My TV card: not asked again",Shadows.shadowOf(activity).getNextStartedActivity());
+    }
 }

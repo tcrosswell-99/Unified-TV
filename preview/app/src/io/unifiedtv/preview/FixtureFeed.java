@@ -22,6 +22,11 @@ final class FixtureFeed {
     private static final Object LOCK=new Object();
 
     static SharedPreferences prefs(Context c){return c.getSharedPreferences(HouseholdSettings.PREFS,0);}
+    /** API-Football last refused this TV because of its VPN (ApiFootball.Refused.vpn); cleared by the next good read. */
+    static final String VPN_REFUSED="football.vpnRefused";
+    static void vpnRefused(Context c,boolean yes){try{if(yes!=prefs(c).getBoolean(VPN_REFUSED,false))prefs(c).edit().putBoolean(VPN_REFUSED,yes).apply();}catch(RuntimeException ignored){}}
+    /** The plain words for Settings when API-Football is refusing this TV's VPN, else null. Never the key. */
+    static String problem(Context c){try{return prefs(c).getBoolean(VPN_REFUSED,false)?ApiFootball.VPN_WORDS:null;}catch(RuntimeException e){return null;}}
     static Fixtures.Team team(Context c){return Fixtures.Team.read(prefs(c).getString(TEAM,""));}
     static void saveTeam(Context c,Fixtures.Team t){prefs(c).edit().putString(TEAM,t==null?"":t.json().toString()).remove(TRACK).apply();forget(c,"fixtures.json");}
     static String key(Context c){try{return new Vault(c).read(ApiFootball.VAULT).optString("key");}catch(Exception e){return "";}}
@@ -75,8 +80,9 @@ final class FixtureFeed {
             store(c,"fixtures.json",new JSONObject().put("source",source.id()).put("fetchedAt",now).put("fixtures",all));
             JSONObject track;try{track=new JSONObject(prefs(c).getString(TRACK,"{}"));}catch(Exception e){track=new JSONObject();}
             prefs(c).edit().putString(TRACK,Fixtures.track(track,fresh).toString()).apply();
+            vpnRefused(c,false);
             return fresh;
-        }catch(ApiFootball.Refused r){if(r.quota())exhausted(c);return cached;}
+        }catch(ApiFootball.Refused r){if(r.quota())exhausted(c);vpnRefused(c,r.vpn(VpnGate.routed(c)));return cached;}
         catch(Exception e){return cached;}
     }
     static List<Fixtures.Fixture> read(JSONObject cache){
@@ -125,7 +131,7 @@ final class FixtureFeed {
             JSONObject shown=refreshing?current:cat;
             if(!take(c,true)){progress.update(shown,"Today's share of API-Football requests is used. The list continues tomorrow.");return;}
             try{ApiFootball.apply(cat,request,ApiFootball.get(key,request),System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
-            catch(ApiFootball.Refused r){if(r.quota())exhausted(c);progress.update(shown,r.key()?"API-Football didn't accept the key. Check it in Settings > Smart Home.":"API-Football has no more requests for today. The list continues tomorrow.");return;}
+            catch(ApiFootball.Refused r){if(r.quota())exhausted(c);boolean vpn=r.vpn(VpnGate.routed(c));vpnRefused(c,vpn);progress.update(shown,vpn?ApiFootball.VPN_WORDS:r.key()?"API-Football didn't accept the key. Check it in Settings > Smart Home.":"API-Football has no more requests for today. The list continues tomorrow.");return;}
             catch(Exception e){progress.update(shown,"API-Football couldn't be reached. Try again later.");return;}
             try{Thread.sleep(ApiFootball.PACE_MS);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
         }

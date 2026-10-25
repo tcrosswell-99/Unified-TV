@@ -16,7 +16,8 @@ import java.util.*;
 /**
  * Build My TV / Entertainment Hub Builder (v3.4.5/3.4.6 UX-BUILD-01, SET-BUILD-01..11). Optional and remote-first: a
  * category overview, then short guided choices, Music first; every one can be skipped, and Home never needs any of it.
- * Opened once from Home's first-run card and at any time from Settings > Apps & Shortcuts > Build My TV (start()).
+ * Opened from the guided setup's "Your apps" step (FirstRunActivity) and at any time from Settings > Apps & Shortcuts >
+ * Build My TV (start()).
  *
  * Detect before asking (AppCatalogue, HubBuilder): installed, launchable apps are found through the launcher query the
  * manifest declares (<queries>). Install only ever opens the Google Play page of a trusted listing, after the household

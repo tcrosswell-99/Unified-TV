@@ -57,6 +57,43 @@ final class LibraryPage {
             String w=words;a.runOnUiThread(()->{scanning=false;a.note(w);if(a.on(SettingsActivity.LIBRARY,null))a.refresh();});});
     }
 
+    /**
+     * SET-032 Favourites: how many each profile keeps, and clearing one profile's list after a confirmation (adult PIN when
+     * one is set). Titles stay on the media server; only the Favourites row forgets them.
+     */
+    void favourites(){
+        a.section("Favourites");
+        SharedPreferences p=prefs();int adults=Favourites.count(p,Profiles.ADULT),kids=Favourites.count(p,Profiles.CHILD);
+        a.button(favouritesLine(adults,kids),()->{
+            if(adults+kids==0){a.note("No favourites yet. Hold OK on a title in Your Films & TV to add one.");return;}
+            EditLock.ask(a,this::clearFavourites);});
+        a.text("Each profile keeps its own. Add or remove one by holding OK on a title in Your Films & TV.",15);
+    }
+    static String favouritesLine(int adults,int kids){return "Favourites: Adults "+adults+" · Kids "+kids+(adults+kids>0?" · Clear":"");}
+    private void clearFavourites(){
+        SharedPreferences p=prefs();String[] who={Profiles.ADULT,Profiles.CHILD};
+        java.util.List<String> names=new java.util.ArrayList<>();java.util.List<String> profiles=new java.util.ArrayList<>();
+        for(String w:who){int n=Favourites.count(p,w);if(n>0){names.add("Clear "+Profiles.label(w)+"' favourites ("+n+")");profiles.add(w);}}
+        if(profiles.isEmpty()){a.refresh();return;}
+        new AlertDialog.Builder(a).setTitle("Clear favourites").setItems(names.toArray(new String[0]),(d,n)->{String w=profiles.get(n);int count=Favourites.count(p,w);
+            new AlertDialog.Builder(a).setTitle("Clear "+Profiles.label(w)+"' favourites?").setMessage(PrivacyData.count(count,"title leaves","titles leave")+" "+Profiles.label(w)+"' Favourites row. The films and programmes stay on the media server, and the other profile's favourites are kept.")
+                .setPositiveButton("Clear",(d2,w2)->{Favourites.clear(p,w);a.note(Profiles.label(w)+"' favourites cleared.");a.refresh();}).setNegativeButton("Cancel",null).show();})
+            .setNegativeButton("Cancel",null).show();
+    }
+    /**
+     * SET-034 manual picture choices ("Wrong picture?"): how many titles have a picture chosen by hand, and forgetting them
+     * all after a confirmation, so those titles go back to the automatic picture. Adults only.
+     */
+    void pictures(){
+        if(Profiles.kids(a))return;
+        int n=Posters.get(a).choices();
+        if(n==0){a.text("Picture choices: none. Hold OK on a title in Your Films & TV and choose Wrong picture? to pick its picture.",15);return;}
+        a.button("Picture choices: "+n+" · Forget",()->EditLock.ask(a,()->new AlertDialog.Builder(a).setTitle("Forget "+PrivacyData.count(n,"picture choice","picture choices")+"?")
+            .setMessage("Those titles go back to the automatic picture. Nothing on the media server changes.")
+            .setPositiveButton("Forget",(d,w)->{Posters.get(a).forgetChoices();a.note("Picture choices forgotten.");a.refresh();}).setNegativeButton("Cancel",null).show()));
+        a.text("Pictures you chose with Wrong picture? win over the automatic ones.",15);
+    }
+
     /** SET-033: resume, autoplay and subtitle size; only for Your Films & TV's own player. */
     void playback(){
         boolean kids=Profiles.kids(a);

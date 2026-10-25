@@ -65,5 +65,14 @@ final class OwnerChecks {
         if(at<=0)return "none yet";
         return java.time.Instant.ofEpochMilli(at).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM "+HouseholdSettings.clockPattern(twentyFour),locale));
     }
+    /**
+     * The TV's three animation scales in one line (Developer options: window, transition, animator), e.g. "TV animation
+     * scales: window 1×, transition 1×, animator 0.5×". An animator scale of 0 is what keeps Home's light still.
+     */
+    static String animationScales(float window,float transition,float animator){
+        return "TV animation scales: window "+times(window)+", transition "+times(transition)+", animator "+times(animator)
+            +(animator==0f?" (animations off: Home's light stays still)":"");
+    }
+    private static String times(float f){if(Float.isNaN(f))return "unknown";String s=f==Math.rint(f)?String.valueOf((int)f):String.valueOf(f);return s+"×";}
     static String when(android.content.Context c,long at){return when(at,HouseholdSettings.zone(c),Locale.getDefault(),HouseholdSettings.twentyFour(c));}
 }

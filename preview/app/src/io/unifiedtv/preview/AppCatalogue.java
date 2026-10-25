@@ -62,7 +62,7 @@ final class AppCatalogue {
         new Category(VIDEO,"Streaming video","Would you like streaming services on your TV?","Films and series from the services you use.","playcircle",false),
         new Category(YOUTUBE,"YouTube and alternative viewers","Would you like YouTube on your TV?","YouTube, or another viewer you prefer.","play",false),
         new Category(LOCAL,"Local Movies & TV","Do you have films and TV on a home media server?","Unified TV finds your home media server for you.","shelf",true),
-        new Category(LIVE,"Live TV","Would you like Live TV on Home?","Live TV opens only once Unified TV has checked the protected connection itself.","broadcast",true),
+        new Category(LIVE,"Live TV","Would you like Live TV on Home?","Live TV opens only once Unified TV has checked the protected connection itself.","tvset",true),
         new Category(CASTING,"Casting and AirPlay","Would you like to show phones and tablets on the TV?","An AirPlay receiver app, where your TV has one.","cast",false),
         new Category(PHOTOS,"Family Photos","Would you like your own photos on the TV?","My Photos for Wallpaper and the Gallery, from your home network.","photos",true),
         new Category(SMART_HOME,"Smart Home","Do you use Home Assistant?","Doorbell, alarms and rooms, through Home Assistant.","house",true)));

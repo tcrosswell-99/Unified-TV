@@ -58,6 +58,8 @@ final class SettingsSchema {
         s.add(bool("reduceMotion","Reduce motion",APPEARANCE,false));
         s.add(bool("stillBackground","Keep the Home background still",APPEARANCE,false));
         s.add(bool("lightweight","Lightweight rendering",APPEARANCE,false));
+        s.add(choice(AmbientMesh.INTENSITY,"Ambient intensity",APPEARANCE,AmbientMesh.STANDARD,v->AmbientMesh.intensityLabel((String)v),AmbientMesh.INTENSITIES));
+        s.add(choice(AmbientMesh.COLOUR,"Ambient colour",APPEARANCE,AmbientMesh.FOLLOW,v->AmbientMesh.colourLabel((String)v),AmbientMesh.COLOURS));
         s.add(bool("highContrast","High contrast",APPEARANCE,false));
         s.add(bool("opaque","Reduce transparency",APPEARANCE,false));
         s.add(choice(Accessibility.TEXT_SIZE,"Text size",APPEARANCE,Accessibility.NORMAL,Accessibility::label,Accessibility.SIZES));

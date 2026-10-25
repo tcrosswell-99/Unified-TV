@@ -24,8 +24,9 @@ import java.util.function.Predicate;
  * <li><b>Bound to the TV's home-network address only</b>, never 0.0.0.0, so nothing answers on a VPN tunnel or any other
  *     interface, on a random high port (49152–65535).</li>
  * <li><b>Home network only:</b> a connection from an address outside the TV's own subnet is closed without a reply
- *     ({@code local}). The Host header must name this exact address and port, which defeats DNS rebinding from a web page,
- *     and a POST carrying a foreign Origin is refused.</li>
+ *     ({@code local}). The Host header must name this TV's own address (any case, the port optional but never another one,
+ *     a trailing dot allowed) and never a host name, which defeats DNS rebinding from a web page; a POST carrying a
+ *     foreign Origin is refused. A TLS hello (a browser trying https:// first) is closed at once.</li>
  * <li><b>One-time secret in the path:</b> 128 random bits (base64url) from SecureRandom, shown only in the TV's QR code.
  *     The short typed address carries no secret: it asks for the TV's 6-digit code, and five wrong codes stop the
  *     session. The path token is a session capability, not a credential for any service, and it dies with the session.</li>
@@ -178,10 +179,10 @@ final class PhoneSetupServer {
         try { r = read(socket.getInputStream(), socket.getInetAddress()); }
         catch (IllegalArgumentException e) { write(out, Response.status(400, PhonePages.message("Something went wrong", "Reload the page and try again."))); return false; }
         if (r == null) return false;
-        if (!hostPort.equalsIgnoreCase(r.headers.getOrDefault("host", ""))) { write(out, Response.status(400, PhonePages.message("Wrong address", "Scan the code on the TV again."))); return false; }
+        if (!host(r.headers.getOrDefault("host", ""), bind, server.getLocalPort())) { write(out, Response.status(400, PhonePages.message("Wrong address", "Scan the code on the TV again."))); return false; }
         if (!"GET".equals(r.method) && !"POST".equals(r.method)) { write(out, Response.status(405, PhonePages.message("Not allowed", ""))); return false; }
         String origin = r.headers.get("origin");
-        if (r.post() && origin != null && !origin.equals(this.origin)) { write(out, Response.status(403, PhonePages.message("Not allowed", ""))); return false; }
+        if (r.post() && origin != null && !origin.equals(this.origin) && !(origin.regionMatches(true, 0, "http://", 0, 7) && host(origin.substring(7), bind, server.getLocalPort()))) { write(out, Response.status(403, PhonePages.message("Not allowed", ""))); return false; }
         r.origin = this.origin; r.session = this.origin + "/" + token;
         if (r.path.equals("/favicon.ico")) { write(out, Response.status(404, "")); return false; }
         // The short typed address: the code shown on the TV, then on to the session's own pages.
@@ -210,12 +211,43 @@ final class PhoneSetupServer {
         return response.success;
     }
 
+    /**
+     * The Host header names this TV (owner's TCL, 25 October 2026: a phone was told "Wrong address"). Accepted: the TV's
+     * own address in any case, with or without the port, with a trailing dot, an IPv6 address in brackets with or without
+     * its zone. Refused: any other port, and every host NAME, even one that resolves here (DNS rebinding); no name is
+     * ever looked up.
+     */
+    static boolean host(String header, InetAddress tv, int port) {
+        if (header == null || tv == null) return false;
+        String h = header.trim().toLowerCase(Locale.ROOT), name, p = null;
+        if (h.isEmpty() || h.length() > 80) return false;
+        if (h.startsWith("[")) {
+            int close = h.indexOf(']'); if (close < 0) return false;
+            name = h.substring(1, close); String rest = h.substring(close + 1);
+            if (!rest.isEmpty()) { if (!rest.startsWith(":")) return false; p = rest.substring(1); }
+        } else {
+            int colon = h.indexOf(':');
+            if (colon >= 0 && h.indexOf(':', colon + 1) >= 0) return false;   // a bare IPv6 address is never a valid Host
+            name = colon < 0 ? h : h.substring(0, colon); p = colon < 0 ? null : h.substring(colon + 1);
+        }
+        if (p != null && !p.equals(String.valueOf(port))) return false;
+        if (name.endsWith(".")) name = name.substring(0, name.length() - 1);
+        name = name.replaceAll("%.*$", "");
+        boolean literal = tv instanceof Inet4Address ? name.matches("\\d{1,3}(\\.\\d{1,3}){3}") : name.matches("[0-9a-f:.]{2,45}") && name.contains(":");
+        if (!literal) return false;
+        try { return InetAddress.getByName(name).equals(tv instanceof Inet6Address ? stripScope((Inet6Address) tv) : tv); } catch (Exception e) { return false; }
+    }
+    private static InetAddress stripScope(Inet6Address a) { try { return InetAddress.getByAddress(a.getAddress()); } catch (UnknownHostException e) { return a; } }
+
     private static boolean same(String a, String b) { return a != null && b != null && MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8)); }
 
     // --- HTTP/1.1, just enough: one request per connection, Content-Length bodies only.
     /** Parses one request; null when the client sent nothing. Throws IllegalArgumentException for anything malformed. */
     static Request read(InputStream raw, InetAddress from) throws IOException {
         InputStream in = new BufferedInputStream(raw);
+        // A browser trying https:// first (an HTTPS-only mode, an in-camera viewer) sends a TLS hello to this plain page:
+        // closed at once, so the phone falls back to http:// without waiting out the read timeout.
+        in.mark(1); int firstByte = in.read(); if (firstByte < 0) return null; if (firstByte == 0x16) return null; in.reset();
         ByteArrayOutputStream head = new ByteArrayOutputStream();
         int last = 0, b;   // the last four bytes read, to find the blank line that ends the head
         while (last != 0x0d0a0d0a) {
@@ -233,7 +265,13 @@ final class PhoneSetupServer {
             int colon = lines[i].indexOf(':'); if (colon <= 0) throw new IllegalArgumentException("header");
             headers.put(lines[i].substring(0, colon).trim().toLowerCase(Locale.ROOT), lines[i].substring(colon + 1).trim());
         }
-        String target = first[1]; if (!target.startsWith("/")) throw new IllegalArgumentException("target");
+        String target = first[1];
+        // Absolute form ("GET http://address:port/path"), as some phone proxies send it: its authority is the host.
+        if (target.regionMatches(true, 0, "http://", 0, 7)) {
+            int slash = target.indexOf('/', 7); String authority = slash < 0 ? target.substring(7) : target.substring(7, slash);
+            headers.put("host", authority); target = slash < 0 ? "/" : target.substring(slash);
+        }
+        if (!target.startsWith("/")) throw new IllegalArgumentException("target");
         int q = target.indexOf('?');
         String path = q < 0 ? target : target.substring(0, q), query = q < 0 ? "" : target.substring(q + 1);
         Map<String, String> form = new HashMap<>();

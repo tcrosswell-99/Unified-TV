@@ -215,7 +215,7 @@ Palettes follow the app's stable identity, not its dock slot.
 |---|---|
 | Focus acknowledgement | Within 80 ms (p95 under 100 ms): lift, brightness, scale 1.06–1.09 over 150–210 ms |
 | Dock focus change → background | Crossfade **starts immediately**, **400 ms, ease-in-out**. Latest focus wins: retarget from what is visible, never queue |
-| Ambient drift | 20–40 s paths; centre shift 2–5 % of the screen; scale 1.00–1.06; independent of focus; **never restarts on a focus change** |
+| Ambient drift | 20–40 s paths; each light travels up to about 20 % of the screen width and back (*changed 25 October 2026 by the owner: the 2–5 % shift was invisible on the TCL; the colour blobs must visibly move around the screen*), at most about 90 px/s at 1080p; scale 1.00–1.06; independent of focus; **never restarts on a focus change**; stops when Home is covered, the screen is off, or after 10 minutes without a key |
 | NAS title backdrop (content browse) | May wait a **135 ms settle** while artwork decodes; the title's tile still answers at once |
 | Metadata reveal | 130–180 ms fade after the item is established |
 | Dock to NAS shelf | 260–380 ms, focus retained; full library 280–400 ms with poster continuity |

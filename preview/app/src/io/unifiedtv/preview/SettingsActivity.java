@@ -32,6 +32,8 @@ public final class SettingsActivity extends Screen {
     private static final String[] GROUPS={"Personalise","Connected services","System"};private static final int[] GROUP_START={0,4,8};
     /** Tasks inside a category: a wider sheet for complex ones, the same width for a collapsed Advanced section. */
     static final String NAVIGATION="navigation",APPEARANCE_ADVANCED="appearance-advanced",ADVANCED="advanced";
+    /** Tasks about this TV (DevicePage): what it can do (SET-006, Updates & About) and what the remote's buttons do (SET-071). */
+    static final String CAPABILITIES="capabilities",REMOTE_HELP="remote-help";
     /** Setup tasks (SetupPages): phone setup per service ("phone-" + PhoneService id), Home Assistant's Advanced, the team
      *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-19). */
     static final String PHONE_HA="phone-"+PhoneService.HA,PHONE_FOOTBALL="phone-"+PhoneService.FOOTBALL,PHONE_TMDB="phone-"+PhoneService.TMDB,
@@ -50,7 +52,9 @@ public final class SettingsActivity extends Screen {
     private SharedPreferences prefs;
     /** SET-093: a navigation change is previewed here and applied only on confirmation; null when there is none. */
     private List<String> draftUtilities;
-    private SetupPages setup;private PrivacyPage privacy;private LibraryPage library;
+    private SetupPages setup;private PrivacyPage privacy;private LibraryPage library;private DevicePage device;
+    /** The guided setup was opened from here: its row shows the new progress when the household comes back. */
+    private boolean guidedSetupOpen;
     /** SET-025: a change being previewed (null when none), its countdown line, and the main-thread clock that ends it. */
     private PreviewRevert preview;private TextView previewLine;
     private final android.os.Handler clock=new android.os.Handler(android.os.Looper.getMainLooper());
@@ -74,7 +78,7 @@ public final class SettingsActivity extends Screen {
         if(state!=null)overlay.restore(start,state.getString("task"),state.getBoolean("wide",false),state.getInt("row",0));else if(start>=0)overlay.open(start);
         root.addView(sheet,new FrameLayout.LayoutParams(sheetWidth(),-1,Gravity.END));
         // Attach first, then focus: a view focused before it is in the window never becomes the window's focus.
-        setup=new SetupPages(this);privacy=new PrivacyPage(this);library=new LibraryPage(this);
+        setup=new SetupPages(this);privacy=new PrivacyPage(this);library=new LibraryPage(this);device=new DevicePage(this);
         setContentView(root);render(false);landing();
         if(state==null)slideIn();
         // The notification's "Stop alerts" lands here, so stopping always asks for the adult PIN (owner exception to SET-053).
@@ -187,9 +191,9 @@ public final class SettingsActivity extends Screen {
             button("Media server accounts",()->new AlertDialog.Builder(this).setTitle("Media account").setItems(new String[]{"Adults","Kids"},(d,n)->connection(n==0?"media-adult":"media-child")).show());
             if(!Profiles.kids(this)){section("Film posters");
                 chevron(button("Film posters: "+(TmdbKey.saved(this)?"key saved":"not set up"),()->EditLock.ask(this,()->expandTask(PHONE_TMDB))));
-                text("Posters and film details from TMDB, with your own free key. You add it on your phone.",15);section("About the library");}
+                text("Posters and film details from TMDB, with your own free key. You add it on your phone.",15);library.pictures();section("About the library");}
             text("Library opens from its own dock tile or by pressing Down on Home. Playback, resume and Kids limits stay on this TV.",16);
-            library.source();library.playback();restoreRow(LIBRARY);break;
+            library.source();library.playback();library.favourites();restoreRow(LIBRARY);break;
         case PROFILES:profiles();restoreRow(PROFILES);break;
         case APPS:
             button("All apps",()->startActivity(new Intent(this,AppsActivity.class)));
@@ -208,18 +212,21 @@ public final class SettingsActivity extends Screen {
             connectivity();section("This TV");
             button("Picture, sound, network & Bluetooth",()->Launch.unlocked(this,new Intent(Settings.ACTION_SETTINGS),"Use the TV's own Settings"));
             text("These belong to the TV itself; Unified TV opens them and changes nothing there.",15);
+            device.sound();device.remote();
             section("AirPlay");airPlay();
             section("Voice");button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));
-            text("Voice uses the TV's own speech provider only when you start it, and may use its cloud service.",15);break;
+            // SET-003: say only what this TV can do. Typing a request always works; speaking needs a speech service.
+            text(Capabilities.shown(this,Capabilities.VOICE)?"Voice uses the TV's own speech provider only when you start it, and may use its cloud service."
+                :"This TV has no speech service for apps, so Ask your TV takes typed requests.",15);break;
         case PRIVACY:
             privacy.build();
             button("Integration readiness",()->new AlertDialog.Builder(this).setTitle("Preview limitations").setMessage("VPN tunnel visibility does not verify protected playback. NAS, Ring, reminders, microphone and manufacturer controls need their own acceptance tests. The Android APK cannot run on native Tizen.").setPositiveButton("Close",null).show());break;
         default:about();break;
         }
     }
-    private String taskTitle(){if(SetupPages.owns(overlay.task()))return SetupPages.title(overlay.task());return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":EVENTS.equals(overlay.task())?"Event log":"Advanced";}
-    private String taskSubtitle(){if(SetupPages.owns(overlay.task()))return SetupPages.subtitle(overlay.task());return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":EVENTS.equals(overlay.task())?"The last 7 days, on this TV only":"Owner checks, for Adults";}
-    private void task(){String t=overlay.task();if(SetupPages.owns(t))setup.task(t);else if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else if(EVENTS.equals(t))privacy.events();else advanced();}
+    private String taskTitle(){if(SetupPages.owns(overlay.task()))return SetupPages.title(overlay.task());if(CAPABILITIES.equals(overlay.task()))return "What this TV can do";if(REMOTE_HELP.equals(overlay.task()))return "What the buttons do";return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":EVENTS.equals(overlay.task())?"Event log":"Advanced";}
+    private String taskSubtitle(){if(SetupPages.owns(overlay.task()))return SetupPages.subtitle(overlay.task());if(CAPABILITIES.equals(overlay.task()))return "Checked on this TV now";if(REMOTE_HELP.equals(overlay.task()))return "In Unified TV, on this TV";return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":EVENTS.equals(overlay.task())?"The last 7 days, on this TV only":"Owner checks, for Adults";}
+    private void task(){String t=overlay.task();if(SetupPages.owns(t))setup.task(t);else if(CAPABILITIES.equals(t))device.capabilities();else if(REMOTE_HELP.equals(t))device.remoteHelp();else if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else if(EVENTS.equals(t))privacy.events();else advanced();}
 
     // --- Navigation inside the sheet (module 13 §B; SET-GLASS-06)
     private void open(int c){if(overlay.open(c)){if(setup!=null)setup.entered(c);render(true);focusAt(0);}}
@@ -353,6 +360,9 @@ public final class SettingsActivity extends Screen {
         TextView[] still=new TextView[1];Runnable why=()->{String r=AmbientLayer.stillReason(prefs.getBoolean("stillBackground",false),prefs.getBoolean("reduceMotion",false),prefs.getBoolean("lightweight",false),AmbientLayer.tvAnimations());
             still[0].setText(r==null?"":r);still[0].setVisibility(r==null?View.GONE:View.VISIBLE);};
         toggle("Reduce motion","reduceMotion",on->{why.run();restyle();});toggle("Keep the Home background still","stillBackground",on->why.run());toggle("Lightweight rendering","lightweight",on->{why.run();restyle();});
+        // SET-022: intensity (standard or subtle) and colour (the app in focus, or neutral); Home behind the sheet shows each at once (HomePreview).
+        ambientChoice("Intensity",AmbientMesh.INTENSITY,AmbientMesh.STANDARD,AmbientMesh.INTENSITIES,AmbientMesh::intensityLabel);
+        ambientChoice("Colour",AmbientMesh.COLOUR,AmbientMesh.FOLLOW,AmbientMesh.COLOURS,AmbientMesh::colourLabel);
         still[0]=text("",15);why.run();
         section("Clock");
         String zone=prefs.getString(HouseholdSettings.ZONE,"");
@@ -370,8 +380,10 @@ public final class SettingsActivity extends Screen {
         section("Home navigation");
         taskRow("Navigation & Shortcuts",NAVIGATION,true,draftUtilities==null?null:"Preview");
         if(DefaultHome.available(this)){section("Home button");
-            text(DefaultHome.isDefault(this)?"The Home button opens Unified TV.":"The Home button opens the original TV interface.",16);
-            if(!DefaultHome.isDefault(this))button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));}
+            boolean ours=DefaultHome.isDefault(this),kept=!ours&&DefaultHome.fixed(this);
+            // Chosen once, but this TV keeps its own Home button (owner's TCL, 25 October 2026): said plainly, no dead switch.
+            text(ours?"The Home button opens Unified TV.":kept?DefaultHome.KEPT_WORDS:"The Home button opens the original TV interface.",16);
+            if(!ours&&!kept)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));}
         else{section("Home button");text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",15);}
         section("Advanced appearance");
         taskRow("Advanced appearance",APPEARANCE_ADVANCED,false,null);
@@ -482,6 +494,8 @@ public final class SettingsActivity extends Screen {
         text(live.isEmpty()?"No single Live TV app was recognised on this TV.":"Live TV app: "+live,15);
         button("Check again",()->{VpnGate.invalidate();show(LIVE_TV);});
         button("NordVPN",()->VpnGate.show(this));
+        // The country flag beside Home's shield needs NordVPN's notification (MediaWatch, NordCountry).
+        if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this))text("To show NordVPN's country beside the shield on Home, allow notification access for Unified TV in the TV's settings (Music's Now Playing asks for the same). Without it, no flag is shown.",15);
         text("Unified TV unlocks Live TV only after checking by itself, every time, that Live TV can only connect through NordVPN. A VPN icon, a setting or an adult's word is never enough. This TV gives apps no way to make that check, so Live TV stays locked here; nothing in Settings can bypass it.",15);
     }
 
@@ -491,10 +505,21 @@ public final class SettingsActivity extends Screen {
         try{android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),0);version=info.versionName==null?"unknown":info.versionName;code=info.getLongVersionCode();}catch(Exception ignored){}
         boolean debug=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
         text("Version "+version+" ("+code+")"+(debug?", test build":""),18);
+        text(About.build(),16);   // tells builds apart: commit, CI run and date (owner, 25 October 2026)
         text(About.flavour(getPackageName()),16);
         text("Package: "+getPackageName(),15);
         text("Android "+Build.VERSION.RELEASE+" (API "+Build.VERSION.SDK_INT+") on "+Build.MANUFACTURER+" "+Build.MODEL+" · build "+Build.DISPLAY,15);
         text("Updates install over this app only when signed with the same key. The preview and the launcher are separate apps; one never upgrades the other.",15);
+        // SET-006 / module 13 §C 10 "Compatibility": what this TV can do, read from it now.
+        section("This TV");
+        taskRow("What this TV can do",CAPABILITIES,false,null);
+        text("What works, what needs setting up or your OK, and what this TV can't do, in plain words.",15);
+        // SET-010 / SET-015: the guided setup again, whole or one part. Adults only, like the setup itself.
+        if(!Profiles.kids(this)){section("Guided setup");
+            button(FirstRun.status(FirstRun.load(prefs)),()->EditLock.ask(this,()->{if(!FirstRun.IN_PROGRESS.equals(FirstRun.load(prefs).status))FirstRun.save(prefs,FirstRun.startOver());guidedSetupOpen=true;FirstRun.start(this,null);}));
+            button("Just one part",()->EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle("Run one part").setItems(new String[]{"Your remote","Your apps","Your films and TV"},
+                (d,n)->{guidedSetupOpen=true;FirstRun.start(this,new String[]{FirstRun.REMOTE,FirstRun.APPS,FirstRun.LIBRARY}[n]);}).setNegativeButton("Cancel",null).show()));
+            text("Short, optional steps over Home: the remote, your apps, and your films and TV. Nothing you've chosen is lost.",15);}
         section("Licences & artwork");
         button("Open-source licences",()->new AlertDialog.Builder(this).setTitle("Open-source licences").setMessage(About.licences()).setPositiveButton("Close",null).show());
         button("Artwork",()->{String json="";try(java.io.InputStream in=getAssets().open("wallpaper/catalogue.json")){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);json=out.toString("UTF-8");}catch(Exception ignored){}
@@ -561,6 +586,12 @@ public final class SettingsActivity extends Screen {
     private void choose(String title,String[] options,java.util.function.IntConsumer pick){
         new AlertDialog.Builder(this).setTitle(title).setItems(options,(d,n)->{pick.accept(n);show(overlay.category());}).show();
     }
+    /** SET-022: one Ambient background choice as a row ("Intensity: Standard"); OK lists the values, the choice saves at once. */
+    private void ambientChoice(String title,String key,String fallback,String[] values,java.util.function.Function<String,String> label){
+        String now=prefs.getString(key,fallback);if(!Arrays.asList(values).contains(now))now=fallback;
+        String[] names=new String[values.length];for(int i=0;i<values.length;i++)names[i]=label.apply(values[i]);int at=Arrays.asList(values).indexOf(now);
+        button(title+": "+label.apply(now),()->new AlertDialog.Builder(this).setTitle(title).setSingleChoiceItems(names,at,(d,n)->{prefs.edit().putString(key,values[n]).apply();d.dismiss();show(APPEARANCE);}).setNegativeButton("Cancel",null).show());
+    }
     private void toggle(String name,String key){toggle(name,key,on->{});}
     private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){toggle(name,key,false,after);}
     /** Module 13 §D: one clear binary row; the label on the left, its state as a word (On/Off) on the right. */
@@ -576,18 +607,40 @@ public final class SettingsActivity extends Screen {
     /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
     private void homeSetup(){
         new AlertDialog.Builder(this).setTitle("Make Unified TV the Home screen").setMessage("Pressing Home will open Unified TV instead of the original TV interface. The original interface stays on the TV, and you can switch back at any time from this screen.\n\nYour TV will ask you to choose: pick Unified TV.")
-            .setPositiveButton("Continue",(d,w)->{homeAsked=true;settingsPass();DefaultHome.offer(this);}).setNegativeButton("Cancel",null).show();
+            .setPositiveButton("Continue",(d,w)->{homeAsked=true;settingsPass();
+                // No dialog, Home settings or chooser on this TV: nothing can be chosen, so nothing is left switched on.
+                if(DefaultHome.offer(this)==DefaultHome.Route.NONE){homeAsked=false;DefaultHome.withdraw(this);DefaultHome.fixed(this,true);note(DefaultHome.KEPT_WORDS);show(APPEARANCE);}})
+            .setNegativeButton("Cancel",null).show();
     }
     private boolean homeAsked;
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
-    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();}
+    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();if(guidedSetupOpen){guidedSetupOpen=false;refresh();}}
+    /**
+     * A feature's next step, from What this TV can do (Capabilities.GO_*): its category inside this sheet, its phone setup,
+     * or its own screen. Kids settings and phone setup are behind the adult PIN, as everywhere else.
+     */
+    void go(String place){
+        if(!overlay.acceptsInput()||place==null)return;
+        switch(place){
+            case Capabilities.GO_APPEARANCE:open(APPEARANCE);break;
+            case Capabilities.GO_LIBRARY:open(LIBRARY);break;
+            case Capabilities.GO_TMDB:EditLock.ask(this,()->expandTask(PHONE_TMDB));break;
+            case Capabilities.GO_CONNECTIONS:open(CONNECTIONS);break;
+            case Capabilities.GO_LIVE_TV:open(LIVE_TV);break;
+            case Capabilities.GO_HOME_ASSISTANT:case Capabilities.GO_FOOTBALL:open(SMART_HOME);break;
+            case Capabilities.GO_NOTIFICATIONS:open(NOTIFICATIONS);break;
+            case Capabilities.GO_KIDS:EditLock.ask(this,()->startActivity(new Intent(this,KidsActivity.class)));break;
+            case Capabilities.GO_VOICE:startActivity(new Intent(this,VoiceActivity.class));break;
+            default:break;
+        }
+    }
+    /**
+     * Back from Android's choice (any result): Unified TV's own Home comes to the front at once, so the owner is never
+     * left on another Home, and Home reports what Android recorded (DefaultHome.settle: an unchosen entry is withdrawn).
+     */
     private void homeChecked(){
         if(!homeAsked)return;homeAsked=false;
-        DefaultHome.confirm(this,yes->{
-            // Not chosen: leave the TV exactly as it was, with no stray Home entry.
-            if(!yes&&DefaultHome.offered(this))DefaultHome.withdraw(this);
-            note(yes?"Done. The Home button now opens Unified TV.":"Nothing changed. The Home button still opens the original TV interface.");if(overlay.category()==APPEARANCE)show(APPEARANCE);
-        });
+        try{startActivity(DefaultHome.backHome(this));overridePendingTransition(0,0);}catch(RuntimeException e){DefaultHome.settle(this,s->{note(DefaultHome.words(s));if(overlay.category()==APPEARANCE)show(APPEARANCE);});}
     }
     private void original(){
         boolean ours=DefaultHome.isDefault(this);

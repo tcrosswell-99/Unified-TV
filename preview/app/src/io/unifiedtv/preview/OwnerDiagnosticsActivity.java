@@ -61,6 +61,11 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
         text(OwnerChecks.liveTv(VpnGate.statusLabel(VpnGate.inspect(this)),VpnGate.routed(this),LiveTvProtection.now(this,live)),17);
         text("Live TV app: "+(live.isEmpty()?"not identified":live)+". Android's always-on VPN with “block connections without VPN” is what stops traffic when NordVPN drops; this page can't test that.",16);
 
+        // Coordinator, 25 October 2026: the TV says itself whether Home's light moves, at what rate, and why not.
+        group("Home background");card();
+        text(AmbientLayer.diagnosis(prefs,AmbientLayer.tvAnimations(),android.os.SystemClock.uptimeMillis())+"\n"+OwnerChecks.animationScales(scale(Settings.Global.WINDOW_ANIMATION_SCALE),scale(Settings.Global.TRANSITION_ANIMATION_SCALE),scale(Settings.Global.ANIMATOR_DURATION_SCALE))
+            +"\nMemory class: "+MemoryBudget.get(this)+"; pictures in memory "+(Posters.get(this).cacheUsed()>>20)+" of "+(Posters.get(this).cacheLimit()>>20)+" MB.",17);
+
         group("This app");card();
         text(app(),17);
 
@@ -83,6 +88,8 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
 
         card();button("Show advanced details (addresses)",()->{if(advanced==null){advanced=text("",15);}synchronized(addresses){advanced.setText(addresses.isEmpty()?"No addresses found yet.":String.join("\n",addresses));}});
     }
+    /** One of the TV's own animation scales (Developer options), or NaN when it can't be read. */
+    private float scale(String key){try{return Settings.Global.getFloat(getContentResolver(),key,1f);}catch(RuntimeException e){return Float.NaN;}}
     private static String name(JSONObject names,String key,String entity){
         String n=names==null?"":names.optString(key,"").trim();
         if(entity==null||entity.isEmpty())return "not set up";

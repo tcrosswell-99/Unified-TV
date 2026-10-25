@@ -6,10 +6,19 @@ import android.graphics.drawable.Drawable;
 
 /** Original ambient mesh and cached, low-resolution frosted material for API 28+. */
 final class MaterialScene {
-    // One small blurred frame per scene, kept (about 57 KB each), so moving along the dock never re-blurs on the UI thread.
+    // One small blurred frame per scene, kept (about 57 KB each; 12, or 6 on a 2 GB TV), so moving along the dock never
+    // re-blurs on the UI thread.
     private static final java.util.LinkedHashMap<String,Bitmap> frost=new java.util.LinkedHashMap<String,Bitmap>(16,.75f,true){
-        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String,Bitmap> e){return size()>12;}
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String,Bitmap> e){return size()>MemoryBudget.current().frostKept();}
     };
+    /** onTrimMemory: Home hidden forgets every frosted frame; memory short keeps only the most recent one. */
+    static void trim(boolean hidden){
+        if(hidden){frost.clear();return;}
+        java.util.Map.Entry<String,Bitmap> last=null;for(java.util.Map.Entry<String,Bitmap> e:frost.entrySet())last=e;
+        frost.clear();if(last!=null)frost.put(last.getKey(),last.getValue());
+    }
+    // Reused by glass(), which runs on the main thread while Home draws: nothing but the two edge gradients is allocated.
+    private static final Paint glassPaint=new Paint(3);private static final Path glassClip=new Path();private static final RectF screen=new RectF(0,0,1920,1080);
     private static Bitmap wallpaper;
     static void wallpaper(Bitmap image){wallpaper=Bitmap.createScaledBitmap(image,160,90,true);frost.remove("neutral");}
     /** A still frame of the app's own ambient mesh (spec 32), so glass and Settings carry the same light as Home. */
@@ -28,9 +37,9 @@ final class MaterialScene {
         next.setPixels(a,0,w,0,0,w,h);frost.put(key,next);return next;
     }
     static void glass(Canvas c,RectF bounds,float radius,String key,boolean opaque){
-        Paint p=new Paint(3);Path clip=new Path();clip.addRoundRect(bounds,radius,radius,Path.Direction.CW);
+        Paint p=glassPaint;p.reset();p.setFlags(3);Path clip=glassClip;clip.reset();clip.addRoundRect(bounds,radius,radius,Path.Direction.CW);
         c.save();c.clipPath(clip);
-        p.setAlpha(opaque?0:215);c.drawBitmap(frosted(key),null,new RectF(0,0,1920,1080),p);p.setAlpha(255);
+        p.setAlpha(opaque?0:215);c.drawBitmap(frosted(key),null,screen,p);p.setAlpha(255);
         p.setShader(new LinearGradient(0,bounds.top,0,bounds.bottom,new int[]{opaque?0xff192334:0x664e6477,opaque?0xff192334:0x8a14202f},null,Shader.TileMode.CLAMP));c.drawRect(bounds,p);
         p.setShader(new LinearGradient(bounds.left,bounds.top,bounds.right,bounds.top,new int[]{0x05ffffff,0x66ffffff,0x12ffffff},null,Shader.TileMode.CLAMP));
         c.drawRect(bounds.left,bounds.top,bounds.right,bounds.top+1.4f,p);c.restore();

@@ -17,7 +17,8 @@ final class PhoneFlows {
     private PhoneFlows() {}
 
     /** A key check's outcome, in the household's terms. */
-    enum Verdict { OK, REFUSED, OFFLINE, BUSY }
+    /** VPN: the service refused the request because of a VPN or proxy on the TV, not the key (ApiFootball.Refused.vpn). */
+    enum Verdict { OK, REFUSED, OFFLINE, BUSY, VPN }
 
     // ---------------------------------------------------------------- Home Assistant
     interface HaNet {
@@ -51,12 +52,17 @@ final class PhoneFlows {
         private final Consumer<String> progress;
         private final SecureRandom random;
         private final String clientName;
+        /** The found Home Assistant as a person knows it ("homeassistant.local" when that name leads to it), else its address. */
+        private final java.util.function.Function<String, String> name;
         // One sign-in at a time, held only in memory for this session.
         private String state, pendingBase, pendingToken;
         private boolean pendingConsent;
 
         Ha(Supplier<String> found, HaNet net, HaSave save, Consumer<String> progress, SecureRandom random, String clientName) {
-            this.found = found; this.net = net; this.save = save; this.progress = progress; this.random = random; this.clientName = clientName;
+            this(found, net, save, progress, random, clientName, PhoneFlows::display);
+        }
+        Ha(Supplier<String> found, HaNet net, HaSave save, Consumer<String> progress, SecureRandom random, String clientName, java.util.function.Function<String, String> name) {
+            this.found = found; this.net = net; this.save = save; this.progress = progress; this.random = random; this.clientName = clientName; this.name = name;
         }
 
         @Override public PhoneSetupServer.Response handle(String action, PhoneSetupServer.Request r) throws Exception {
@@ -71,8 +77,13 @@ final class PhoneFlows {
         private String start(PhoneSetupServer.Request r, String problem, String typed) {
             String base = typed == null ? found.get() : typed.isEmpty() ? null : typed;
             StringBuilder b = new StringBuilder(PhonePages.error(problem));
-            if (base != null && typed == null) b.append("<p class=\"ok\">Home Assistant was found on your home network.</p>");
+            if (base != null && typed == null) {
+                String known; try { known = name.apply(base); } catch (RuntimeException e) { known = null; }
+                b.append("<p class=\"ok\">We found Home Assistant at <b>").append(PhonePages.esc(known == null || known.isEmpty() ? display(base) : known)).append("</b>.</p>");
+            }
             else if (base == null) b.append("<p>The TV couldn't find Home Assistant on your home network. Enter its address below, as you'd type it in a browser.</p>");
+            b.append(PhonePages.steps("Tap <b>Sign in with Home Assistant</b> below.", "Home Assistant's own sign-in page opens. Sign in there as usual.",
+                "You come back to this page, and the TV saves the connection. You'll see Connected here and on the TV."));
             b.append("<form method=\"post\" action=\"").append(PhonePages.esc(r.session)).append("/ha/start\">");
             String field = "<label for=\"address\">Home Assistant address</label><input id=\"address\" name=\"address\" inputmode=\"url\" autocapitalize=\"none\" autocorrect=\"off\" spellcheck=\"false\" placeholder=\"homeassistant.local:8123\" value=\""
                 + PhonePages.esc(base == null ? "" : display(base)) + "\">";
@@ -249,6 +260,8 @@ final class PhoneFlows {
                 case OK: return PhoneSetupServer.Response.done(PhonePages.done("Saved", service.phoneDone));
                 case REFUSED: progress.accept(service.name + " didn't accept that. Your phone shows what to try.");
                     return PhoneSetupServer.Response.page(form(r, service.name + " didn't accept that. Check you copied all of it, and that your account is confirmed."));
+                case VPN: progress.accept(service.vpnWords != null ? service.vpnWords : service.name + " refused the request because a VPN is on.");
+                    return PhoneSetupServer.Response.page(form(r, service.name + " refused the TV's request because a VPN is on (on the TV, not your phone). Your key may be fine: see the TV for what to do."));
                 case BUSY: progress.accept(service.name + " is busy. Your phone shows what to try.");
                     return PhoneSetupServer.Response.page(form(r, service.name + " is busy right now. Wait a minute, then try again."));
                 default: progress.accept("The TV couldn't reach " + service.name + ". Your phone shows what to try.");
@@ -257,12 +270,16 @@ final class PhoneFlows {
         }
         private String form(PhoneSetupServer.Request r, String problem) {
             StringBuilder b = new StringBuilder(PhonePages.error(problem)).append("<p>").append(PhonePages.esc(service.phoneIntro)).append("</p>");
+            // Numbered steps; the sign-up ("Get a free key") is the one prominent link, and the paste box is on this same page.
             String[] steps = new String[service.steps.length];
-            for (int i = 0; i < steps.length; i++) { PhoneService.Step s = service.steps[i]; steps[i] = PhonePages.esc(s.text) + (s.link == null ? "" : " " + PhonePages.link(s.link, s.linkLabel, true)); }
+            for (int i = 0; i < steps.length; i++) { PhoneService.Step s = service.steps[i];
+                steps[i] = PhonePages.esc(s.text) + (s.link == null ? "" : s.link.equals(service.signup) ? PhonePages.primary(s.link, s.linkLabel) : " " + PhonePages.link(s.link, s.linkLabel, true)); }
             b.append(PhonePages.steps(steps)).append("<form method=\"post\" action=\"").append(PhonePages.esc(r.session)).append("/save\">");
             for (PhoneService.Field f : service.fields) b.append(f.secret ? PhonePages.secret(f.name, f.label, f.hint)
                 : "<label for=\"" + PhonePages.esc(f.name) + "\">" + PhonePages.esc(f.label) + "</label><input id=\"" + PhonePages.esc(f.name) + "\" name=\"" + PhonePages.esc(f.name) + "\" autocapitalize=\"none\" autocorrect=\"off\" spellcheck=\"false\" placeholder=\"" + PhonePages.esc(f.hint) + "\">");
-            return PhonePages.page(service.title, b.append("<button type=\"submit\">Save on the TV</button></form><p class=\"muted\">").append(PhonePages.esc(service.note))
+            b.append("<button type=\"submit\">Save on the TV</button></form>");
+            if (service.next != null && !service.next.isEmpty()) b.append("<h2>What happens next</h2><p>").append(PhonePages.esc(service.next)).append("</p>");
+            return PhonePages.page(service.title, b.append("<p class=\"muted\">").append(PhonePages.esc(service.note))
                 .append(service.fields.stream().anyMatch(f -> f.secret) ? " It is kept encrypted on the TV and never shown again." : "").append("</p>").toString());
         }
     }

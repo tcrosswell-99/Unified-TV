@@ -44,9 +44,9 @@ import java.util.Set;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});
+    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});VpnGate.listen(()->{if(surface!=null)surface.postInvalidate();});
         getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);}
-    @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
+    @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;VpnGate.listen(null);super.onStop();}
     /**
      * SET-GLASS-09 / GLASS-04: Settings is a translucent sheet over Home, so Home is paused, not stopped, and stays on
      * screen. While Home can be seen (started), an appearance change saved by Settings (or by a timed preview going back)
@@ -64,6 +64,7 @@ public final class UnifiedPreviewActivity extends Activity {
             startActivity(new Intent(this, GalleryActivity.class)); } catch (Exception ignored) {}
     };
     @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery);
+        if (surface != null && surface.layer != null) surface.layer.input();   // the light wakes from an idle rest
         int minutes = wallpaperOn() ? WallpaperPolicy.idle(getSharedPreferences("unified-tv-preview",0).getInt("wallpaperIdle",-1)) : 5;
         if (minutes > 0) idleHandler.postDelayed(gallery, minutes * 60_000L); }
     @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
@@ -71,6 +72,15 @@ public final class UnifiedPreviewActivity extends Activity {
         Launch.returned(this);   // a visit (AirPin, NordVPN) that closed at once inside our task opens on its own instead
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
         guarded();
+        homeReport();
+    }
+    /**
+     * Settings brought Home back after Android's Home choice (DefaultHome.backHome): say what Android recorded, once the
+     * choice has had a moment to apply. Nothing is said, or changed, when Home opens any other way.
+     */
+    private void homeReport(){
+        if(surface==null||!getIntent().getBooleanExtra(DefaultHome.REPORT,false))return;getIntent().removeExtra(DefaultHome.REPORT);
+        surface.home();DefaultHome.settle(this,s->{if(surface!=null)surface.info(DefaultHome.words(s),6000L);});
     }
     /** The Kids app guard brought Home back: say why, briefly and kindly, with the dock as it was. */
     private void guarded(){
@@ -103,6 +113,17 @@ public final class UnifiedPreviewActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (hasWindowFocus() && surface != null && surface.key(event)) return true;
         return super.dispatchKeyEvent(event);
+    }
+
+    /**
+     * Memory pass (owner's TCL, 25 October 2026): Home hidden or memory short gives back what it can rebuild. Hidden
+     * (UI_HIDDEN or worse): the light's groups and pictures, the title scenes and shelf posters; seen but short
+     * (RUNNING_LOW or worse): every light group and scene except the one on screen. The app-wide caches are trimmed by
+     * PreviewApp. Nothing the household sees changes: what is dropped is made again when needed.
+     */
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (surface != null && level >= TRIM_MEMORY_RUNNING_LOW) surface.trim(level >= TRIM_MEMORY_UI_HIDDEN);
     }
 
     @Override protected void onDestroy() {
@@ -149,15 +170,15 @@ public final class UnifiedPreviewActivity extends Activity {
          */
         private boolean header = false; private int headerIndex = 0;
         /**
-         * UX-BUILD-01 / SET-BUILD-06: on a fresh install, once, a small card offers Build My TV. OK opens it; Back or any
-         * other key puts it away (that key still does its usual job); it also goes by itself. It never blocks Home, never
-         * returns once seen, and Build My TV stays in Settings > Apps & Shortcuts.
+         * SET-010: on a fresh install in Adults, once, the guided setup opens over Home (the Settings sidebar: Home stays
+         * visible and still underneath). Back or "Skip the guided setup" closes it; it never comes back by itself, and
+         * Settings > Updates & About > Guided setup runs it again. It replaces the earlier one-off Build My TV card
+         * (UX-BUILD-01): Build My TV is now the setup's "Your apps" step and stays in Settings > Apps & Shortcuts. An
+         * earlier install that already saw the card, or has a dock of its own, isn't asked.
          */
-        private boolean offer = false;
-        private final Runnable offerGone = () -> { offer = false; invalidate(); };
         private void offerOnce() {
-            if (offer || !HubBuilder.shouldOffer(prefs)) return;
-            offer = true; HubBuilder.markOffered(prefs); handler.removeCallbacks(offerGone); handler.postDelayed(offerGone, 20_000L);
+            if (!FirstRun.shouldStart(prefs)) return;
+            HubBuilder.markOffered(prefs); FirstRun.start(activity, null);
         }
         private List<String> pill = HomeUtilities.DEFAULT;
         /** Read on refresh, not per frame: AirPin LITE's package (null if absent) and whether NordVPN is installed. */
@@ -190,7 +211,7 @@ public final class UnifiedPreviewActivity extends Activity {
         void aim(String key, boolean animate) {
             if (layer == null) return;
             layer.setVisibility(light() ? GONE : VISIBLE);
-            if (!light() && app(key)) layer.show(key, animate && fadeMs() > 0);
+            if (!light() && app(key)) layer.show(lightKey(key), animate && fadeMs() > 0);
             layer.drift(drifting());
         }
         private String scene = "neutral", formerScene = null, sceneTitle = "";
@@ -235,7 +256,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 fixture();
                 AirPlayReceiver.refresh(activity, Preview.this::postInvalidate);
                 casting();
-                handler.postDelayed(this, 60_000L);
+                handler.postDelayed(this, toNextMinute());
             }
         };
         private final Runnable commitFocus = () -> {
@@ -254,7 +275,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (!key.equals(scene)) {
                 if (!(fading && (now - fadeAt) < fadeMs() / 2 && formerScene != null)) formerScene = scene;
                 scene = key; fadeAt = fadeMs() == 0 ? 0 : now; aim(key, true);
-                if (!key.startsWith("poster:")) prefs.edit().putString("scene", key).apply();
+                if (!key.startsWith("poster:")) prefs.edit().putString("scene", lightKey(key)).apply();
             }
             // The dock's title, halo and light change together (spec 32.6); a title's name waits for its scene.
             sceneTitle = title; titleHidden = false; titleAt = now + (fadeMs() == 0 || app(key) ? 0 : fadeMs() / 3);
@@ -284,6 +305,27 @@ public final class UnifiedPreviewActivity extends Activity {
         private boolean light() { return prefs.getBoolean("lightweight", false); }
         private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
         private static boolean app(String key) { return !key.equals("neutral") && !key.startsWith("poster:"); }
+        /** SET-022: an app scene's light as the household set it (the app's own colours or neutral, standard or subtle). */
+        private String lightKey(String key) { return app(key) ? AmbientMesh.lightId(key, prefs) : key; }
+        /** The clock changes on the minute: the next tick lands just after it, not up to a minute late. */
+        private static long toNextMinute() { return 60_000L - System.currentTimeMillis() % 60_000L + 50; }
+        /** onTrimMemory: see the activity's. Posters and scenes come back from Posters' disk cache when the shelf next opens. */
+        void trim(boolean hidden) {
+            if (layer != null) layer.trim(hidden);
+            backdrops.trim(hidden ? null : scene);
+            // The neutral scene's picture (1672 x 941, about 6 MB decoded) is drawn only for the neutral scene: hidden Home
+            // lets it go, and refresh() reads it again off the main thread (the illustrated gradient stands in meanwhile).
+            if (hidden) { posterArt.clear(); postersAt = 0; coast = null; }
+        }
+        private boolean coastLoading;
+        private void reloadCoast() {
+            if (coast != null || coastLoading) return;
+            coastLoading = true;
+            try { shelfWorker.execute(() -> { Bitmap b = null;
+                try (InputStream in = activity.getAssets().open("unified-preview-coast.png")) { b = BitmapFactory.decodeStream(in); } catch (Exception ignored) { }
+                Bitmap loaded = b; handler.post(() -> { coastLoading = false; if (loaded != null && coast == null) { coast = loaded; MaterialScene.wallpaper(loaded); invalidate(); } }); });
+            } catch (java.util.concurrent.RejectedExecutionException e) { coastLoading = false; }
+        }
         /**
          * Slow drifting light (spec 32.1): on by default; off with reduced motion, lightweight rendering, a still background,
          * or the TV's own animations switched off (respected, and explained once in plain words: stillOnce()).
@@ -313,7 +355,7 @@ public final class UnifiedPreviewActivity extends Activity {
             scanInstalled();
             loadDock();
             household(); utilities();
-            handler.postDelayed(clockTick, 60_000L);
+            handler.postDelayed(clockTick, toNextMinute());
             try (InputStream in = a.getAssets().open("unified-preview-coast.png")) {
                 BitmapFactory.Options opt = new BitmapFactory.Options();
                 opt.inSampleSize = 1;
@@ -323,7 +365,7 @@ public final class UnifiedPreviewActivity extends Activity {
             int saved = prefs.getInt("focus", 0);
             index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
             if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
-            prefs.edit().putString("scene",scene).apply();
+            prefs.edit().putString("scene",lightKey(scene)).apply();
             offerOnce();
             setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the utilities and Settings. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
@@ -331,7 +373,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         void refresh() {
-            handler.removeCallbacks(clockTick);handler.postDelayed(clockTick,60000);
+            handler.removeCallbacks(clockTick);handler.postDelayed(clockTick,toNextMinute());reloadCoast();
             fixtureFetched=0;fixture();
             if(moving)goBack();
             installed.clear();dock.clear();scanInstalled();loadDock();household();utilities();
@@ -358,7 +400,9 @@ public final class UnifiedPreviewActivity extends Activity {
             if (what == HomePreview.PILL || what == HomePreview.ALL) utilities();
             if (what == HomePreview.CLOCK || what == HomePreview.ALL) household();
             if (what == HomePreview.LIGHT || what == HomePreview.ALL) {
+                if (layer != null) layer.previewChange();   // drifts behind the sheet for a while as a live preview
                 aim(scene, false);
+                if (app(scene)) prefs.edit().putString("scene", lightKey(scene)).apply();   // the glass screens follow (SET-022)
                 if (fadeMs() == 0) { fadeAt = 0; formerScene = null; }   // Reduce motion mid-dissolve: the new scene, at once
             }
             invalidate();
@@ -513,14 +557,6 @@ public final class UnifiedPreviewActivity extends Activity {
                 code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER &&
                 code != KeyEvent.KEYCODE_BACK && code != KeyEvent.KEYCODE_MENU) return false;
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
-            if (offer && !menu && !moving) {
-                if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
-                    if (!down && e.getRepeatCount() == 0) { offer = false; handler.removeCallbacks(offerGone); EditLock.ask(activity, () -> BuildMyTvActivity.start(activity)); invalidate(); }
-                    return true;
-                }
-                if (code == KeyEvent.KEYCODE_BACK) { if (down) { offer = false; handler.removeCallbacks(offerGone); invalidate(); } return true; }
-                if (down) { offer = false; handler.removeCallbacks(offerGone); }
-            }
             if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
                 if (down && e.getRepeatCount() == 0) {
                     okDown = true;
@@ -700,7 +736,6 @@ public final class UnifiedPreviewActivity extends Activity {
             if (menu) drawMenu(c);
             if (moving) drawHint(c, "Left / Right: move     OK: save     Back: cancel");
 
-            if (offer && !menu && !moving && !shelf) drawOffer(c);
             if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
             float dim = oledDim(now);
             if (dim > 0) { paint.setShader(null); paint.setColor(Color.argb(Math.round(255 * dim), 0, 0, 0)); c.drawRect(-4, -4, W + 4, H + 4, paint); }
@@ -744,7 +779,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private final RectF sceneRect = new RectF();
         /** An app's own branded atmosphere, a title's own poster expanded, or the neutral scene; never another item's image. */
         private void drawScene(Canvas c, String key, int alpha, float drift, long now) {
-            Bitmap b = key.equals("neutral") ? null : key.startsWith("poster:") ? backdrops.get(key) : backdrops.app(key);
+            Bitmap b = key.equals("neutral") ? null : key.startsWith("poster:") ? backdrops.get(key) : backdrops.app(lightKey(key));
             if (b == null) {
                 drawNeutral(c, alpha);
                 // Spec 4.6 source order, last step: the neutral scene, dimmed, while the title itself stays named on screen.
@@ -819,7 +854,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 switch (id) {
                     case HomeUtilities.AIRPLAY: airPlay(c, cx, cy); break;
-                    case HomeUtilities.VPN: shield(c, cx, cy, VpnGate.current()); break;
+                    case HomeUtilities.VPN: shield(c, cx, cy, VpnGate.current()); flag(c, cx + 21, cy + 15, NordCountry.shown(NordCountry.code, VpnGate.current())); break;
                     case HomeUtilities.VOICE: microphone(c, cx, cy); break;
                     default: gear(c, cx, cy); break;
                 }
@@ -827,6 +862,9 @@ public final class UnifiedPreviewActivity extends Activity {
             if (header && headerIndex >= 0 && headerIndex < n) {
                 // The short label sits outside the icon, under the pill, only while it has focus.
                 String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel, AirPlayReceiver.ready, AirPlayReceiver.checking());
+                if (HomeUtilities.VOICE.equals(pill.get(headerIndex))) words = HomeUtilities.voiceLabel(prefs.getBoolean(Assistant.CONFIGURED, false));
+                String country = NordCountry.shown(NordCountry.code, VpnGate.current());
+                if (HomeUtilities.VPN.equals(pill.get(headerIndex)) && country != null) words += " · " + NordCountry.name(country);
                 float cx = Math.min(left + 64 + headerIndex * 96, W - 80 - 6.5f * words.length());
                 text(c, words, cx, 186, 23, WHITE, false, Paint.Align.CENTER);
             }
@@ -836,6 +874,26 @@ public final class UnifiedPreviewActivity extends Activity {
          * a connected VPN; a slash when disconnected; a dot while checking; nothing inside when unknown. It never says
          * Live TV is protected: that takes the automatic check (LiveTvProtection), which this TV cannot make.
          */
+        /**
+         * Owner request, 25 October 2026: NordVPN's country as a small round flag beside the shield, only while NordVPN says
+         * it is connected and Android reports a VPN (NordCountry). The TV's emoji font draws the flag, clipped to a circle;
+         * a TV without flag emoji shows the two-letter code instead. Never a claim of protection.
+         */
+        private final Path flagClip = new Path(); private final Paint flagType = new Paint(Paint.ANTI_ALIAS_FLAG); private String flagFor; private boolean flagGlyph;
+        private void flag(Canvas c, float x, float y, String iso) {
+            String f = NordCountry.flag(iso); if (f == null) return;
+            if (!iso.equals(flagFor)) { flagFor = iso; flagType.setTextSize(30); flagGlyph = flagType.hasGlyph(f); }
+            float r = 10;
+            if (flagGlyph) {
+                flagClip.reset(); flagClip.addCircle(x, y, r, Path.Direction.CW);
+                c.save(); c.clipPath(flagClip); flagType.setTextAlign(Paint.Align.CENTER); flagType.setTextSize(30); flagType.setColor(WHITE);
+                Paint.FontMetrics m = flagType.getFontMetrics(); c.drawText(f, x, y - (m.ascent + m.descent) / 2, flagType); c.restore();
+            } else {
+                paint.setShader(null); paint.setColor(0xCC1B2333); c.drawCircle(x, y, r, paint);
+                text(c, iso.toUpperCase(Locale.ROOT), x, y + 4, 11, WHITE, true, Paint.Align.CENTER);
+            }
+            outline.setColor(0xB3FFFFFF); outline.setStrokeWidth(1.5f); c.drawCircle(x, y, r, outline); outline.setStrokeWidth(2);
+        }
         private void shield(Canvas c, float cx, float cy, VpnGate.State state) {
             iconPaint(state == VpnGate.State.CONNECTED ? 245 : 200, false);
             glyph.reset(); glyph.moveTo(cx, cy - 20); glyph.lineTo(cx + 16, cy - 14); glyph.lineTo(cx + 16, cy - 1);
@@ -921,7 +979,8 @@ public final class UnifiedPreviewActivity extends Activity {
             c.drawPath(glyph, icon);
         }
         private void microphone(Canvas c, float cx, float cy) {
-            iconPaint(235, false);
+            // Owner's TCL, 25 October 2026: not lit as if an assistant were ready when none is set up (UX-UTILITY-02).
+            iconPaint(prefs.getBoolean(Assistant.CONFIGURED, false) ? 235 : 150, false);
             c.drawRoundRect(cx - 7, cy - 18, cx + 7, cy + 4, 7, 7, icon);
             rect.set(cx - 13, cy - 8, cx + 13, cy + 12); c.drawArc(rect, 0, 180, false, icon);
             c.drawLine(cx, cy + 12, cx, cy + 19, icon); c.drawLine(cx - 7, cy + 19, cx + 7, cy + 19, icon);
@@ -972,7 +1031,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 c.scale(scale, scale, mid, cy);
                 if(selected){
                     // A soft halo in the app's own colour behind the lifted tile (spec 32.3).
-                    int glow=AmbientMesh.accent(item.id)&0x00FFFFFF;
+                    int glow=AmbientMesh.accent(lightKey(item.id))&0x00FFFFFF;
                     paint.setShader(new android.graphics.RadialGradient(mid,cy,170*s,new int[]{0x5A000000|glow,0x00000000|glow},null,Shader.TileMode.CLAMP));
                     c.drawCircle(mid,cy,170*s,paint);paint.setShader(null);
                     c.save();c.translate(mid,cy+97*s);c.scale(1,.27f);
@@ -1047,7 +1106,7 @@ public final class UnifiedPreviewActivity extends Activity {
             }
             if (posters.isEmpty() && postersLoading) text(c, "Finding your films and TV…", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
             // NAV-05: an unreachable or empty library is a friendly state, never an address prompt; OK on the card reconnects.
-            else if (posters.isEmpty() && libraryReady && postersAt > 0) text(c, Profiles.kids(prefs) ? "Nothing in the Kids folders yet. Ask an adult to add some." : "Your films and TV aren't answering right now. OK opens the Library to reconnect.", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
+            else if (posters.isEmpty() && libraryReady && postersAt > 0) text(c, Profiles.kids(prefs) ? "Nothing in the Kids folders yet. Ask an adult to add some." : HomeShelf.unanswered(), 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
         }
 
         /** A title's own server artwork, or a plain titled card: never another title's picture. */
@@ -1142,13 +1201,6 @@ public final class UnifiedPreviewActivity extends Activity {
             text(c, s, 960, 1057, 21, 0xEEFFFFFF, false, Paint.Align.CENTER);
         }
 
-        /** The one-time Build My TV card (offerOnce): small, above the dock, gone after a key or twenty seconds. */
-        private void drawOffer(Canvas c) {
-            glass(c, 560, 560, 1360, 690, 28, 0xDF111A2B, 0x88FFFFFF);
-            text(c, "Build My TV  ·  optional", 960, 612, 30, WHITE, true, Paint.Align.CENTER);
-            text(c, "OK: choose your music, films and apps     Back: not now", 960, 658, 23, MUTED, false, Paint.Align.CENTER);
-        }
-
         private void drawNotice(Canvas c, String s) {
             if (s.length() <= 65) {
                 glass(c, 365, 230, 1555, 320, 24, 0xDF111A2B, 0x88FFFFFF);
@@ -1173,7 +1225,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void glass(Canvas c, float l, float t, float r, float b, float radius, int colour, int stroke) {
             rect.set(l,t,r,b);
-            String key=scene.startsWith("poster:")?"neutral":scene;
+            String key=scene.startsWith("poster:")?"neutral":lightKey(scene);
             MaterialScene.glass(c,rect,radius,key,prefs.getBoolean("opaque",false)||prefs.getBoolean("highContrast",false));
         }
 

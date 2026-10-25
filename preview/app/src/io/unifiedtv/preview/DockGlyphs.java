@@ -7,8 +7,11 @@ import android.graphics.drawable.Drawable;
  * white, at the six-place tile's design size (about 100 px across, centred on cx, cy). No brand artwork is copied. Home
  * draws them on its glass tiles; Build My TV shows the same glyph beside each service through drawable().
  *
- * YouTube (and SmartTube, which the household uses as its YouTube: owner, 25 October 2026): a screen on a stand with a
- * play triangle. It borrows only the play-button idea; it is not the official YouTube mark (no red rounded rectangle).
+ * Brand marks (owner, 25 October 2026: recognisable WHITE marks for YouTube, Netflix, Disney+ and BBC iPlayer): simple
+ * monochrome shapes drawn here in code, used only to identify which app a tile opens; no image file is copied and no
+ * colour is used. YouTube's rounded play button (also on SmartTube's tile, which the household uses as its YouTube),
+ * Netflix's N ribbon, Disney+'s arc and plus, BBC's three lettered blocks. The names and marks belong to their owners
+ * (preview/THIRD_PARTY.md). Live TV is a television on a stand; Music a bold pair of beamed notes.
  *
  * Drawn for 10-foot viewing (owner, 25 October 2026: Music looked "janky", Live TV "not perfect"): one stroke weight
  * (5 to 6 design px, round ends), whole shapes rather than thin details, symmetric where the idea allows, and every glyph
@@ -27,33 +30,38 @@ final class DockGlyphs {
         icon.setShadowLayer(1.5f,0,1,0x80000000);   // a microscopic shadow keeps it legible on bright pictures
     }
     /** Draws glyph g centred on cx, cy; {@code path} and {@code rect} are reused scratch objects (nothing allocated per frame). */
+    private static final Typeface BOLD=Typeface.create("sans-serif",Typeface.BOLD);
+    /** The BBC blocks' letters: one shared paint (drawn on the main thread only). */
+    private static final Paint text=new Paint(Paint.ANTI_ALIAS_FLAG);
     static void draw(Canvas c,String g,float cx,float cy,Paint icon,Path path,RectF rect,Drawable fallback){
         paint(icon,240,false);icon.setStrokeWidth(5);
         switch(g){
             case "shelf":   // Library: three posters on a shelf
                 for(int k=-1;k<=1;k++){rect.set(cx+k*30-12,cy-34+Math.abs(k)*6,cx+k*30+12,cy+28);c.drawRoundRect(rect,4,4,icon);}
                 c.drawLine(cx-52,cy+40,cx+52,cy+40,icon);break;
-            case "play":   // YouTube (and SmartTube): a screen on a stand with a softly rounded play triangle
-                icon.setStrokeWidth(6);rect.set(cx-44,cy-33,cx+44,cy+27);c.drawRoundRect(rect,14,14,icon);c.drawLine(cx-17,cy+41,cx+17,cy+41,icon);
-                paint(icon,240,true);icon.setStyle(Paint.Style.FILL_AND_STROKE);icon.setStrokeWidth(5);
-                path.reset();path.moveTo(cx-9,cy-16);path.lineTo(cx+15,cy-3);path.lineTo(cx-9,cy+10);path.close();c.drawPath(path,icon);break;
-            case "n":   // a plain geometric N
-                icon.setStrokeWidth(13);icon.setStrokeCap(Paint.Cap.SQUARE);path.reset();path.moveTo(cx-20,cy+38);path.lineTo(cx-20,cy-38);path.lineTo(cx+20,cy+38);path.lineTo(cx+20,cy-38);c.drawPath(path,icon);break;
-            case "arcplus":   // an arc over a plus
-                rect.set(cx-46,cy-30,cx+46,cy+50);c.drawArc(rect,200,140,false,icon);
-                c.drawLine(cx,cy-4,cx,cy+32,icon);c.drawLine(cx-18,cy+14,cx+18,cy+14,icon);break;
-            case "blocks":   // three square blocks
-                paint(icon,240,true);for(int k=-1;k<=1;k++){rect.set(cx+k*32-13,cy-13,cx+k*32+13,cy+13);c.drawRoundRect(rect,3,3,icon);}break;
-            case "broadcast":   // Live TV: a broadcast mast (an A-frame with one crossbar) sending waves out on both sides
-                paint(icon,240,true);c.drawCircle(cx,cy-18,7.5f,icon);
-                paint(icon,240,false);icon.setStrokeWidth(6);
-                c.drawLine(cx-3,cy-8,cx-18,cy+41,icon);c.drawLine(cx+3,cy-8,cx+18,cy+41,icon);c.drawLine(cx-10,cy+19,cx+10,cy+19,icon);
-                for(int k=0;k<2;k++){float r=k==0?21:37;rect.set(cx-r,cy-18-r,cx+r,cy-18+r);c.drawArc(rect,140,80,false,icon);c.drawArc(rect,-40,80,false,icon);}break;
-            case "note":   // Music: two beamed notes, with tilted oval heads, stems on their right and one solid, rising beam
-                paint(icon,240,true);   // stems, then the beam, then the heads: each shape's tiny shadow falls naturally
-                rect.set(cx-14,cy-28,cx-8,cy+29);c.drawRect(rect,icon);rect.set(cx+30,cy-38,cx+36,cy+21);c.drawRect(rect,icon);
-                path.reset();path.moveTo(cx-14,cy-30);path.lineTo(cx+36,cy-40);path.lineTo(cx+36,cy-28);path.lineTo(cx-14,cy-18);path.close();c.drawPath(path,icon);
-                for(int k=0;k<2;k++){float hx=k==0?cx-23:cx+21,hy=k==0?cy+30:cy+22;c.save();c.rotate(-20,hx,hy);rect.set(hx-13.5f,hy-10,hx+13.5f,hy+10);c.drawOval(rect,icon);c.restore();}
+            case "play":   // YouTube (and SmartTube's tile, named YouTube): the rounded play button, its triangle cut out
+                paint(icon,245,true);path.reset();path.setFillType(Path.FillType.EVEN_ODD);
+                rect.set(cx-46,cy-32,cx+46,cy+32);path.addRoundRect(rect,20,20,Path.Direction.CW);
+                path.moveTo(cx-12,cy-16);path.lineTo(cx+18,cy);path.lineTo(cx-12,cy+16);path.close();c.drawPath(path,icon);path.setFillType(Path.FillType.WINDING);break;
+            case "n":   // Netflix: the N ribbon, two shaded uprights behind one bright diagonal band
+                paint(icon,170,true);rect.set(cx-25,cy-40,cx-11,cy+40);c.drawRect(rect,icon);rect.set(cx+11,cy-40,cx+25,cy+40);c.drawRect(rect,icon);
+                paint(icon,250,true);path.reset();path.moveTo(cx-25,cy-40);path.lineTo(cx-11,cy-40);path.lineTo(cx+25,cy+40);path.lineTo(cx+11,cy+40);path.close();c.drawPath(path,icon);break;
+            case "arcplus":   // Disney+: the sweeping arc over a plus
+                icon.setStrokeWidth(6);rect.set(cx-50,cy-30,cx+50,cy+62);c.drawArc(rect,192,160,false,icon);
+                paint(icon,245,true);c.drawCircle(cx-48,cy+12,4,icon);   // the arc's bright start
+                paint(icon,240,false);icon.setStrokeWidth(6);c.drawLine(cx+4,cy-6,cx+4,cy+34,icon);c.drawLine(cx-16,cy+14,cx+24,cy+14,icon);break;
+            case "blocks":   // BBC: three square blocks, each with its letter
+                paint(icon,240,true);text.setTextAlign(Paint.Align.CENTER);text.setTextSize(26);text.setTypeface(BOLD);text.setColor(0xFF172030);
+                for(int k=-1;k<=1;k++){rect.set(cx+k*34-15,cy-15,cx+k*34+15,cy+15);c.drawRect(rect,icon);c.drawText(k==1?"C":"B",cx+k*34,cy+9.5f,text);}break;
+            case "tvset":   // Live TV: a television set, its screen on a stand, with two short aerials (never a mast)
+                icon.setStrokeWidth(6);rect.set(cx-44,cy-28,cx+44,cy+26);c.drawRoundRect(rect,10,10,icon);
+                c.drawLine(cx-4,cy-30,cx-17,cy-45,icon);c.drawLine(cx+4,cy-30,cx+17,cy-45,icon);
+                c.drawLine(cx,cy+26,cx,cy+36,icon);c.drawLine(cx-22,cy+40,cx+22,cy+40,icon);break;
+            case "note":   // Music: two bold beamed notes, solid tilted heads, stems on the right, one thick rising beam
+                paint(icon,245,true);
+                rect.set(cx-8,cy-26,cx,cy+28);c.drawRect(rect,icon);rect.set(cx+34,cy-36,cx+42,cy+18);c.drawRect(rect,icon);
+                path.reset();path.moveTo(cx-8,cy-28);path.lineTo(cx+42,cy-40);path.lineTo(cx+42,cy-25);path.lineTo(cx-8,cy-13);path.close();c.drawPath(path,icon);
+                for(int k=0;k<2;k++){float hx=k==0?cx-18:cx+24,hy=k==0?cy+29:cy+19;c.save();c.rotate(-22,hx,hy);rect.set(hx-16,hy-11.5f,hx+16,hy+11.5f);c.drawOval(rect,icon);c.restore();}
                 break;
             case "singlenote":   // one note with a flag
                 paint(icon,240,true);c.drawCircle(cx-10,cy+24,13,icon);

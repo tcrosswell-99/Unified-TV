@@ -27,7 +27,20 @@ final class VpnGate {
         catch(RuntimeException e){return false;}
     }
     static String statusLabel(State state){switch(state){case CONNECTED:return "VPN ● Connected";case DISCONNECTED:return "VPN ○ Disconnected";case CHECKING:return "VPN ◌ Checking";default:return "VPN ◇ Unknown";}}
-    static synchronized String label(Context c){long now=android.os.SystemClock.elapsedRealtime();if(!checking&&(sampledAt==0||now-sampledAt>2000)){int gen=begin();Context app=c.getApplicationContext();new Thread(()->commit(gen,inspect(app),android.os.SystemClock.elapsedRealtime()),"vpn-status").start();}return statusLabel(sampled);}
+    /**
+     * The shield's words, sampled off the main thread at most every two seconds: one check at a time on one shared worker
+     * (never a thread per redraw), and a changed answer asks Home to redraw the pill (listen), so it never stays on
+     * "Checking" after the answer has arrived.
+     */
+    static synchronized String label(Context c){long now=android.os.SystemClock.elapsedRealtime();
+        if(!checking&&(sampledAt==0||now-sampledAt>2000)){int gen=begin();Context app=c.getApplicationContext();
+            try{WORKER.execute(()->{State before=sampled;boolean kept=commit(gen,inspect(app),android.os.SystemClock.elapsedRealtime());Runnable l=listener;if(kept&&before!=sampled&&l!=null)l.run();});}
+            catch(RuntimeException e){synchronized(VpnGate.class){checking=false;}}}
+        return statusLabel(sampled);}
+    private static final java.util.concurrent.ExecutorService WORKER=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"vpn-status");t.setDaemon(true);return t;});
+    /** Home's redraw while it is on screen (null otherwise); called from the worker, so it must be thread-safe (postInvalidate). */
+    static volatile Runnable listener;
+    static void listen(Runnable redraw){listener=redraw;}
     static ConnectivityManager.NetworkCallback watch(Activity a,Runnable changed){
         ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback(){
             private void refresh(){a.runOnUiThread(()->{invalidate();changed.run();});}

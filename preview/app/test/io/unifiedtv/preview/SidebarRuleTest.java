@@ -35,6 +35,7 @@ public class SidebarRuleTest {
     static final Set<String> SETUP=new TreeSet<>(Arrays.asList(
         "BuildMyTvActivity",         // Build My TV: choosing services and arranging Home (wide)
         "ConnectionsActivity",       // signing in to a media server by typing (advanced)
+        "FirstRunActivity",          // the guided setup (SET-010): Welcome, remote, apps, media server, finish
         "GalleryActivity",           // Gallery settings (its slideshow is shown full screen in place of the sheet)
         "KidsActivity",              // Profiles & Family > Kids settings
         "LibrarySetupActivity",      // choosing the NAS folders for Your Films & TV

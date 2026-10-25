@@ -126,6 +126,20 @@ tizen run -p UTVFRAME00.UnifiedTV -s <device>
 
 Follow [VPN_PROTECTION.md](VPN_PROTECTION.md). It uses `preview/tools/vpn_check.py`, which needs Python and the repository's `tools/requirements.txt`.
 
+## Memory and CPU check
+
+`preview/tools/mem_check.py` measures how much memory and CPU Unified TV uses on the TV, and how many of its frames were janky, over a few minutes. It needs only Python (no `tools/requirements.txt`) and the `adb` from the PC setup above, already connected. It changes nothing on the TV except the app's own frame counters, and prints the model and Android version but never a serial number or an address.
+
+```powershell
+$env:ADB = "$HOME\platform-tools\adb.exe"
+$env:ANDROID_SERIAL = $tv
+python preview\tools\mem_check.py --minutes 3 --every 15
+```
+
+Leave Home on screen for the first run, then repeat while moving along the dock, and once with the library open. It measures the Unified TV build it finds (the review build first); add `--package io.unifiedtv.preview` to measure the preview instead.
+
+**Expected:** one line every 15 seconds (`PSS … MB  native …  java …  graphics …  CPU …%  frames … janky …%  TV free … MB  pressure …`), then a summary. The target for Home left alone on the 2 GB TCL is a few per cent of CPU (not yet measured on the TV): the background's drift is the only thing still drawing, and it rests after ten minutes without a key. Paste the summary into your report. Settings > Updates & About > Advanced > Owner diagnostics also says, under **Home background**, whether the light was moving and at how many frames a second, and shows the TV's own animation scales.
+
 ## Reporting back
 
 Reply in the chat, or open a GitHub issue **without** addresses, account names or family photos, using:

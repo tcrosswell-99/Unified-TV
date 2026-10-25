@@ -44,7 +44,8 @@ public class PhoneFlowsTest {
     @Test public void signInWithHomeAssistantExchangesTheCodeOnTheTvAndKeepsOneToken() throws Exception {
         FakeHa net = new FakeHa(); Saved saved = new Saved(); PhoneFlows.Ha flow = ha(net, saved, "http://192.168.1.5:8123");
         String first = flow.handle("", req("GET", null, null)).html;
-        assertTrue("prefilled with what the TV found", first.contains("Home Assistant was found on your home network")); assertTrue(first.contains("value=\"http://192.168.1.5:8123\""));
+        assertTrue("prefilled with what the TV found, named", first.contains("We found Home Assistant at <b>http://192.168.1.5:8123</b>."));
+        assertTrue("numbered steps say what happens", first.contains("<ol>") && first.contains("Home Assistant's own sign-in page opens")); assertTrue(first.contains("value=\"http://192.168.1.5:8123\""));
         assertTrue(first.contains("Sign in with Home Assistant")); assertTrue(first.contains("Paste a long-lived token instead"));
         // Plain HTTP: one plain question, nothing started yet.
         String ask = flow.handle("ha/start", req("POST", map("address", "http://192.168.1.5:8123", "how", "signin"), null)).html;

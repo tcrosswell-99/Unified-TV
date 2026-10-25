@@ -9,7 +9,8 @@ package io.unifiedtv.preview;
  * <ul>
  * <li>{@link #DOCK}: the dock's tiles or size (the household's list, this profile's 6 or 8 places, or the profile itself,
  *     which brings that profile's size and labels).</li>
- * <li>{@link #LIGHT}: the app light behind Home ({@link AmbientLayer#MOTION_KEYS}: Reduce motion, Keep still, Lightweight).</li>
+ * <li>{@link #LIGHT}: the app light behind Home ({@link AmbientLayer#LIGHT_KEYS}: Reduce motion, Keep still, Lightweight,
+ *     and SET-022 intensity and colour).</li>
  * <li>{@link #PILL}: the utility pill's icons and order.</li>
  * <li>{@link #CLOCK}: the household's time zone, so the clock shows the new time.</li>
  * <li>{@link #LOOK}: read as Home draws (label visibility, high contrast, reduced transparency, text size): a repaint.</li>
@@ -25,7 +26,7 @@ final class HomePreview {
     static int of(String key){
         if(key==null)return ALL;
         if(key.equals("dock")||key.equals(Profiles.PREF)||key.startsWith(DockCapacity.KEY))return DOCK;
-        if(AmbientLayer.MOTION_KEYS.contains(key))return LIGHT;
+        if(AmbientLayer.LIGHT_KEYS.contains(key))return LIGHT;
         if(key.equals(HomeUtilities.PREF))return PILL;
         if(key.equals(HouseholdSettings.ZONE))return CLOCK;
         if(key.startsWith(DockLabels.KEY)||key.equals("highContrast")||key.equals("opaque")||key.equals(Accessibility.TEXT_SIZE))return LOOK;
