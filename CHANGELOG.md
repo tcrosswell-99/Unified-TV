@@ -43,6 +43,7 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **Media server search on Android TVs:** every media server looked "unreadable" ("A media server answered, but didn't let the TV see its library"), because Android's XML parser rejects the hardening options the app set before reading a server's description. The app now refuses any DOCTYPE or entity itself and applies only the options the parser supports. Found from the owner's TCL video; the Synology device list showed the TV allowed. **Not tested** on a television yet.
 - **Smoke/CO alarms, Android and Frame** (from an independent review of the alarm code against the spec; unit-tested only):
   - An alarm that cleared and re-sounded while the TV was disconnected now brings the full screen back, unacknowledged. A Home Assistant restart resets its times, so an acknowledged alarm still sounding may ask to be acknowledged again: deliberately on the safe side.
   - An alarm missing from Home Assistant's list on reconnect (HA still starting, or an integration failed) is no longer cleared by its absence; it stays, marked "Detector not responding", until its detector reports off.

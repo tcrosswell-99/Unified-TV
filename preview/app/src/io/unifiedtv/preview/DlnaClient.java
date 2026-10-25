@@ -23,8 +23,27 @@ final class DlnaClient {
         InetAddress a=InetAddress.getByName(u.getHost());byte[] raw=a.getAddress();boolean ula=raw.length==16&&(raw[0]&0xfe)==0xfc;
         if(!(a.isSiteLocalAddress()||a.isLinkLocalAddress()||ula)||a.isLoopbackAddress()||a.isAnyLocalAddress())throw new IOException("Not a local server");return u;
     }
+    /**
+     * UPnP descriptions and DIDL-Lite never need a DOCTYPE, so any document declaring one (or an entity) is refused here,
+     * before any parser sees it. This is the rule on every TV: Android's own parser rejects the Xerces hardening features
+     * below with ParserConfigurationException, which made every media server look unreadable on the TCL (25 October 2026).
+     */
     static Document xml(byte[] bytes)throws Exception{
-        DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setExpandEntityReferences(false);return f.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
+        if(declaresDoctype(bytes))throw new IOException("DOCTYPE not allowed");
+        return harden(DocumentBuilderFactory.newInstance()).newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
+    }
+    /** Namespace-aware, plus each extra protection the platform's parser supports; an unsupported one is skipped, never fatal. */
+    static DocumentBuilderFactory harden(DocumentBuilderFactory f){
+        f.setNamespaceAware(true);
+        String[][] features={{"http://apache.org/xml/features/disallow-doctype-decl","true"},{"http://xml.org/sax/features/external-general-entities","false"},{"http://xml.org/sax/features/external-parameter-entities","false"}};
+        for(String[] x:features)try{f.setFeature(x[0],Boolean.parseBoolean(x[1]));}catch(ParserConfigurationException|RuntimeException unsupported){}
+        try{f.setExpandEntityReferences(false);}catch(RuntimeException unsupported){}
+        return f;
+    }
+    /** "<!DOCTYPE" or "<!ENTITY" anywhere, in any case, with zero bytes dropped so UTF-16 text is caught too. */
+    static boolean declaresDoctype(byte[] bytes){
+        StringBuilder b=new StringBuilder(bytes.length);for(byte x:bytes)if(x!=0)b.append((char)(x&0xff));
+        String s=b.toString().toLowerCase(Locale.ROOT);return s.contains("<!doctype")||s.contains("<!entity");
     }
     static String value(Element e,String name){NodeList n=e.getElementsByTagNameNS("*",name);return n.getLength()==0?"":n.item(0).getTextContent();}
     /** The home network under any VPN, set by the library screen; null uses the default route. */

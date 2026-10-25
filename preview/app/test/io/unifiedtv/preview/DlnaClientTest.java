@@ -11,6 +11,24 @@ public class DlnaClientTest {
         String body="<!DOCTYPE root [<!ENTITY secret SYSTEM 'file:///does-not-exist'>]><root>&secret;</root>";
         assertThrows(Exception.class,()->DlnaClient.xml(body.getBytes(StandardCharsets.UTF_8)));
     }
+    @Test public void doctypeRefusedWhateverTheParser(){
+        assertTrue(DlnaClient.declaresDoctype("<?xml version='1.0'?><!doctype root><root/>".getBytes(StandardCharsets.UTF_8)));
+        assertTrue(DlnaClient.declaresDoctype("<!DOCTYPE r [<!ENTITY a 'x'>]><r/>".getBytes(StandardCharsets.UTF_16LE)));
+        assertFalse(DlnaClient.declaresDoctype("<root><![CDATA[x]]></root>".getBytes(StandardCharsets.UTF_8)));
+    }
+    /** Android's parser accepts only the namespace and validation features; the rest must not stop a description being read. */
+    @Test public void androidStyleParserStillReadsDescriptions()throws Exception{
+        javax.xml.parsers.DocumentBuilderFactory real=javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        javax.xml.parsers.DocumentBuilderFactory android=new javax.xml.parsers.DocumentBuilderFactory(){
+            @Override public javax.xml.parsers.DocumentBuilder newDocumentBuilder()throws javax.xml.parsers.ParserConfigurationException{real.setNamespaceAware(isNamespaceAware());return real.newDocumentBuilder();}
+            @Override public void setAttribute(String n,Object v){throw new IllegalArgumentException(n);}
+            @Override public Object getAttribute(String n){throw new IllegalArgumentException(n);}
+            @Override public void setFeature(String n,boolean v)throws javax.xml.parsers.ParserConfigurationException{if(n.endsWith("/namespaces"))setNamespaceAware(v);else throw new javax.xml.parsers.ParserConfigurationException(n);}
+            @Override public boolean getFeature(String n)throws javax.xml.parsers.ParserConfigurationException{throw new javax.xml.parsers.ParserConfigurationException(n);}
+        };
+        org.w3c.dom.Element root=DlnaClient.harden(android).newDocumentBuilder().parse(new java.io.ByteArrayInputStream("<root xmlns='urn:schemas-upnp-org:device-1-0'><device><friendlyName>Home NAS</friendlyName></device></root>".getBytes(StandardCharsets.UTF_8))).getDocumentElement();
+        assertEquals("Home NAS",DlnaClient.value(root,"friendlyName"));
+    }
     @Test public void namespacedMetadataAndSoapEscaping()throws Exception{
         assertEquals("Films & TV",DlnaClient.value(DlnaClient.xml("<root xmlns:d='urn:example'><d:title>Films &amp; TV</d:title></root>".getBytes(StandardCharsets.UTF_8)).getDocumentElement(),"title"));
         assertEquals("folder&amp;&lt;&gt;&quot;&apos;",DlnaClient.escape("folder&<>\"'"));
