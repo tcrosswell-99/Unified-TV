@@ -131,4 +131,35 @@ public class AlertPolicyTest {
         p.update(HALL,"smoke","Hall","on",0,false);p.queueRing(1000);p.update(HALL,"smoke","Hall","off",2000,false);assertEquals(1,p.ringAfterAlarm(45999));
         AlertPolicy q=new AlertPolicy();q.update(HALL,"smoke","Hall","on",0,false);q.queueRing(1000);q.update(HALL,"smoke","Hall","off",2000,false);assertEquals(-1,q.ringAfterAlarm(46000));
     }
+    // Ring rules RING-01..04 (owner, 25 October 2026).
+    private static org.json.JSONObject attrs(String json){try{return new org.json.JSONObject(json);}catch(Exception e){throw new RuntimeException(e);}}
+    @Test public void ring01OrdinaryMotionNeverCounts(){
+        String door="binary_sensor.front_door_ding",person="binary_sensor.front_door_motion";
+        assertEquals(AlertPolicy.RING_NONE,AlertPolicy.ringKind(person,door,person,"off","on",attrs("{\"friendly_name\":\"Front Door Motion\"}")));
+        assertEquals("motion that isn't the chosen person sensor",AlertPolicy.RING_NONE,AlertPolicy.ringKind("binary_sensor.drive_motion",door,"binary_sensor.front_door_person","off","on",null));
+        assertEquals("a Ring motion event is not a person",AlertPolicy.RING_NONE,AlertPolicy.ringKind("event.front_door_motion",door,"event.front_door_motion","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"motion\"}")));
+    }
+    @Test public void ring02OnlyAConfirmedPersonCounts(){
+        String door="binary_sensor.front_door_ding";
+        assertEquals("ring-mqtt motion sensor that saw a person",AlertPolicy.RING_PERSON,AlertPolicy.ringKind("binary_sensor.front_door_motion",door,"binary_sensor.front_door_motion","off","on",attrs("{\"personDetected\":true}")));
+        assertEquals("a dedicated person sensor",AlertPolicy.RING_PERSON,AlertPolicy.ringKind("binary_sensor.g4_person_detected",door,"binary_sensor.g4_person_detected","off","on",attrs("{\"friendly_name\":\"G4 Person detected\"}")));
+        assertEquals("an event entity that says person",AlertPolicy.RING_PERSON,AlertPolicy.ringKind("event.front_door_motion",door,"event.front_door_motion","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"human\"}")));
+        assertEquals("staying on is not a new person",AlertPolicy.RING_NONE,AlertPolicy.ringKind("binary_sensor.g4_person_detected",door,"binary_sensor.g4_person_detected","on","on",null));
+    }
+    @Test public void ring02RepeatedPersonEventsGiveOneToast(){AlertPolicy p=new AlertPolicy();
+        assertTrue(p.acceptPerson("binary_sensor.p",1000));assertFalse(p.acceptPerson("binary_sensor.p",30000));assertFalse(p.acceptPerson("binary_sensor.p",60999));
+        assertTrue(p.acceptPerson("binary_sensor.p",61000));assertTrue("another camera is its own visit",p.acceptPerson("binary_sensor.q",30000));
+        assertEquals(5000,AlertPolicy.PERSON_TOAST_MS);
+    }
+    @Test public void ring03APressIsAPressAndNeverAPerson(){
+        String door="binary_sensor.front_door_ding";
+        assertEquals(AlertPolicy.RING_PRESS,AlertPolicy.ringKind(door,door,"binary_sensor.front_door_person","off","on",null));
+        assertEquals(AlertPolicy.RING_PRESS,AlertPolicy.ringKind("event.front_door_ding","event.front_door_ding","","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"ding\"}")));
+        assertEquals("a restart is not a press",AlertPolicy.RING_NONE,AlertPolicy.ringKind("event.front_door_ding","event.front_door_ding","","unavailable","2026-10-25T10:05:00Z",null));
+    }
+    @Test public void ring04APressDuringAnEmergencyIsKeptForLater(){AlertPolicy p=new AlertPolicy();
+        p.update(HALL,"smoke","Hall","on",0,false);assertTrue(p.acceptRing("door:1",1000));p.queueRing(1000);
+        assertEquals("never while the alarm is active",0,p.ringAfterAlarm(5000));assertEquals(1000,p.queuedRingAt());
+        p.update(HALL,"smoke","Hall","off",6000,false);assertEquals(1,p.ringAfterAlarm(7000));
+    }
 }

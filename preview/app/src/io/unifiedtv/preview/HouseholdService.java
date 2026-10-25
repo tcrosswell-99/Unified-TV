@@ -109,14 +109,14 @@ public final class HouseholdService extends Service {
                 if(value.optInt("id")==STATES){statesPending=false;List<String[]> all=AlertPolicy.detectorsIn(text,STATES);if(all!=null)snapshot(ws,all);return;}
                 if(value.optInt("id")==1)update(value.optBoolean("success")?"Listening · actual triggers and video need TV tests":"Subscription refused · check account permissions");
                 if(value.optInt("id")==streamId&&streamId>0){
-                    if(!value.optBoolean("success")){if(cameraState!=null)cameraState.setText("Camera unavailable");return;}
+                    if(!value.optBoolean("success")){unavailable();return;}
                     String path=value.getJSONObject("result").getString("url");
                     // HA returns a relative HLS URL; absolute URLs must match the configured origin.
                     if(path.startsWith(config.getString("base")))path=path.substring(config.getString("base").length());
                     String uri=Endpoint.resolve(config.getString("base"),path).toString();playCamera(uri);
                 }
             }else if(type.equals("event"))event(value.getJSONObject("event"));
-        }catch(Exception e){if(cameraState!=null)cameraState.setText("Camera unavailable");}
+        }catch(Exception e){if(cameraState!=null)unavailable();}
     }
     private void event(JSONObject event)throws Exception{
         JSONObject data=event.optJSONObject("data");if(data==null)return;String type=event.optString("event_type");
@@ -131,9 +131,10 @@ public final class HouseholdService extends Service {
         if(type.equals("state_changed")){
             JSONObject before=data.optJSONObject("old_state"),after=data.optJSONObject("new_state");if(before==null||after==null)return;
             String entity=data.optString("entity_id");
-            if(AlertPolicy.rising(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"))){
+            int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"));
+            if(kind==AlertPolicy.RING_PRESS){
                 String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}
-            }
+            }else if(kind==AlertPolicy.RING_PERSON&&policy.acceptPerson(entity,now))person();
         }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
             if(policy.emergency())return;   // spec 4.10: reminders arriving during an emergency are dropped, not held
@@ -152,9 +153,10 @@ public final class HouseholdService extends Service {
         if(policy.emergency())return;
         if(cameraOverlay==null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringEnter");
         dismissViews();if(!Settings.canDrawOverlays(this))return;
-        // Owner's "Front Door" design (spec 4.10): a large glass-framed live card in the middle of the screen, the camera's
-        // own name, "Live" only once real frames arrive, and the time. Back closes it.
-        int width=Math.round(getResources().getDisplayMetrics().widthPixels*.66f),height=Math.round(width*9f/16f);
+        // RING-03 and the owner's "Front Door" design: a large picture-in-picture card in the lower right, so whatever is
+        // playing stays visible and keeps playing (the camera is muted and takes no audio focus). The camera's own name,
+        // "Live" only once real frames arrive, and the time. Back closes it and focus returns to what was there before.
+        int width=Math.round(getResources().getDisplayMetrics().widthPixels*.5f),height=Math.round(width*9f/16f);
         android.widget.FrameLayout card=new android.widget.FrameLayout(this);card.setPadding(14,14,14,14);
         android.graphics.drawable.GradientDrawable frame=new android.graphics.drawable.GradientDrawable();frame.setCornerRadius(40);frame.setColor(0xCC1A1F2A);frame.setStroke(2,0x55FFFFFF);card.setBackground(frame);
         android.widget.FrameLayout screen=new android.widget.FrameLayout(this);screen.setBackgroundColor(0xFF05070B);
@@ -169,12 +171,38 @@ public final class HouseholdService extends Service {
         android.widget.FrameLayout.LayoutParams hintAt=new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.START);hintAt.setMargins(40,0,0,30);screen.addView(hint,hintAt);
         cameraScreen=screen;tick.run();
         card.setFocusable(true);card.setFocusableInTouchMode(true);card.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)dismiss();return true;}return false;});
-        WindowManager.LayoutParams at=params(width+28,height+28,true);at.gravity=Gravity.CENTER;at.x=0;at.y=0;
+        WindowManager.LayoutParams at=params(width+28,height+28,true);at.gravity=Gravity.BOTTOM|Gravity.RIGHT;at.x=48;at.y=48;
         cameraOverlay=card;windows.addView(card,at);card.requestFocus();
-        streamId=++command;try{send(socket,new JSONObject().put("id",streamId).put("type","camera/stream").put("entity_id",house.getString("camera")).put("format","hls"));}catch(Exception e){cameraState.setText("Camera unavailable · check the configured live camera");}
+        streamId=++command;
+        try{if(socket==null)throw new IllegalStateException();send(socket,new JSONObject().put("id",streamId).put("type","camera/stream").put("entity_id",house.getString("camera")).put("format","hls"));main.postDelayed(noPicture,NO_PICTURE_MS);}
+        catch(Exception e){unavailable();}
         main.postDelayed(timeout,45000);
     }
-    private android.widget.FrameLayout cameraScreen;private TextView cameraClock;
+    private android.widget.FrameLayout cameraScreen;private TextView cameraClock,cameraNote;
+    /** RING-03 fallback: no live picture within this time (or no camera set up) says so plainly; the card still shows who rang. */
+    private static final long NO_PICTURE_MS=12000;
+    private final Runnable noPicture=this::unavailable;
+    private void unavailable(){
+        main.removeCallbacks(noPicture);if(cameraOverlay==null||cameraScreen==null)return;livePill("Live view unavailable",false);
+        if(cameraNote!=null)return;
+        cameraNote=new TextView(this);cameraNote.setText("The doorbell was pressed at "+clock(System.currentTimeMillis())+".\nThe live camera isn't available right now; the Ring app can show it.");
+        cameraNote.setTextColor(-1);cameraNote.setTextSize(22);cameraNote.setGravity(Gravity.CENTER);cameraNote.setPadding(40,0,40,0);
+        cameraScreen.addView(cameraNote,new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.CENTER));
+    }
+    private View personToast;
+    /**
+     * RING-02: a confirmed person gets a small toast naming the doorbell, for 5 seconds. It never opens the camera, never
+     * takes focus or sound, and never appears during an emergency or over an open doorbell card.
+     */
+    private void person(){
+        if(stopped||policy.emergency()||cameraOverlay!=null||!Settings.canDrawOverlays(this))return;
+        removeView(personToast,()->personToast=null);
+        TextView toast=new TextView(this);toast.setText("Person at "+cameraName());toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(28,18,28,18);
+        android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(28);g.setColor(0xE620293B);g.setStroke(2,0x40FFFFFF);toast.setBackground(g);
+        WindowManager.LayoutParams p=params(-2,-2,false);p.flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        personToast=toast;windows.addView(toast,p);
+        main.postDelayed(()->{if(personToast==toast)removeView(toast,()->personToast=null);},AlertPolicy.PERSON_TOAST_MS);
+    }
     /** The camera's own name from household setup, else the doorbell's, else plain "Doorbell". */
     private String cameraName(){
         JSONObject names=house==null?null:house.optJSONObject("names");
@@ -199,9 +227,9 @@ public final class HouseholdService extends Service {
         cameraPlayer=new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(()->new PrivateDataSource(config))).build();view.setPlayer(cameraPlayer);cameraPlayer.setVolume(0);
         cameraPlayer.addListener(new Player.Listener(){
             // "Live" only once real frames are on screen (spec 4.10: never label a still as live).
-            @Override public void onRenderedFirstFrame(){livePill("Live",true);}
-            @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_BUFFERING||state==Player.STATE_ENDED)livePill(state==Player.STATE_BUFFERING?"Connecting…":"Camera unavailable",false);}
-            @Override public void onPlayerError(PlaybackException e){livePill("Camera unavailable",false);}
+            @Override public void onRenderedFirstFrame(){main.removeCallbacks(noPicture);if(cameraNote!=null){cameraScreen.removeView(cameraNote);cameraNote=null;}livePill("Live",true);}
+            @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_BUFFERING)livePill("Connecting…",false);else if(state==Player.STATE_ENDED)unavailable();}
+            @Override public void onPlayerError(PlaybackException e){unavailable();}
         });
         cameraPlayer.setMediaItem(new MediaItem.Builder().setUri(uri).setMimeType(MimeTypes.APPLICATION_M3U8).build());cameraPlayer.prepare();cameraPlayer.play();
     }
@@ -223,7 +251,7 @@ public final class HouseholdService extends Service {
         boolean screen=policy.screen(),emergency=policy.emergency();
         if(!Settings.canDrawOverlays(this))screen=emergency=false;
         if(screen){
-            if(fresh||alarmOverlay==null)dismiss();   // a doorbell card or reminder gives way
+            if(fresh||alarmOverlay==null){dismiss();removeView(personToast,()->personToast=null);}   // a doorbell card, reminder or person toast gives way
             alarmScreen();
         }else removeAlarmScreen();
         if(emergency&&!screen)alarmBanner();else removeView(alarmBanner,()->alarmBanner=null);
@@ -325,6 +353,7 @@ public final class HouseholdService extends Service {
         String kind=intent.getStringExtra("kind"),state=intent.getStringExtra("state"),name=intent.getStringExtra("name");long now=System.currentTimeMillis();
         if("end".equals(kind)){policy.endSimulation();render(false);return;}
         if("door".equals(kind)){if(policy.acceptRing("test:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}return;}
+        if("person".equals(kind)){if(policy.acceptPerson("test:"+now,now))person();return;}
         if(!"smoke".equals(kind)&&!"carbon_monoxide".equals(kind))return;
         int result=policy.update("simulated."+kind+("on".equals(state)?"":"_"+state),kind,name==null?"":name,state,now,true);
         if(result!=AlertPolicy.NONE)render(result==AlertPolicy.NEW_ALARM);
@@ -335,13 +364,13 @@ public final class HouseholdService extends Service {
         reminderOverlay=toast;windows.addView(toast,params(Math.min(650,getResources().getDisplayMetrics().widthPixels-60),-2,false));
         main.postDelayed(()->{if(reminderOverlay==toast){windows.removeView(toast);reminderOverlay=null;}},7000);
     }
-    private void dismissViews(){if(cameraPlayer!=null){cameraPlayer.release();cameraPlayer=null;}if(cameraOverlay!=null){windows.removeView(cameraOverlay);cameraOverlay=null;}main.removeCallbacks(tick);cameraScreen=null;cameraClock=null;if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}cameraState=null;}
+    private void dismissViews(){if(cameraPlayer!=null){cameraPlayer.release();cameraPlayer=null;}if(cameraOverlay!=null){windows.removeView(cameraOverlay);cameraOverlay=null;}main.removeCallbacks(tick);main.removeCallbacks(noPicture);cameraScreen=null;cameraClock=null;cameraNote=null;if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}cameraState=null;}
     private void dismiss(){
         main.removeCallbacks(timeout);
         if(cameraOverlay!=null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringExit");
         streamId=0;policy.dismiss();dismissViews();
         String later=policy.release(System.currentTimeMillis());if(later!=null&&!stopped)reminder(later);
     }
-    @Override public void onDestroy(){stopped=true;main.removeCallbacksAndMessages(null);if(socket!=null)socket.cancel();dismiss();removeAlarmScreen();removeView(alarmBanner,()->alarmBanner=null);removeView(warningToast,()->warningToast=null);if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}
+    @Override public void onDestroy(){stopped=true;main.removeCallbacksAndMessages(null);if(socket!=null)socket.cancel();dismiss();removeAlarmScreen();removeView(alarmBanner,()->alarmBanner=null);removeView(warningToast,()->warningToast=null);removeView(personToast,()->personToast=null);if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}
     @Override public IBinder onBind(Intent i){return null;}
 }

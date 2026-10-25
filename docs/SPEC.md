@@ -73,7 +73,7 @@ There is **one gate order**, used in every document:
 | **G4** | Sony | G1–G3-equivalent evidence on the Sony with its own remote; Xbox HDMI 3, eARC; OLED safeguards | RC-03, HRC-05/06/10, OI-04, SIGN-04, AT-11 |
 | **G5** | Samsung Frame | Signed WGT; Smart Remote matrix; Smart Hub return recorded truthfully; TV Plus and Art Mode preserved; AVPlay playback; original-interface route | NT-01–12, RC-09, HRC-07/08, OI-06, SIGN-05, CF-01/02 |
 | **G5P** | Samsung proposal only | CleanFrame-style Home reassignment proposal; **no native writes** | CF-03–05 (documents only) |
-| **G6** | Household integrations | VPN fail-closed Live TV, smoke/CO alerts, Ring doorbell/person, child safety, music, reminders, voice, optional tuning | VPN-01, GATE-VPN-01–05, SAFE-01–10, GATE-RING-01–04, AT-04–09, AT-26–31, AT-71–73 |
+| **G6** | Household integrations | VPN fail-closed Live TV, smoke/CO alerts, Ring doorbell/person, child safety, music, reminders, voice, optional tuning | VPN-01, GATE-VPN-01–05, SAFE-01–10, RING-01–05, GATE-RING-01–04, AT-04–09, AT-26–31, AT-71–73 |
 
 **Gate rules**
 
@@ -258,7 +258,7 @@ Detail: PRODUCT_SPEC.md Sections 0.3, 5, 24.4, 27.2–27.3.
 | Order | Class | Contents |
 |---|---|---|
 | 1 | `EMERGENCY_SMOKE_CO` | Smoke and carbon monoxide alarms, **equal and highest** |
-| 2 | `RING_DOORBELL_PERSON` | Ring doorbell press and Ring person detection (not generic motion) |
+| 2 | `RING_DOORBELL_PERSON` | Ring doorbell press (live camera) and confirmed Ring person detection (a discreet toast only); ordinary motion is ignored (RING-01..05) |
 | 3 | `HOUSEHOLD_IMPORTANT` | Detector offline/fault warnings, VPN-protection notices, delivery/arrival |
 | 4 | `REMINDER_INFO` | Alexa reminders and other informational toasts |
 | 5 | `DECORATIVE` | Ambient drift, Wallpaper transitions, other decoration |
@@ -267,7 +267,7 @@ A higher class pre-empts a lower one where the TV OS permits. Ring takes visual 
 
 ### 10.2 Interaction rules
 
-- **Ring never covers an active emergency.** A Ring press or person event during any active smoke/CO alarm, acknowledged or not, gets **no camera card**. It is queued, keeping only the **latest** visit and its time.
+- **Ring never covers an active emergency.** A Ring press during any active smoke/CO alarm, acknowledged or not, gets **no camera card**. It is queued, keeping only the **latest** visit and its time, without delaying the emergency display (RING-04). A person event during an emergency shows nothing: its toast would cover the emergency, and a person toast is never queued.
 - When **every** alarm has cleared: if the queued visit is **under 45 seconds old**, the camera card is shown; otherwise a small note reads **"Doorbell rang at HH:mm during the alarm"**.
 - The emergency display is **never interrupted** by anything and **never dismissed by a timeout**.
 - **Reminders arriving during an emergency are dropped.** During a Ring card, a reminder is briefly queued with an expiry, never shown stale.
@@ -321,7 +321,17 @@ No addresses, tokens or camera URLs in any payload or log.
 
 ### 10.6 Ring presentation
 
-Triggers: doorbell press and verified person detection (Ring Smart Alert or a supported ring-mqtt attribute); deduplicated. On Home or browsing: a sizeable live camera card without moving focus. During playback: a safe window, or a tested full-screen fallback where DRM or the OS blocks overlays. In Sony/TCL Wallpaper: interrupt and show live video, then restore the exact prior state. **Samsung native Art Mode interruption needs a verified household coordinator (launch and first-frame acknowledgement) and is unproven.** `Connecting` until real frames arrive; never label a still as live; `Camera unavailable` on failure. Dismiss by Back or timeout; restore focus, playback and volume where the platform allows.
+Owner rules of 25 October 2026 (RING-01..05; they replace the earlier rule that person detection also opens the camera):
+
+| Rule | Event | Behaviour |
+|---|---|---|
+| **RING-01** | Ordinary motion | Ignored: no notification, sound, camera or interruption. A sensor that only reports motion never counts as a person. |
+| **RING-02** | Confirmed person detection | A **discreet toast** naming the doorbell (for example "Person at Front Door") for **5 seconds**. No camera, no playback interruption, no focus or sound. Repeated person events from one sensor within a minute give one toast. Never shown during an emergency. "Confirmed" means the integration itself says person (a Ring Smart Alert / event type of person or human, ring-mqtt's `personDetected`, or a dedicated person sensor). |
+| **RING-03** | Doorbell button press | The live camera opens automatically as a **large picture-in-picture card** (about half the screen width, lower right), so current playback stays visible and, where the platform allows, keeps playing; the camera is muted and takes no audio focus. Back dismisses it and focus returns to the previous interface; it also closes after 45 s. `Connecting` until real frames arrive; never label a still as live. If no picture arrives within 12 s, or no camera is set up, the card says **"Live view unavailable"** and when the doorbell was pressed. The viewer never has to open the Ring app. |
+| **RING-04** | Any Ring event during a smoke/CO emergency | Smoke and CO always come first. A press is kept for later (Section 10.2); a person toast is not shown. |
+| **RING-05** | Platforms | The same intended behaviour on TCL, Sony and the Frame, subject to demonstrated platform capability. Limits (overlays over DRM apps, background execution, live-stream access, third-party apps, Frame Art Mode) are documented in Section 10.8 and tested, never assumed. |
+
+In Sony/TCL Wallpaper a press shows the live card and the Wallpaper resumes after it. **Samsung native Art Mode interruption needs a verified household coordinator (launch and first-frame acknowledgement) and is unproven.**
 
 ### 10.7 Reminders
 
@@ -403,7 +413,7 @@ Each ID has its full pass condition in PRODUCT_SPEC.md; its status is in the reg
 | AT-05 | VPN drop during ReamSmartz: no unprotected stream continues; explanation shown |
 | AT-06 | Spurs card on matchday only, correct UK kick-off, never scores, opens guarded Live TV |
 | AT-07 | Ring press in Wallpaper/Art Mode shows live camera automatically and restores the prior state |
-| AT-08 | Ring person detection does the same; ordinary motion does not trigger |
+| AT-08 | Ring person detection shows a 5 s toast naming the doorbell, no camera; ordinary motion shows nothing (RING-01/02) |
 | AT-09 | Ring during Netflix/music: camera visible per verified OS behaviour; playback and audio restored |
 | AT-10 | Frame Art Mode with no event: picture only; no clock, VPN, sports, controls or tiles |
 | AT-11 | Sony Xbox: console wakes, HDMI 3 selected; no Xbox tile elsewhere |
@@ -444,7 +454,7 @@ Each ID has its full pass condition in PRODUCT_SPEC.md; its status is in the reg
 | AT-46 | Day/dusk/night boundary: only warmth changes; artwork, position and focus stable |
 | AT-47 | Sony/TCL idle: dock and clock vanish; no static bright controls; input restores focus |
 | AT-48 | Frame Art Mode: artwork only at any time of day |
-| AT-49 | Ring in any state interrupts immediately (queued if an emergency is active) and restores exactly |
+| AT-49 | A Ring press in any state shows the camera immediately (queued if an emergency is active) and restores exactly |
 | AT-50 | Reminder during Netflix then Ring: reminder stays small; Ring wins; no lingering toast |
 | AT-51 | Voice then Back: small pane; identical Home focus and backdrop afterwards |
 | AT-52 | Live TV focus never starts VPN or Live TV; OK opens the guarded Connect/Retry/Back flow |
@@ -646,6 +656,16 @@ A simulated or TEST event never counts as an end-to-end detector pass.
 | SIGN-07 | Signed artefact manifest with hash and version; independent rollback instructions |
 | SIGN-08 | Key backup and rotation feasibility documented without exposing key material |
 
+### 15.11a Ring event rules (RING, gate G6; Section 10.6)
+
+| ID | Test |
+|---|---|
+| RING-01 | Walk past the doorbell without a person alert (or trigger motion only): nothing appears or sounds on any TV |
+| RING-02 | A confirmed person alert: a toast naming the doorbell for about 5 s, no camera, playback continues; a second alert within a minute gives no second toast; no toast during an alarm test |
+| RING-03 | Press the doorbell during Home, during playback and in Wallpaper: the live picture-in-picture card appears without input, playback stays visible, Back closes it and focus returns where it was; with the camera unreachable, "Live view unavailable" appears |
+| RING-04 | Press the doorbell during an alarm TEST: no camera over the alarm; after ending the test, the card or the "Doorbell rang at HH:mm" note |
+| RING-05 | RING-01..04 on the TCL, the Sony and the Frame, each limitation recorded with the model and firmware |
+
 ### 15.12 Hardware and service gates (GATE; PRODUCT_SPEC.md Sections 2, 2.1, 5–8)
 
 | ID | Pass condition |
@@ -665,7 +685,7 @@ A simulated or TEST event never counts as an end-to-end detector pass.
 | GATE-VPN-04 | No unprotected ReamSmartz packets after tunnel loss |
 | GATE-VPN-05 | Normal LAN access and other apps unaffected under the chosen routing |
 | GATE-AIRPLAY-01 | AirPin start-up, iPhone discovery, casting and return after restart; resources measured |
-| GATE-RING-01 | All three TVs in Wallpaper/Art Mode show real Ring video for both triggers without input |
+| GATE-RING-01 | All three TVs in Wallpaper/Art Mode show real Ring video for a doorbell press without input; a person gives only the toast |
 | GATE-RING-02 | Dismiss restores the correct image and TV mode |
 | GATE-RING-03 | Ring during Netflix/Live TV/music without lost playback |
 | GATE-RING-04 | Correct after standby, HA restart, Ring delay, network loss and duplicates |

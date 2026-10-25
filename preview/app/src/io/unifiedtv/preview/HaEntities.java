@@ -120,8 +120,9 @@ final class HaEntities {
                     else if(e.domain.equals("binary_sensor")&&GENERIC.contains(e.deviceClass))other.add(e);}
                 break;
             case "person":
-                // Spec 10.1: person detection, not generic motion. Motion sensors are offered only below the divider.
-                heading="Other sensors (motion isn't person detection)";
+                // RING-01/02: person detection, not generic motion. Motion sensors are offered only below the divider, and
+                // even then only a person the integration confirms (AlertPolicy.personConfirmed) ever shows a toast.
+                heading="Other sensors (motion alone never shows anything)";
                 for(Entity e:all){if(!e.domain.equals("binary_sensor")||!PERSON_DC.contains(e.deviceClass)||doorbell(e,true))continue;
                     if(e.responding()&&e.any("person","people","human","pedestrian"))strong.add(e);else other.add(e);}
                 break;

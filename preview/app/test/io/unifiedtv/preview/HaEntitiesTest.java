@@ -107,7 +107,7 @@ public class HaEntitiesTest {
         assertTrue(ids(person.other).contains("binary_sensor.front_door_motion"));
         assertTrue(ids(person.other).contains("binary_sensor.hallway_motion_occupancy"));
         assertFalse("a doorbell press is not a person",ids(person.other).contains("binary_sensor.front_door_ding"));
-        assertTrue(person.otherHeading.contains("motion isn't person detection"));
+        assertTrue(person.otherHeading.contains("motion alone never shows anything"));
         // Beside the chosen doorbell first.
         assertEquals("binary_sensor.front_door_motion",person.other.get(0).id);
     }

@@ -23,10 +23,47 @@ final class AlertPolicy {
     void dismiss(){ringUntil=0;}
     static boolean rising(String entity,String door,String person,String oldState,String next){
         if(entity.isEmpty()||!(entity.equals(door)||entity.equals(person)))return false;
+        return edge(entity,oldState,next);
+    }
+    /** A new press or detection: off to on, or for an event entity any new event time (not a return from unavailable). */
+    private static boolean edge(String entity,String oldState,String next){
         // Newer Ring, Nest and UniFi integrations report a press as an event entity whose state is the time of the last
         // press: any new time is a new press. Coming back from unavailable (a restart) is not.
         if(entity.startsWith("event."))return next!=null&&!next.equals(oldState)&&!"unavailable".equals(next)&&!"unknown".equals(next)&&!"unavailable".equals(oldState);
         return "off".equals(oldState)&&"on".equals(next);
+    }
+
+    // Ring rules RING-01..03 (owner, 25 October 2026): a doorbell press opens the live camera; a confirmed person gets a
+    // discreet toast only; ordinary motion does nothing at all.
+    static final int RING_NONE=0,RING_PRESS=1,RING_PERSON=2;
+    static final long PERSON_REPEAT=60000,PERSON_TOAST_MS=5000;
+    private static final Set<String> PERSON_WORDS=new HashSet<>(Arrays.asList("person","human","people","pedestrian"));
+    /** What one state change means for the doorbell: a press, a confirmed person, or nothing. */
+    static int ringKind(String entity,String door,String person,String oldState,String next,JSONObject attributes){
+        if(entity==null||entity.isEmpty())return RING_NONE;
+        if(entity.equals(door))return edge(entity,oldState,next)?RING_PRESS:RING_NONE;
+        if(entity.equals(person))return edge(entity,oldState,next)&&personConfirmed(entity,attributes)?RING_PERSON:RING_NONE;
+        return RING_NONE;
+    }
+    /**
+     * RING-01/02: only a confirmed person counts. Confirmation is what the integration itself says: an event type or
+     * detection type of person/human (Ring Smart Alerts, UniFi, Nest), or ring-mqtt's personDetected. A sensor without that
+     * evidence counts only if it is a dedicated person sensor; anything that names itself motion is ordinary motion.
+     */
+    static boolean personConfirmed(String entity,JSONObject a){
+        if(a!=null){
+            String type=a.optString("event_type","").toLowerCase(Locale.ROOT),detected=a.optString("detection_type",a.optString("detectionType","")).toLowerCase(Locale.ROOT);
+            if(PERSON_WORDS.contains(type)||PERSON_WORDS.contains(detected)||a.optBoolean("personDetected",false)||a.optBoolean("person_detected",false))return true;
+        }
+        if(entity.startsWith("event."))return false;   // an event entity must say "person" itself
+        String words=(entity+" "+(a==null?"":a.optString("friendly_name",""))).toLowerCase(Locale.ROOT);
+        return !words.contains("motion");
+    }
+    private final LinkedHashMap<String,Long> people=new LinkedHashMap<>();
+    /** RING-02: repeated person events from one entity within a minute are one visit, so one toast. */
+    boolean acceptPerson(String entity,long now){
+        Long previous=people.get(entity);if(previous!=null&&now-previous<PERSON_REPEAT)return false;
+        people.put(entity,now);while(people.size()>32)people.remove(people.keySet().iterator().next());return true;
     }
 
     // Smoke and carbon monoxide detectors, from Home Assistant's own device classes; never guessed from an entity's name.

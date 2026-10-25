@@ -179,7 +179,7 @@ Build a premium, remote-first, Apple TV-inspired home experience for three house
 
 1. **Content first:** no advertising, sponsored recommendations, crowded menu panels or technical plumbing in the foreground.
 2. **One consistent interface:** same 16:9 layout, artwork treatment, animations, navigation and shared preferences on Sony, TCL and Samsung.
-3. **Ring is mandatory:** a doorbell press **or person detection** automatically interrupts active wallpaper / ambient / Frame Art Mode and opens the live camera without pressing the remote; restore the previous state afterwards. Ring is second in alert priority: a smoke/CO emergency always comes first and Ring never covers it *(changed in v3.3)*. Interrupting native Frame Art Mode needs a verified household coordinator and is unproven.
+3. **Ring is mandatory:** a doorbell press automatically interrupts active wallpaper / ambient / Frame Art Mode and opens the live camera without pressing the remote; confirmed person detection shows only a 5-second toast and ordinary motion is ignored *(changed 25 October 2026, RING-01..05, SPEC.md Section 10.6)*; restore the previous state afterwards. Ring is second in alert priority: a smoke/CO emergency always comes first and Ring never covers it *(changed in v3.3)*. Interrupting native Frame Art Mode needs a verified household coordinator and is unproven.
 4. **Live TV is VPN-protected:** ReamSmartz must not send traffic without a verified NordVPN connection. This applies to all ways of launching Live TV, including the Spurs card and voice commands.
 5. **Artwork is artwork:** on Samsung Frame Art Mode there is **no clock, VPN badge, widget, app row or permanent UI**. A smoke/CO emergency or a triggered Ring camera, where the platform allows it, is the deliberate exception.
 6. **Hide the plumbing:** use embedded Media3/ExoPlayer on Android and Samsung AVPlay on Tizen. VLC is excluded from the application and playback path. Jellyfin / Synology / Home Assistant are not consumer-facing names in normal browsing.
@@ -413,7 +413,7 @@ Use Europe/London time, current sunrise/sunset if an authorised local provider i
 
 After the selected inactivity timeout *while the launcher is foreground*, withdraw metadata first, then fade the dock and header out, leaving the chosen photograph or artwork edge to edge. No bouncing logos, screensaver clock by default, stock animations or content promotion. Personal family photographs must keep their identity, natural tone and sensible crop; do not apply heavy branded gradients or invent face detail. Crossfades between the chosen 10+ images should feel like a gallery, without gimmicky pan/zoom on every image.
 
-On **Samsung native Art Mode**, there is **never a clock, VPN flag, ChatGPT icon, app dock, Alexa toast by default or permanent status**. This remains true regardless of time of day. A Ring doorbell press **or person detection** must automatically interrupt Art Mode into the real camera stream (unless a smoke/CO emergency is active), then return to native Art Mode and artwork. This is an independently tested *hardware orchestration requirement*, not a promise that Tizen supports arbitrary third-party overlays.
+On **Samsung native Art Mode**, there is **never a clock, VPN flag, ChatGPT icon, app dock, Alexa toast by default or permanent status**. This remains true regardless of time of day. A Ring doorbell press must automatically interrupt Art Mode into the real camera stream (person detection does not: RING-02) (unless a smoke/CO emergency is active), then return to native Art Mode and artwork. This is an independently tested *hardware orchestration requirement*, not a promise that Tizen supports arbitrary third-party overlays.
 
 On Sony OLED, use restrained brightness, changing artwork and OLED-safe inactivity behaviour; never leave a glowing static dock or clock for hours. The quieter gallery state does not run while another video app is actively playing.
 
@@ -546,7 +546,7 @@ Do not make AirPin a permanent app dock tile. Under **Settings > Connections > A
 
 **Reference deployment:** Home Assistant Green on the same local network as the televisions; configure the address and credentials privately, with Ring configured. Do not assume remote development tools have access to that private URL. Ring cloud access remains necessary even when HA and TV are on the same LAN.
 
-**Trigger A:** actual Ring doorbell button pressed. **Trigger B:** **person detected**, not generic motion. Person detection requires proof of a suitable Ring Smart Alert event or supported ring-mqtt attribute; Ring subscription/device compatibility to be verified. Deduplicate repeated notifications.
+**Trigger A:** actual Ring doorbell button pressed: the live camera (RING-03). **Trigger B:** **person detected**, not generic motion: a discreet 5-second toast only, no camera (RING-02, changed 25 October 2026); ordinary motion is ignored (RING-01). Person detection requires proof of a suitable Ring Smart Alert event or supported ring-mqtt attribute; Ring subscription/device compatibility to be verified. Deduplicate repeated notifications.
 
 **Presentation priority:**
 
@@ -710,7 +710,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-05 | ReamSmartz playing | Force VPN disconnect | No unprotected stream continues; user sees an explanation |
 | AT-06 | Any TV Home | Spurs matchday | Card on matchday only, correct UK kick off, never scores, opens protected Live TV |
 | AT-07 | All TVs ambient/Frame Art Mode | Ring button pressed | Live camera shown automatically; restore exact previous state |
-| AT-08 | All TVs ambient/Frame Art Mode | Ring **person detected** | Same automatic live view; ordinary motion does **not** trigger it |
+| AT-08 | All TVs ambient/Frame Art Mode | Ring **person detected** | A 5 s toast naming the doorbell, no camera and no interruption; ordinary motion shows nothing *(changed 25 October 2026, RING-01/02)* |
 | AT-09 | Netflix/music in progress | Ring event | Visible camera with verified OS behaviour, playback/audio restored |
 | AT-10 | Frame art | No notification | Only chosen picture; never clock, VPN, sports, audio controls or tiles |
 | AT-11 | Sony Home | Select Xbox | Xbox wakes, Sony HDMI 3 selected; other TVs never show Xbox tile |
@@ -751,7 +751,7 @@ Do not make an untrusted Home Assistant HTTP or MQTT endpoint publicly accessibl
 | AT-46 | Evening transition | Keep the same app selected across day/dusk/night boundary | Only material warmth/lighting changes gently; context, artwork identity, position and focus stay stable |
 | AT-47 | Sony OLED and TCL | Leave launcher inactive for configured timeout | Dock and clock vanish, artwork fills entire screen without permanent bright static controls; input returns to previous focus |
 | AT-48 | Samsung native Art Mode | Observe with no Ring event | Family/artwork only: no clock, HUD, VPN, apps, Alexas or music controls, regardless of time of day |
-| AT-49 | Any state including Frame artwork | Ring press or verified person detection | Ring live view interrupts immediately even during transition (unless a smoke/CO emergency is active, when it is queued), then restores exact prior visual/playback state; no animation causes a missed event |
+| AT-49 | Any state including Frame artwork | Ring doorbell press | Ring live view interrupts immediately even during transition (unless a smoke/CO emergency is active, when it is queued), then restores exact prior visual/playback state; no animation causes a missed event |
 | AT-50 | Netflix playing | Trigger Alexa reminder during playback, then trigger Ring | Reminder remains a small focus-neutral toast; Ring takes priority without stale toast lingering |
 | AT-51 | Voice on Home | Activate ChatGPT then press Back | Small temporary listening pane appears without obscuring main content; Back returns to identical Home focus and backdrop |
 | AT-52 | Live TV focus with VPN off | Move focus onto tile, then press OK | Focus alone never starts VPN or Live TV; OK opens protected, clearly explained Connect/Retry/Back flow |

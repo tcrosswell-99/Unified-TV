@@ -115,6 +115,7 @@ public final class HouseholdActivity extends Screen {
         button("Test: carbon monoxide alarm in the hallway",()->simulate("carbon_monoxide","on","Hallway"));
         button("Test: a smoke detector goes offline",()->simulate("smoke","unavailable","Landing"));
         button("Test: someone rings the doorbell",()->simulate("door",null,null));
+        button("Test: a person at the door (toast only)",()->simulate("person",null,null));
         button("End the alarm test",()->simulate("end",null,null));
         button("Request native Frame Art Mode",()->{if(getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))action(this,"art");else note("This action belongs to the Frame room profile");});
         button("Forget household setup",()->{stopService(new Intent(this,HouseholdService.class));new Vault(this).forget("household");found.clear();show();});
