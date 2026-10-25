@@ -190,6 +190,10 @@ public final class UnifiedPreviewActivity extends Activity {
             invalidate();
         }
         private boolean calm() { return prefs.getBoolean("reduceMotion", false); }
+        private long lastKey = SystemClock.uptimeMillis();
+        /** OLED care applies in the Sony room (spec 2, TV-SONY). */
+        private boolean oledRoom() { return "sony".equals(prefs.getString("room", Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony") ? "sony" : "tcl")); }
+        private float oledDim(long now) { return oledRoom() ? DayMood.oledDim(now - lastKey) : 0; }
         private boolean light() { return prefs.getBoolean("lightweight", false); }
         private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
         private static boolean app(String key) { return !key.equals("neutral") && !key.startsWith("poster:"); }
@@ -338,7 +342,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         boolean key(KeyEvent e) {
-            if(e.getAction()==KeyEvent.ACTION_DOWN)inputEvent=e.getEventTime();
+            if(e.getAction()==KeyEvent.ACTION_DOWN){inputEvent=e.getEventTime();boolean dimmed=oledDim(SystemClock.uptimeMillis())>0;lastKey=SystemClock.uptimeMillis();if(dimmed)invalidate();}
             int code = e.getKeyCode();
             if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT &&
                 code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN &&
@@ -481,6 +485,15 @@ public final class UnifiedPreviewActivity extends Activity {
             c.scale(getWidth() / (float) W, getHeight() / (float) H);
             long now = SystemClock.uptimeMillis();
             drawBackground(c, now);
+            // Spec 4.8: a faint time-of-day wash over the light; the app's own colours stay the source.
+            if (!prefs.getBoolean("highContrast", false)) {
+                java.util.Calendar clock = java.util.Calendar.getInstance(TimeZone.getTimeZone("Europe/London"));
+                int wash = DayMood.wash(clock.get(java.util.Calendar.HOUR_OF_DAY) * 60 + clock.get(java.util.Calendar.MINUTE));
+                if ((wash >>> 24) > 0) { paint.setShader(null); paint.setColor(wash); c.drawRect(0, 0, W, H, paint); }
+            }
+            // OLED care on the Sony: everything in front of the background orbits by two pixels every three minutes.
+            boolean oled = oledRoom();
+            if (oled) { int[] shift = DayMood.shift(System.currentTimeMillis()); c.translate(shift[0], shift[1]); }
             drawHeader(c);
             if(!fixture.isEmpty()) {
                 text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
@@ -498,7 +511,10 @@ public final class UnifiedPreviewActivity extends Activity {
             if (moving) drawHint(c, "Left / Right: move     OK: save     Back: cancel");
 
             if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
+            float dim = oledDim(now);
+            if (dim > 0) { paint.setShader(null); paint.setColor(Color.argb(Math.round(255 * dim), 0, 0, 0)); c.drawRect(-4, -4, W + 4, H + 4, paint); }
             c.restore();
+            if (dim > 0 && dim < .45f) postInvalidateDelayed(33);   // the 10-second fade
             boolean animating = (fadeAt != 0 && now - fadeAt < fadeMs()) || (titleAt > now - TITLE_MS) || (shelfAt != 0 && now - shelfAt < SHELF_MS);
             if (animating) postInvalidateDelayed(16);
             // The light keeps drifting while Home is on screen; with Home hidden nothing draws, so the loop stops by itself.
