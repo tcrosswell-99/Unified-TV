@@ -18,6 +18,9 @@ Values follow [SPEC.md](../SPEC.md) section 6.3: `supported_verified`, `unsuppor
 | SmartTube and ReamSmartz | `unknown` | Android-only; shown as unavailable, never as a fake tile | NT-09 |
 | NAS playback in AVPlay | `unknown` | Direct play of supported formats; per-format results to be recorded | NT-02, LIB-03 |
 | Automatic NAS discovery (SSDP) | `unknown` | Not available to a web app; the address is entered once | LIB-01 |
+| Tizen web service in a signed developer package (DLNA probe) | `unknown` | The [DLNA probe](../../samsung/poc-dlna/README.md) starts a service on 127.0.0.1. Samsung's Tizen guide says TV web services needed partner-level certification in Tizen 3.0; Tessel reports services working with an owner's certificate on other Samsung TVs | Probe step 1 (svc), step 2 (local) |
+| SSDP from that service: multicast, broadcast, /24 unicast sweep, passive NOTIFY | `unknown` | Each method counted separately; one Tessel report saw multicast M-SEARCH from a TV never reach the network | Probe step 3 (mc, bc, uni, notify) |
+| Media server validated and browsed through the service | `unknown` | MediaServer with ContentDirectory on a private address, root Browse lists folders | Probe steps 4 and 5 |
 | Private (authenticated) NAS playback | `unknown` | Not built: needs a validated media broker or scoped cookie | NT-07 |
 | Tizen Key Manager for secrets | `unknown` | Available to web apps; hardware backing on this model unknown | GATE-CONN-02 |
 | Alerts while Unified TV is hidden, in Art Mode or off | `unknown` | Not expected: a hidden app may be suspended and can't draw over other apps | SAFE-06, SAFE-07, NT-08 |

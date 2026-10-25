@@ -46,3 +46,17 @@ jobs:
             samsung/out/manifest.txt
           retention-days: 14
           if-no-files-found: error
+      # The DLNA discovery proof of concept (samsung/poc-dlna/): a separate package (UTVDLNAPOC), not the Unified TV app.
+      - name: DLNA probe tests (SSDP parsing, validation, Browse, token, private-address guard, send-queue drain)
+        run: node --test samsung/poc-dlna/test/*.test.js
+      - name: DLNA probe unsigned package (prototype, test only)
+        run: bash samsung/poc-dlna/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedTV-DLNA-POC-unsigned-test-only
+          path: |
+            samsung/poc-dlna/out/UnifiedTV-DLNA-POC-unsigned.wgt
+            samsung/poc-dlna/out/SHA256SUMS.txt
+            samsung/poc-dlna/out/manifest.txt
+          retention-days: 14
+          if-no-files-found: error

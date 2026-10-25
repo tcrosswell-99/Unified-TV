@@ -60,7 +60,10 @@ test('no VLC anywhere in the app, and no hand-off to another player', () => {
 });
 
 test('no IP addresses, tokens, passwords, serial numbers or personal paths in any Samsung file', () => {
-  const ipv4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+  // The one allowed address is the loopback 127.0.0.1: the DLNA proof of concept (poc-dlna/) runs a service on the TV
+  // that listens on localhost only, and its config.xml access rule and Content-Security-Policy must name that address.
+  // Loopback is never a household address. Every other literal IPv4 address still fails.
+  const ipv4 = /\b(?!127\.0\.0\.1\b)(?:\d{1,3}\.){3}\d{1,3}\b/;
   const secretValue = /(token|password|secret|api[_-]?key)["']?\s*[:=]\s*["'][A-Za-z0-9._\-]{12,}["']/i;
   for (const file of ALL.filter((p) => !/\.(png|jpg)$/.test(p))) {
     const text = read(file);
