@@ -62,13 +62,15 @@ final class AlertPolicy {
     /**
      * Records one detector's state. NEW_ALARM when an alarm starts (the full screen comes back), CHANGED when anything shown
      * changes. Normal removes it: that is "no alarm from this detector", never "safe". An alarm whose detector goes quiet
-     * stays an alarm, marked lost, because the detector may have failed in the fire.
+     * stays an alarm, marked lost, because the detector may have failed in the fire. An alarm that Home Assistant says
+     * started again later than the one shown (it cleared and re-sounded while the TV was away) is a new alarm.
      */
     int update(String entity,String kind,String name,String haState,long since,boolean simulated){
         String state=reading(haState);if(kind==null||state==null)return NONE;
         Detector d=detectors.get(entity);name=name==null?"":name;
         if(NORMAL.equals(state))return detectors.remove(entity)!=null?CHANGED:NONE;
         if(d!=null&&d.alarm()&&(OFFLINE.equals(state)||FAULT.equals(state))){if(d.lost)return NONE;d.lost=true;return CHANGED;}
+        if(d!=null&&d.alarm()&&ALARM.equals(state)&&!d.simulated&&d.since>0&&since>d.since){detectors.put(entity,new Detector(entity,kind,name,state,since,false));return NEW_ALARM;}
         if(d!=null&&d.alarm()&&ALARM.equals(state)){boolean changed=d.lost||!d.name.equals(name);d.lost=false;d.name=name;return changed?CHANGED:NONE;}
         if(d!=null&&d.state.equals(state)&&d.name.equals(name))return NONE;
         detectors.put(entity,new Detector(entity,kind,name,state,since,simulated));
@@ -76,12 +78,15 @@ final class AlertPolicy {
     }
     /**
      * The full picture after (re)connecting: every smoke and CO detector with its state, as {entity, kind, name, state, since}.
-     * Detectors no longer reported are dropped; simulated ones are kept. Acknowledgements survive for alarms still sounding.
+     * Warnings no longer reported are dropped; simulated detectors are kept. An alarm that is missing (Home Assistant is
+     * still starting, or the integration failed) is never cleared by its absence: it stays, marked lost, until its detector
+     * reports off. Acknowledgements survive for alarms still sounding.
      */
     int snapshot(List<String[]> all){
         connected=true;int result=NONE;Set<String> seen=new HashSet<>();
         for(String[] d:all){seen.add(d[0]);long since;try{since=Long.parseLong(d[4]);}catch(RuntimeException e){since=0;}result=Math.max(result,update(d[0],d[1],d[2],d[3],since,false));}
-        for(Iterator<Detector> it=detectors.values().iterator();it.hasNext();){Detector d=it.next();if(!d.simulated&&!seen.contains(d.entity)){it.remove();result=Math.max(result,CHANGED);}}
+        for(Iterator<Detector> it=detectors.values().iterator();it.hasNext();){Detector d=it.next();if(d.simulated||seen.contains(d.entity))continue;
+            if(!d.alarm()){it.remove();result=Math.max(result,CHANGED);}else if(!d.lost){d.lost=true;result=Math.max(result,CHANGED);}}
         return result;
     }
     /** Losing Home Assistant never clears an alarm; it is shown as "status unknown" until the next full picture. */
@@ -94,12 +99,14 @@ final class AlertPolicy {
     List<Detector> warnings(){List<Detector> out=new ArrayList<>();for(Detector d:detectors.values())if(!d.alarm())out.add(d);return out;}
     /** Acknowledges one alarm only; others stay on screen. The detector itself is never touched. */
     boolean acknowledge(String entity){Detector d=detectors.get(entity);if(d==null||!d.alarm()||d.acknowledged)return false;d.acknowledged=true;return true;}
+    /** Alarms switched off in household settings: forget every real detector (tests are ended separately). */
+    int forgetDetectors(){int n=0;for(Iterator<Detector> it=detectors.values().iterator();it.hasNext();)if(!it.next().simulated){it.remove();n++;}return n>0?CHANGED:NONE;}
     /** Ends a test: removes simulated detectors only. */
     int endSimulation(){int n=0;for(Iterator<Detector> it=detectors.values().iterator();it.hasNext();)if(it.next().simulated){it.remove();n++;}return n>0?CHANGED:NONE;}
     /** A doorbell visit during an emergency: no camera, only the latest visit is remembered. */
     void queueRing(long now){queuedRing=now;}
     /** After every alarm has cleared: 1 to show the camera (visit still recent), -1 for a "rang during the alarm" note, 0 for nothing. */
-    int ringAfterAlarm(long now){if(queuedRing==0||emergency())return 0;long at=queuedRing;queuedRing=0;return now-at<=RING_STILL_RELEVANT?1:-1;}
+    int ringAfterAlarm(long now){if(queuedRing==0||emergency())return 0;long at=queuedRing;queuedRing=0;return now-at<RING_STILL_RELEVANT?1:-1;}
     long queuedRingAt(){return queuedRing;}
 
     /** Every smoke and CO detector in a successful get_states result, as {entity, kind, name, state, since}; null for anything else, so a refusal never clears an alarm. */

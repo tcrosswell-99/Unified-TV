@@ -168,3 +168,28 @@ test('no token or address: nothing connects', () => {
   assert.strictEqual(FakeSocket.all.length, before);
   assert.strictEqual(h.c.status, Ha.STATUS.NOT_CONFIGURED);
 });
+
+test('a refused token during an alarm keeps the alarm on screen with its status unknown', () => {
+  const h = client(); const ws = connected(h);
+  ws.receive(stateEvent('binary_sensor.kitchen_smoke', 'off', 'on', 'smoke'));
+  const before = h.updates.filter((u) => u[0] === 'alarms').length;
+  ws.receive({ type: 'auth_invalid' });
+  assert.ok(h.policy.emergency()); assert.ok(!h.policy.connected());
+  assert.strictEqual(h.updates.filter((u) => u[0] === 'alarms').length, before + 1, 'the alarm screen is redrawn with "status unknown"');
+});
+
+test('a reminder during an emergency is dropped, not held for after the alarm', () => {
+  const h = client(); const ws = connected(h);
+  ws.receive(stateEvent('binary_sensor.kitchen_smoke', 'off', 'on', 'smoke'));
+  ws.receive(stateEvent('binary_sensor.front_door_ding', 'off', 'on', ''));   // queued: Ring waits for the alarm
+  ws.receive({ type: 'event', event: { event_type: 'unified_tv_reminder', time_fired: '2026-10-25T19:42:04+00:00', data: { text: 'Later', room: 'frame' } } });
+  h.policy.update('binary_sensor.kitchen_smoke', 'smoke', '', 'off', 0, false); h.policy.dismiss();
+  assert.strictEqual(h.policy.release(Date.parse('2026-10-25T19:42:10Z')), null);
+});
+
+test('with alarms switched off, reconnecting forgets detectors from before', () => {
+  const policy = new A.Policy(); policy.update('binary_sensor.kitchen_smoke', 'smoke', 'Kitchen', 'on', 1, false);
+  const h = client({ alarms: false, policy: policy }); connected(h);
+  assert.ok(!policy.emergency());
+  assert.ok(h.updates.some((u) => u[0] === 'alarms'), 'the screen is redrawn without them');
+});

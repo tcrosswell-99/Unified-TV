@@ -70,7 +70,8 @@ test('smoke and CO are separate entries with room and time', () => {
   const on = p.alarms(); assert.strictEqual(on.length, 2);
   assert.strictEqual(on[0].name, 'Hall', 'oldest first'); assert.strictEqual(on[0].since, 1000); assert.strictEqual(on[0].title(), 'SMOKE ALARM');
   assert.strictEqual(on[1].title(), 'CARBON MONOXIDE ALARM'); assert.ok(on[1].advice().includes('fresh air')); assert.ok(on[0].advice().includes('stay out'));
-  assert.strictEqual(p.update(HALL, 'smoke', 'Hall', 'on', 9000, false), A.NONE, 'a repeat keeps the first time'); assert.strictEqual(p.alarms()[0].since, 1000);
+  assert.strictEqual(p.update(HALL, 'smoke', 'Hall', 'on', 1000, false), A.NONE, 'a duplicate event (same last_changed) changes nothing');
+  assert.strictEqual(p.update(HALL, 'smoke', 'Hall', 'on', 500, false), A.NONE, 'an older, out-of-order event keeps the first time'); assert.strictEqual(p.alarms()[0].since, 1000);
 });
 test('acknowledging one alarm leaves the other on screen, and a banner remains', () => {
   const p = P();
@@ -107,11 +108,11 @@ test('Ring waits until every alarm has cleared, then shows (under 45 s) or leave
   p.update(HALL, 'smoke', 'Hall', 'on', 40000, false); p.queueRing(41000); p.update(HALL, 'smoke', 'Hall', 'off', 200000, false);
   assert.strictEqual(p.ringAfterAlarm(200000), -1, 'old visit: a note instead');
 });
-test('the 45-second boundary: exactly 45 s still shows the card, one millisecond more is a note', () => {
+test('the 45-second boundary: under 45 s shows the card (spec: "under 45 seconds old"), exactly 45 s is a note', () => {
   const p = P(); p.update(HALL, 'smoke', 'Hall', 'on', 0, false); p.queueRing(1000); p.update(HALL, 'smoke', 'Hall', 'off', 2000, false);
-  assert.strictEqual(p.ringAfterAlarm(46000), 1);
+  assert.strictEqual(p.ringAfterAlarm(45999), 1);
   const q = P(); q.update(HALL, 'smoke', 'Hall', 'on', 0, false); q.queueRing(1000); q.update(HALL, 'smoke', 'Hall', 'off', 2000, false);
-  assert.strictEqual(q.ringAfterAlarm(46001), -1);
+  assert.strictEqual(q.ringAfterAlarm(46000), -1);
 });
 test('repeated Ring during an alarm keeps only the latest visit (no growing queue)', () => {
   const p = P(); p.update(HALL, 'smoke', 'Hall', 'on', 0, false);
@@ -132,7 +133,8 @@ test('connecting reads every detector and drops ones no longer reported', () => 
   const p = P(); p.update('binary_sensor.kitchen', 'smoke', 'Kitchen', 'on', 1, false); p.update('simulated.smoke', 'smoke', 'Test', 'on', 1, true);
   p.connection(false); assert.ok(!p.connected());
   assert.strictEqual(p.snapshot(all), A.NEW_ALARM); assert.ok(p.connected());
-  assert.deepStrictEqual(p.alarms().map((d) => d.name), ['Test', 'Hall'], 'kitchen gone, test kept, hall new');
+  assert.deepStrictEqual(p.alarms().map((d) => d.name), ['Kitchen', 'Test', 'Hall'], 'kitchen missing but kept, test kept, hall new');
+  assert.ok(p.alarms()[0].lost, 'a missing alarm is marked not responding, never cleared');
   assert.strictEqual(p.warnings().length, 1);
 });
 test('a refused or unrelated reply never clears an alarm', () => {
@@ -150,4 +152,24 @@ test('names are capped at 60 characters and HA microsecond times are read', () =
   assert.strictEqual(A.name({ friendly_name: 'x'.repeat(80) }).length, 60);
   assert.strictEqual(A.time('2026-10-25T19:42:00.123456+00:00'), Date.parse('2026-10-25T19:42:00.123Z'));
   assert.strictEqual(A.time('nonsense'), 0);
+});
+
+test('an alarm that cleared and re-sounded while the TV was away comes back as new, unacknowledged', () => {
+  const p = P(); p.update(HALL, 'smoke', 'Hall', 'on', 1000, false); p.acknowledge(HALL);
+  assert.strictEqual(p.snapshot([[HALL, 'smoke', 'Hall', 'on', '1000']]), A.NONE, 'same alarm: acknowledgement kept');
+  assert.ok(!p.screen());
+  assert.strictEqual(p.snapshot([[HALL, 'smoke', 'Hall', 'on', '5000']]), A.NEW_ALARM);
+  assert.ok(p.screen()); assert.strictEqual(p.alarms()[0].since, 5000);
+});
+test('a missing alarm stays until its detector reports off; a missing warning is dropped', () => {
+  const p = P(); p.update(HALL, 'smoke', 'Hall', 'on', 1000, false); p.update('binary_sensor.landing', 'smoke', 'Landing', 'unavailable', 1000, false);
+  assert.strictEqual(p.snapshot([]), A.CHANGED);
+  assert.ok(p.emergency()); assert.ok(p.alarms()[0].lost); assert.strictEqual(p.warnings().length, 0);
+  assert.strictEqual(p.snapshot([]), A.NONE, 'already marked');
+  p.snapshot([[HALL, 'smoke', 'Hall', 'off', '9000']]); assert.ok(!p.emergency());
+});
+test('switching alarms off forgets real detectors and keeps tests', () => {
+  const p = P(); p.update(HALL, 'smoke', 'Hall', 'on', 1, false); p.update('simulated.smoke', 'smoke', 'Test', 'on', 1, true);
+  assert.strictEqual(p.forgetDetectors(), A.CHANGED); assert.deepStrictEqual(p.alarms().map((d) => d.name), ['Test']);
+  assert.strictEqual(p.forgetDetectors(), A.NONE);
 });

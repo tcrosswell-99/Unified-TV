@@ -41,7 +41,7 @@
   let pressTimer = null, idleTimer = null, doorbellTimer = null, toastTimer = null, clockTimer = null, slideTimer = null;
   let doorbellAt = 0;
   let wp = { active: false, list: [], index: 0, count: 0 };
-  let alarmIndex = 0;
+  let alarmIndex = 0, alarmEntity = null;   // focus follows the detector, not its position in the list
   const simulation = !env.tizen;
 
   function save() { store.save(S); }
@@ -850,7 +850,7 @@
       if (fresh || $('alarm').hidden) {
         dismissDoorbell(true); $('toast').hidden = true; exitWallpaper();
         if (player.state === 'playing' || player.state === 'buffering') player.pause();
-        alarmIndex = -1;
+        alarmIndex = -1; alarmEntity = null;
       }
       alarmScreen();
     } else $('alarm').hidden = true;
@@ -884,7 +884,11 @@
     policy.warnings().forEach(function (w) { box.appendChild(el('div', 'line', w.warning() + (w.name ? ': ' + w.name : '') + (w.since > 0 ? ' (since ' + hhmm(w.since) + ')' : ''))); });
     box.appendChild(el('div', 'line', 'Acknowledging only clears this screen. It never silences or resets a detector.'));
     box.appendChild(el('div', 'line', 'This screen adds to your alarms. It never replaces them.'));
-    if (alarmIndex < 0 || alarmIndex >= targets.length) alarmIndex = 0;
+    // A redraw (doorbell press, name change, warning) keeps focus on the same detector, so OK never acknowledges another.
+    const kept = targets.map(function (t) { return t.entity; }).indexOf(alarmEntity);
+    if (kept >= 0) alarmIndex = kept;
+    else if (alarmIndex < 0 || alarmIndex >= targets.length) alarmIndex = 0;
+    alarmEntity = targets[alarmIndex] ? targets[alarmIndex].entity : null;
     if (targets[alarmIndex]) targets[alarmIndex].el.classList.add('focused');
     box.targets = targets;
     box.hidden = false;
@@ -894,7 +898,8 @@
     if (!targets.length) return;
     if (a === 'left' || a === 'up') alarmIndex = Math.max(0, alarmIndex - 1);
     else if (a === 'right' || a === 'down') alarmIndex = Math.min(targets.length - 1, alarmIndex + 1);
-    else if (a === 'ok' || a === 'long') { policy.acknowledge(targets[alarmIndex].entity); alarmIndex = 0; renderAlarms(false); return; }
+    else if (a === 'ok' || a === 'long') { policy.acknowledge(targets[alarmIndex].entity); alarmIndex = 0; alarmEntity = null; renderAlarms(false); return; }
+    alarmEntity = targets[alarmIndex].entity;
     // Back does nothing here: the emergency screen is never dismissed by Back or by time.
     alarmScreen();
   }

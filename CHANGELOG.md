@@ -14,6 +14,16 @@ Nothing in a release has been tested on a television unless the entry says so. P
   - Limits: the NAS address is typed once under Advanced (web apps cannot discover it; awaiting the owner's acceptance), the Ring card has no live camera, private NAS playback and a Content-Security-Policy are not built, and Samsung TV Plus is found by name because its app id is unconfirmed.
 - **Samsung Home-button proposal** ([SAMSUNG_HOME_PROPOSAL.md](docs/SAMSUNG_HOME_PROPOSAL.md)) and the Frame capability table ([samsung-frame-2021.md](docs/devices/samsung-frame-2021.md), every value `unknown`). A proposal only: nothing was run on the TV.
 
+### Fixed
+
+- **Smoke/CO alarms, Android and Frame** (from an independent review of the alarm code against the spec; unit-tested only):
+  - An alarm that cleared and re-sounded while the TV was disconnected now brings the full screen back, unacknowledged. A Home Assistant restart resets its times, so an acknowledged alarm still sounding may ask to be acknowledged again: deliberately on the safe side.
+  - An alarm missing from Home Assistant's list on reconnect (HA still starting, or an integration failed) is no longer cleared by its absence; it stays, marked "Detector not responding", until its detector reports off.
+  - Redrawing the alarm screen keeps focus on the same detector's Acknowledge, so OK can't acknowledge a different alarm.
+  - A refused Home Assistant token during an alarm keeps the alarm on screen with "alarm status unknown", instead of closing it.
+  - Reminders arriving during an emergency are dropped, as the spec says, instead of appearing after it; a doorbell visit exactly 45 s old now gives the note ("under 45 seconds" shows the card).
+  - Android only: detector warnings that change while the alarm screen is up are shown once it goes; a camera asked for while offline opens only if the connection returns within 45 s; no duplicate connections after a quick restart; turning alarms off forgets earlier detectors; the alerts service restarts if the system ends it.
+
 ## [0.5.0] - 2026-10-24
 
 Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience". Home now changes its whole scene with what is in focus and your films rise into view on Down. Unified TV can become the TV's real Home if an adult chooses it, and can always hand Home back. The NAS, Home Assistant and Jellyfin are found on the home network and set up without typing an address, and Jellyfin signs in with a phone. Code-checked and unit-tested only. Release notes: [PREVIEW_0_5_RELEASE.md](docs/PREVIEW_0_5_RELEASE.md). **Not yet installed on a TV:** see the [0.5 on-TV checks](docs/PREVIEW_0_5_TESTS.md).

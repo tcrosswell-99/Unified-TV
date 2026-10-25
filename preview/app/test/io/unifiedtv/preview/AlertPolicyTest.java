@@ -51,7 +51,8 @@ public class AlertPolicyTest {
         List<AlertPolicy.Detector> on=p.alarms();assertEquals(2,on.size());
         assertEquals("oldest first","Hall",on.get(0).name);assertEquals(1000,on.get(0).since);assertEquals("SMOKE ALARM",on.get(0).title());
         assertEquals("CARBON MONOXIDE ALARM",on.get(1).title());assertTrue(on.get(1).advice().contains("fresh air"));assertTrue(on.get(0).advice().contains("stay out"));
-        assertEquals("a repeat keeps the first time",AlertPolicy.NONE,p.update(HALL,"smoke","Hall","on",9000,false));assertEquals(1000,p.alarms().get(0).since);
+        assertEquals("a duplicate event (same last_changed) changes nothing",AlertPolicy.NONE,p.update(HALL,"smoke","Hall","on",1000,false));
+        assertEquals("an older, out-of-order event keeps the first time",AlertPolicy.NONE,p.update(HALL,"smoke","Hall","on",500,false));assertEquals(1000,p.alarms().get(0).since);
     }
     @Test public void acknowledgingOneAlarmLeavesTheOtherOnScreenAndABannerRemains(){AlertPolicy p=new AlertPolicy();
         p.update(HALL,"smoke","Hall","on",1000,false);p.update(BOILER,"carbon_monoxide","Boiler","on",2000,false);
@@ -95,7 +96,8 @@ public class AlertPolicyTest {
         p.connection(false);assertFalse(p.connected());
         assertEquals(AlertPolicy.NEW_ALARM,p.snapshot(all));assertTrue(p.connected());
         List<String> names=new ArrayList<>();for(AlertPolicy.Detector d:p.alarms())names.add(d.name);
-        assertEquals("kitchen gone, test kept, hall new",Arrays.asList("Test","Hall"),names);
+        assertEquals("kitchen missing but kept, test kept, hall new",Arrays.asList("Kitchen","Test","Hall"),names);
+        assertTrue("a missing alarm is marked not responding, never cleared",p.alarms().get(0).lost);
         assertEquals(1,p.warnings().size());
     }
     @Test public void aRefusedOrUnrelatedReplyNeverClearsAnAlarm(){
@@ -107,5 +109,26 @@ public class AlertPolicyTest {
         p.update("simulated.smoke","smoke","Kitchen","on",1,true);p.update(HALL,"smoke","Hall","on",2,false);
         assertTrue(p.alarms().get(0).title().startsWith("TEST"));assertFalse(p.alarms().get(1).title().startsWith("TEST"));
         assertEquals(AlertPolicy.CHANGED,p.endSimulation());assertEquals(1,p.alarms().size());assertEquals("Hall",p.alarms().get(0).name);
+    }
+    @Test public void anAlarmThatReSoundedWhileAwayComesBackUnacknowledged(){AlertPolicy p=new AlertPolicy();
+        p.update(HALL,"smoke","Hall","on",1000,false);p.acknowledge(HALL);
+        assertEquals("same alarm: acknowledgement kept",AlertPolicy.NONE,p.snapshot(Collections.singletonList(new String[]{HALL,"smoke","Hall","on","1000"})));assertFalse(p.screen());
+        assertEquals(AlertPolicy.NEW_ALARM,p.snapshot(Collections.singletonList(new String[]{HALL,"smoke","Hall","on","5000"})));
+        assertTrue(p.screen());assertEquals(5000,p.alarms().get(0).since);
+    }
+    @Test public void aMissingAlarmStaysUntilOffAndAMissingWarningIsDropped(){AlertPolicy p=new AlertPolicy();
+        p.update(HALL,"smoke","Hall","on",1000,false);p.update("binary_sensor.landing","smoke","Landing","unavailable",1000,false);
+        assertEquals(AlertPolicy.CHANGED,p.snapshot(new ArrayList<>()));assertTrue(p.emergency());assertTrue(p.alarms().get(0).lost);assertEquals(0,p.warnings().size());
+        assertEquals("already marked",AlertPolicy.NONE,p.snapshot(new ArrayList<>()));
+        p.snapshot(Collections.singletonList(new String[]{HALL,"smoke","Hall","off","9000"}));assertFalse(p.emergency());
+    }
+    @Test public void switchingAlarmsOffForgetsRealDetectorsAndKeepsTests(){AlertPolicy p=new AlertPolicy();
+        p.update(HALL,"smoke","Hall","on",1,false);p.update("simulated.smoke","smoke","Test","on",1,true);
+        assertEquals(AlertPolicy.CHANGED,p.forgetDetectors());assertEquals(1,p.alarms().size());assertEquals("Test",p.alarms().get(0).name);
+        assertEquals(AlertPolicy.NONE,p.forgetDetectors());
+    }
+    @Test public void aVisitExactly45SecondsOldIsANote(){AlertPolicy p=new AlertPolicy();
+        p.update(HALL,"smoke","Hall","on",0,false);p.queueRing(1000);p.update(HALL,"smoke","Hall","off",2000,false);assertEquals(1,p.ringAfterAlarm(45999));
+        AlertPolicy q=new AlertPolicy();q.update(HALL,"smoke","Hall","on",0,false);q.queueRing(1000);q.update(HALL,"smoke","Hall","off",2000,false);assertEquals(-1,q.ringAfterAlarm(46000));
     }
 }

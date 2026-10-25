@@ -120,7 +120,8 @@
     /**
      * Records one detector's state. NEW_ALARM when an alarm starts (the full screen comes back), CHANGED when anything
      * shown changes. Normal removes it: that is "no alarm from this detector", never "safe". An alarm whose detector
-     * goes quiet stays an alarm, marked lost, because the detector may have failed in the fire.
+     * goes quiet stays an alarm, marked lost, because the detector may have failed in the fire. An alarm that Home
+     * Assistant says started again later than the one shown (it cleared and re-sounded while the TV was away) is new.
      */
     update(entity, kind, nm, haState, since, simulated) {
       const state = reading(haState);
@@ -129,14 +130,18 @@
       const n = nm || '';
       if (state === NORMAL) return this.detectors.delete(entity) ? CHANGED : NONE;
       if (d && d.alarm() && (state === OFFLINE || state === FAULT)) { if (d.lost) return NONE; d.lost = true; return CHANGED; }
+      if (d && d.alarm() && state === ALARM && !d.simulated && d.since > 0 && since > d.since) {
+        this.detectors.set(entity, new Detector(entity, kind, n, state, since, false)); return NEW_ALARM;
+      }
       if (d && d.alarm() && state === ALARM) { const changed = d.lost || d.name !== n; d.lost = false; d.name = n; return changed ? CHANGED : NONE; }
       if (d && d.state === state && d.name === n) return NONE;
       this.detectors.set(entity, new Detector(entity, kind, n, state, since, !!simulated));
       return state === ALARM ? NEW_ALARM : CHANGED;
     }
     /**
-     * The full picture after (re)connecting: every smoke and CO detector with its state. Detectors no longer reported are
-     * dropped; simulated ones are kept. Acknowledgements survive for alarms still sounding.
+     * The full picture after (re)connecting: every smoke and CO detector with its state. Warnings no longer reported are
+     * dropped; simulated detectors are kept. A missing alarm is never cleared by its absence: it stays, marked lost, until
+     * its detector reports off. Acknowledgements survive for alarms still sounding.
      */
     snapshot(all) {
       this.connected_ = true;
@@ -149,7 +154,9 @@
         result = Math.max(result, self.update(d[0], d[1], d[2], d[3], isNaN(since) ? 0 : since, false));
       });
       Array.from(this.detectors.values()).forEach(function (d) {
-        if (!d.simulated && !seen[d.entity]) { self.detectors.delete(d.entity); result = Math.max(result, CHANGED); }
+        if (d.simulated || seen[d.entity]) return;
+        if (!d.alarm()) { self.detectors.delete(d.entity); result = Math.max(result, CHANGED); }
+        else if (!d.lost) { d.lost = true; result = Math.max(result, CHANGED); }
       });
       return result;
     }
@@ -170,6 +177,12 @@
       if (!d || !d.alarm() || d.acknowledged) return false;
       d.acknowledged = true; return true;
     }
+    /** Alarms switched off in household settings: forget every real detector (tests are ended separately). */
+    forgetDetectors() {
+      let n = 0; const self = this;
+      Array.from(this.detectors.values()).forEach(function (d) { if (!d.simulated) { self.detectors.delete(d.entity); n++; } });
+      return n > 0 ? CHANGED : NONE;
+    }
     /** Ends a test: removes simulated detectors only. */
     endSimulation() {
       let n = 0; const self = this;
@@ -182,7 +195,7 @@
     ringAfterAlarm(now) {
       if (this.queuedRing === 0 || this.emergency()) return 0;
       const at = this.queuedRing; this.queuedRing = 0;
-      return now - at <= RING_STILL_RELEVANT ? 1 : -1;
+      return now - at < RING_STILL_RELEVANT ? 1 : -1;
     }
     queuedRingAt() { return this.queuedRing; }
   }

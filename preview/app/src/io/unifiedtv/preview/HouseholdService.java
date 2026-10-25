@@ -26,11 +26,13 @@ public final class HouseholdService extends Service {
     private final AlertPolicy policy=new AlertPolicy();
     private OkHttpClient client;private WebSocket socket;private JSONObject config,house;
     private WindowManager windows;private View cameraOverlay,reminderOverlay,alarmOverlay;private ExoPlayer cameraPlayer;private AudioFocusRequest alarmFocus;
-    private boolean stopped,authorised,pendingCamera,simulationOnly;private int retry=1000,command=10;private int streamId;private TextView cameraState;
+    private boolean stopped,authorised,simulationOnly;private long pendingCamera;private int retry=1000,command=10;private int streamId;private TextView cameraState;
     private static final int NOTIFICATION=42,STATES=3,STATES_MAX=8_000_000;
     /** Waiting for the one large get_states reply; any other oversized message is still refused. */
     private volatile boolean statesPending;
-    private final Runnable timeout=this::dismiss;
+    private final Runnable timeout=this::dismiss,reconnect=this::connect;
+    /** A camera asked for while Home Assistant was away is only opened if the connection returns within this time. */
+    private static final long CAMERA_REQUEST_MS=45000;
     @Override public void onCreate(){super.onCreate();windows=(WindowManager)getSystemService(WINDOW_SERVICE);
         NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         manager.createNotificationChannel(new NotificationChannel("household","Household alerts",NotificationManager.IMPORTANCE_LOW));
@@ -49,16 +51,18 @@ public final class HouseholdService extends Service {
     }
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&"stop".equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
-        if(intent!=null&&"dismiss".equals(intent.getAction())){dismiss();return START_NOT_STICKY;}
-        if(intent!=null&&"simulate".equals(intent.getAction())){simulationOnly=true;simulate(intent);if(socket==null)connect();return START_NOT_STICKY;}
+        if(intent!=null&&"dismiss".equals(intent.getAction())){dismiss();return START_STICKY;}
+        if(intent!=null&&"simulate".equals(intent.getAction())){simulationOnly=true;simulate(intent);if(socket==null)connect();return START_STICKY;}
         if(intent!=null&&"camera".equals(intent.getAction())){
             if(authorised){long now=System.currentTimeMillis();if(policy.acceptRing("manual:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}}
-            else pendingCamera=true;
+            else pendingCamera=System.currentTimeMillis();
         }
-        if(socket==null)connect();return START_NOT_STICKY;
+        // Sticky: if the system ends the process, it restarts the service and monitoring resumes with a fresh full picture.
+        if(socket==null)connect();return START_STICKY;
     }
     private void connect(){
-        if(stopped)return;
+        main.removeCallbacks(reconnect);
+        if(stopped||socket!=null)return;
         try{
             config=new Vault(this).read("ha");house=new Vault(this).read("household");
             if(!config.optBoolean("enabled")||config.optString("token").isEmpty()||!Settings.canDrawOverlays(this))throw new IllegalArgumentException();
@@ -79,22 +83,28 @@ public final class HouseholdService extends Service {
             update("Not configured · open household settings");stopSelf();
         }
     }
-    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;authorised=false;policy.connection(false);if(policy.emergency())render(false);update("Offline · retrying");main.postDelayed(this::connect,retry);retry=Math.min(30000,retry*2);}
+    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;authorised=false;policy.connection(false);if(policy.emergency())render(false);update("Offline · retrying");main.postDelayed(reconnect,retry);retry=Math.min(30000,retry*2);}
     private void send(WebSocket ws,JSONObject command){ws.send(command.toString());}
     private void message(WebSocket ws,String text){
         if(stopped||ws!=socket)return;
         try{
             JSONObject value=new JSONObject(text);String type=value.optString("type");
             if(type.equals("auth_required"))send(ws,new JSONObject().put("type","auth").put("access_token",config.getString("token")));
-            else if(type.equals("auth_invalid")){update("Authentication required · update your connection");ws.cancel();socket=null;stopSelf();}
+            else if(type.equals("auth_invalid")){
+                ws.cancel();socket=null;authorised=false;
+                // An alarm already on screen stays, with its status unknown: losing access never clears an alarm.
+                if(policy.emergency()){policy.connection(false);render(false);update("Authentication required · alarm status unknown");return;}
+                update("Authentication required · update your connection");stopSelf();}
             else if(type.equals("auth_ok")){
                 authorised=true;
                 retry=1000;send(ws,new JSONObject().put("id",1).put("type","subscribe_events").put("event_type","state_changed"));
                 if(house.optBoolean("reminders"))send(ws,new JSONObject().put("id",2).put("type","subscribe_events").put("event_type","unified_tv_reminder"));
                 // An alarm already sounding when the TV connects or reconnects is shown straight away.
                 if(alarms()){statesPending=true;send(ws,new JSONObject().put("id",STATES).put("type","get_states"));}
+                else if(policy.forgetDetectors()!=AlertPolicy.NONE)render(false);   // alarms switched off in household settings
                 update("Authorised · waiting for subscription confirmation");
-                if(pendingCamera){pendingCamera=false;long now=System.currentTimeMillis();if(policy.acceptRing("manual:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}}
+                long asked=pendingCamera;pendingCamera=0;
+                if(asked>0&&System.currentTimeMillis()-asked<CAMERA_REQUEST_MS){long now=System.currentTimeMillis();if(policy.acceptRing("manual:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}}
             }else if(type.equals("result")){
                 if(value.optInt("id")==STATES){statesPending=false;List<String[]> all=AlertPolicy.detectorsIn(text,STATES);if(all!=null)snapshot(ws,all);return;}
                 if(value.optInt("id")==1)update(value.optBoolean("success")?"Listening · actual triggers and video need TV tests":"Subscription refused · check account permissions");
@@ -126,6 +136,7 @@ public final class HouseholdService extends Service {
             }
         }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
+            if(policy.emergency())return;   // spec 4.10: reminders arriving during an emergency are dropped, not held
             if(policy.ringing(now))policy.defer(data.optString("text"),fired);else if(policy.reminderAllowed(fired,now))reminder(data.optString("text"));
         }
     }
@@ -252,7 +263,10 @@ public final class HouseholdService extends Service {
                 .setUsage(android.media.AudioAttributes.USAGE_ALARM).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
             try{((AudioManager)getSystemService(AUDIO_SERVICE)).requestAudioFocus(alarmFocus);}catch(RuntimeException ignored){}
         }
-        alarmList.removeAllViews();Button first=null;
+        // Redraws (a doorbell press, a name change, a warning) keep focus on the same alarm's Acknowledge, so OK never
+        // acknowledges a different detector than the one the viewer had chosen.
+        View had=alarmOverlay.findFocus();Object focused=had==null?null:had.getTag();
+        alarmList.removeAllViews();Button first=null,again=null;
         for(AlertPolicy.Detector d:policy.alarms()){
             LinearLayout entry=new LinearLayout(this);entry.setOrientation(LinearLayout.VERTICAL);entry.setGravity(Gravity.CENTER);entry.setPadding(24,20,24,20);
             line(entry,d.title()+(d.name.isEmpty()?"":" — "+d.name),40,true,-1);
@@ -260,19 +274,19 @@ public final class HouseholdService extends Service {
             line(entry,since+(d.lost?(since.isEmpty()?"":" · ")+"Detector not responding: treat as still sounding":"")+(d.acknowledged?(since.isEmpty()?"":" · ")+"Acknowledged, still active":""),22,false,0xFFFFE3E3);
             line(entry,d.advice(),26,false,-1);
             if(!d.acknowledged){Button ack=new Button(this);ack.setText("Acknowledge");ack.setTextSize(22);String entity=d.entity;
-                ack.setOnClickListener(v->{if(policy.acknowledge(entity))render(false);});entry.addView(ack);if(first==null)first=ack;}
+                ack.setTag(entity);ack.setOnKeyListener(backKeepsFocus);
+                ack.setOnClickListener(v->{if(policy.acknowledge(entity))render(false);});entry.addView(ack);if(first==null)first=ack;if(entity.equals(focused))again=ack;}
             alarmList.addView(entry);
         }
         if(policy.queuedRingAt()>0)line(alarmList,"Doorbell rang at "+clock(policy.queuedRingAt())+". It will be shown when the alarm has ended.",20,false,0xFFFFE3E3);
         if(!policy.connected())line(alarmList,"Connection to Home Assistant lost: alarm status unknown.",20,true,0xFFFFE3E3);
         for(AlertPolicy.Detector w:policy.warnings())line(alarmList,w.warning()+(w.name.isEmpty()?"":": "+w.name)+(w.since>0?" (since "+clock(w.since)+")":""),18,false,0xFFE8C9C9);
         line(alarmList,"This screen adds to your alarms. It never replaces them.",16,false,0xFFE8C9C9);
-        alarmOverlay.setFocusableInTouchMode(true);
-        // Back never acknowledges anything by itself: it only brings focus back to the first Acknowledge.
-        final Button target=first;
-        alarmOverlay.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP&&target!=null)target.requestFocus();return true;}return false;});
-        if(first!=null)first.requestFocus();
+        alarmOverlay.setFocusableInTouchMode(true);alarmOverlay.setOnKeyListener(backKeepsFocus);
+        if(again!=null)again.requestFocus();else if(first!=null)first.requestFocus();
     }
+    /** Back on the alarm screen never acknowledges or closes anything: it is consumed, and focus stays where it is. */
+    private final View.OnKeyListener backKeepsFocus=(v,key,e)->key==KeyEvent.KEYCODE_BACK;
     private void removeAlarmScreen(){
         removeView(alarmOverlay,()->{alarmOverlay=null;alarmList=null;});
         if(alarmFocus!=null){try{((AudioManager)getSystemService(AUDIO_SERVICE)).abandonAudioFocusRequest(alarmFocus);}catch(RuntimeException ignored){}alarmFocus=null;}
@@ -294,8 +308,10 @@ public final class HouseholdService extends Service {
     /** Detector warnings stay apart from emergencies: a short notice when they change, never styled as an alarm. */
     private void warnings(boolean screen){
         StringBuilder all=new StringBuilder();for(AlertPolicy.Detector w:policy.warnings())all.append(w.entity).append(w.state).append('\n');
-        String now=all.toString();if(now.equals(lastWarnings))return;lastWarnings=now;
-        if(screen||policy.warnings().isEmpty()||!Settings.canDrawOverlays(this))return;
+        String now=all.toString();if(now.equals(lastWarnings))return;
+        if(policy.warnings().isEmpty()){lastWarnings=now;return;}
+        // Not yet shown while the alarm screen is up (it lists them itself): the notice follows once the screen goes.
+        if(screen||!Settings.canDrawOverlays(this))return;lastWarnings=now;
         AlertPolicy.Detector w=policy.warnings().get(0);
         removeView(warningToast,()->warningToast=null);
         TextView toast=new TextView(this);toast.setText(w.warning()+(w.name.isEmpty()?"":": "+w.name)+(policy.warnings().size()>1?" (+"+(policy.warnings().size()-1)+")":""));

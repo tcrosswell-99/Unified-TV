@@ -112,6 +112,8 @@
         this.stopped = true; this.socket = null;
         try { ws.close(); } catch (e) { /* closed */ }
         this.policy.connection(false);
+        // An alarm already on screen stays, with its status unknown: losing access never clears an alarm.
+        if (this.policy.emergency()) this.o.onUpdate('alarms', { fresh: false });
         this.setStatus(STATUS.AUTH_REQUIRED);
       } else if (type === 'auth_ok') {
         this.retry = 1000;
@@ -120,6 +122,7 @@
         if (this.o.reminders) this.send(ws, { id: 2, type: 'subscribe_events', event_type: 'unified_tv_reminder' });
         // An alarm already sounding when the TV connects or reconnects is shown straight away.
         if (this.o.alarms) { this.statesPending = true; this.send(ws, { id: STATES_ID, type: 'get_states' }); }
+        else if (this.policy.forgetDetectors() !== Alerts.NONE) this.o.onUpdate('alarms', { fresh: false });   // alarms switched off
       } else if (type === 'result') {
         if (value.id === STATES_ID) {
           this.statesPending = false;
@@ -161,6 +164,7 @@
         const target = typeof data.room === 'string' ? data.room : '';
         if (target && target !== (this.o.room || 'frame')) return;
         const text = typeof data.text === 'string' ? data.text.substring(0, 240) : '';
+        if (this.policy.emergency()) return;   // spec 10.2: reminders arriving during an emergency are dropped, not held
         if (this.policy.ringing(now)) this.policy.defer(text, fired);
         else if (this.policy.reminderAllowed(fired, now) && text.trim()) this.o.onUpdate('reminder', { text: text });
       }
