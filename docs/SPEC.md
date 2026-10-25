@@ -2,7 +2,9 @@
 
 # Unified TV specification
 
-**Version:** 3.3 | **Date:** 25 October 2026 (UK time) | **Status:** authoritative current specification. It states requirements, **not** features already built or verified.
+**Version:** 3.3, with the owner's later decisions | **Date:** 25 October 2026 (UK time) | **Status:** working specification. It states requirements, **not** features already built or verified.
+
+> **v3.4 has started to arrive.** The owner supplied the v3.4 index and module 12 (Settings, onboarding and configuration) on 25 October 2026: [docs/spec/v3.4/](spec/v3.4/README.md). v3.4 modules are the normative requirements as they arrive; **module 12 overrides this document where they overlap.** Modules 00–11 have not been supplied yet (placeholders mark them), so for everything else this document remains the working reference. The owner's latest explicit instructions take precedence over both.
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -49,6 +51,14 @@ A calm, premium, remote-first home experience inspired by the principles of the 
 - **Continue Watching:** separate Adults and Kids histories for **Unified TV's own player**, kept on the TV and labelled as such. Third-party watch progress only through supported APIs; none is integrated (another app's Android TV Watch Next rows are not readable by a third-party launcher).
 - **Ring in Kids:** the person toast (RING-02) can be switched off for Kids; doorbell presses and smoke/CO keep their priority in every profile.
 - **Universal search (later):** the catalogue uses one item model (title, year, kind, source, stable id, folder/root, rating, poster reference) so a search index can be added without rebuilding it. No streaming-service integration is built now.
+- **Home navigation** *(owner, 25 October 2026, answering v3.4 SET-020)*: the default Home stays minimal; utilities and NAS films appear only when you move towards them.
+  - **Up:** focus moves straight onto the utility icons (NordVPN, AirPin or another configured utility). Left/Right moves between them; OK launches the focused utility. No intermediate menu.
+  - **Down:** the NAS film section slides into view, with focus going straight to the first useful film or category.
+  - **Left/Right:** move within the focused row without changing section.
+  - **Back:** returns to the previous level or the dock, never resetting the launcher.
+  - No loading screen or page transition between these sections: the background stays continuous while content glides into place.
+- **Household settings, not hardcoding** *(owner, 25 October 2026, answering SET-011/SET-074)*: dock defaults come from the apps installed on the TV; the football-team card, time zone and rating scheme are settings. The owner's TVs keep today's choices (the six apps, Tottenham, UK time, UK/US ratings) as their settings.
+- **Doorbell camera auto-close** *(owner, 25 October 2026, answering SET-051)*: **30 s by default**, with 60 s and manual (Back only) selectable.
 - **Owner diagnostics:** a hidden screen in Settings (Adults, PIN), never on Home, checking NAS discovery and catalogue, Ring/Home Assistant connectivity, VPN fail-closed status, version and signing, and listing hardware tests.
 
 Detail: PRODUCT_SPEC.md Sections 1–3, 15.
@@ -337,7 +347,7 @@ Owner rules of 25 October 2026 (RING-01..05; they replace the earlier rule that 
 |---|---|---|
 | **RING-01** | Ordinary motion | Ignored: no notification, sound, camera or interruption. A sensor that only reports motion never counts as a person. |
 | **RING-02** | Confirmed person detection | A **discreet toast** naming the doorbell (for example "Person at Front Door") for **5 seconds**. No camera, no playback interruption, no focus or sound. Repeated person events from one sensor within a minute give one toast. Never shown during an emergency. "Confirmed" means the integration itself says person (a Ring Smart Alert / event type of person or human, ring-mqtt's `personDetected`, or a dedicated person sensor). |
-| **RING-03** | Doorbell button press | The live camera opens automatically as a **large picture-in-picture card** (about half the screen width, lower right), so current playback stays visible and, where the platform allows, keeps playing; the camera is muted and takes no audio focus. Back dismisses it and focus returns to the previous interface; it also closes after 45 s. `Connecting` until real frames arrive; never label a still as live. If no picture arrives within 12 s, or no camera is set up, the card says **"Live view unavailable"** and when the doorbell was pressed. The viewer never has to open the Ring app. |
+| **RING-03** | Doorbell button press | The live camera opens automatically as a **large picture-in-picture card** (about half the screen width, lower right), so current playback stays visible and, where the platform allows, keeps playing; the camera is muted and takes no audio focus. Back dismisses it and focus returns to the previous interface; it also closes after the household's auto-close time (30 s by default; 60 s or manual selectable, SET-051). `Connecting` until real frames arrive; never label a still as live. If no picture arrives within 12 s, or no camera is set up, the card says **"Live view unavailable"** and when the doorbell was pressed. The viewer never has to open the Ring app. |
 | **RING-04** | Any Ring event during a smoke/CO emergency | Smoke and CO always come first. A press is kept for later (Section 10.2); a person toast is not shown. |
 | **RING-05** | Platforms | The same intended behaviour on TCL, Sony and the Frame, subject to demonstrated platform capability. Limits (overlays over DRM apps, background execution, live-stream access, third-party apps, Frame Art Mode) are documented in Section 10.8 and tested, never assumed. |
 
