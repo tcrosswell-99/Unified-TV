@@ -18,7 +18,7 @@ import java.util.*;
  * places). Adding to a full dock never overwrites a tile by itself: the household picks the tile to replace (it stays
  * installed and here in Apps), or keeps the app in Apps.
  *
- * OD-11 (owner, 25 October 2026): the grid is content and fills the screen, but managing an app or the dock (Hold OK:
+ * OD-19 (owner, 25 October 2026): the grid is content and fills the screen, but managing an app or the dock (Hold OK:
  * Open, Add to / Remove from Home, App information; and choosing the tile to replace) happens in the module 13 glass
  * sidebar from the right, over the grid, which stays still and can't take focus until the sidebar closes (Back).
  */
@@ -56,7 +56,7 @@ public final class AppsActivity extends Screen {
         button("Back to Home",this::finish);if(target!=null)target.requestFocus();
         stage();
     }
-    // --- The management sidebar (OD-11)
+    // --- The management sidebar (OD-19)
     private FrameLayout stage;private View grid,side;private LinearLayout rows;private String sideFor;
     /** Puts the grid on a stage, so the sidebar can come in over it. */
     private void stage(){

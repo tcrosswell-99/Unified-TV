@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 /**
  * Content first: a saved connection opens straight away, one server on the home network is chosen for you, and only
  * several ask. No address typing. Home Assistant is set up on the phone inside Settings (SetupPages), so "ha" goes there;
- * media servers keep this screen, as the glass sheet over Home (OD-11).
+ * media servers keep this screen, as the glass sheet over Home (OD-19).
  */
 public final class ServiceDiscoveryActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();private String key;private TextView state;private boolean active;

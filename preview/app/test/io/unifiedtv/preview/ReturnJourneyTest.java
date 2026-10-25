@@ -19,7 +19,7 @@ import java.time.Duration;
 /**
  * Owner feedback from the TCL, 25 October 2026: Back from Ask your TV and from short visits to AirPin and NordVPN comes
  * back to Unified TV where Android allows; NordVPN opens at its own main screen; Ask your TV is the small glass pane over
- * Home; and (OD-11) every setup or management screen is the glass sidebar over a still Home.
+ * Home; and (OD-19) every setup or management screen is the glass sidebar over a still Home.
  */
 @RunWith(RobolectricTestRunner.class) @Config(sdk=30,qualifiers="w960dp-h540dp-land-xhdpi")
 public class ReturnJourneyTest {
@@ -136,7 +136,7 @@ public class ReturnJourneyTest {
         }
     }
 
-    // --- OD-11: setup and management as the glass sidebar over a still Home
+    // --- OD-19: setup and management as the glass sidebar over a still Home
     @Test public void setupScreensAreTheSidebarNotAFullScreenPage(){
         for(Class<? extends GlassScreen> type:java.util.Arrays.asList(BuildMyTvActivity.class,PerformanceActivity.class,RemoteCheckActivity.class,GalleryActivity.class)){
             Intent i=new Intent(app(),type).putExtra("edit",true);

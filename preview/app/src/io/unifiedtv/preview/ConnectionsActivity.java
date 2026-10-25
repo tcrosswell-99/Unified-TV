@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 
 /**
  * Typing a media server's address and token: the advanced fallback when signing in with the phone (Quick Connect) isn't
- * possible, as the glass sheet over Home (OD-11). Home Assistant no longer uses this screen: it is set up on the phone in
+ * possible, as the glass sheet over Home (OD-19). Home Assistant no longer uses this screen: it is set up on the phone in
  * Settings > Smart Home, with its own Advanced page there, so "ha" goes straight to that page.
  */
 public final class ConnectionsActivity extends GlassScreen {

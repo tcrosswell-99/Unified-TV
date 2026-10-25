@@ -10,7 +10,8 @@ import java.util.*;
  * Adults see everything, Kids titles included, with a Kids row of their own.
  *
  * Rows, in order: Continue Watching (this profile's places on this TV, most recent first; a title watched to the end has
- * no place and drops off), Recently added (titles found after the list was first made), Films, TV, and for Adults Kids.
+ * no place and drops off), Favourites (this profile's own, newest first, only when there are some: SET-032), Recently
+ * added (titles found after the list was first made), Films, TV, and for Adults Kids.
  * Each row shows its first {@link #ROW_MAX} and opens "All" for the rest.
  *
  * Series: a name with S01E02 (or 1x02, "Season 1 Episode 2") is an episode; so is a file inside a "Season 1" folder, or
@@ -73,8 +74,12 @@ final class LibraryCatalogue {
     private static final java.util.regex.Pattern TV_ROOT=java.util.regex.Pattern.compile("(?i)\\b(tv|television|series|shows?|programmes?|programs?|box ?sets?|episodes?)\\b");
     static boolean tvRoot(String name){return name!=null&&TV_ROOT.matcher(name).find();}
 
-    /** Builds the catalogue for whoever is watching. */
+    /** Builds the catalogue for whoever is watching, with no favourites. */
     static Catalogue build(LibraryIndex.Index index,LibraryFolders.Library lib,KidsPolicy.Scheme scheme,ResumeStore store,long now){
+        return build(index,lib,scheme,store,Collections.emptyList(),now);
+    }
+    /** Builds the catalogue for whoever is watching; {@code favourites} are that profile's (Favourites), newest first. */
+    static Catalogue build(LibraryIndex.Index index,LibraryFolders.Library lib,KidsPolicy.Scheme scheme,ResumeStore store,List<String> favourites,long now){
         Catalogue cat=new Catalogue();if(index==null||lib==null)return cat;
         URI origin=LibraryIndex.origin(lib.source);String udn=lib.udn();
         Map<String,String> rootNames=new HashMap<>();for(LibraryFolders.Folder f:lib.folders)rootNames.put(f.id,f.name);
@@ -107,7 +112,7 @@ final class LibraryCatalogue {
             if(s==null){s=new Show(t.showKey,t.showName,t.showYear);cat.shows.put(t.showKey,s);}
             s.episodes.add(t);t.show=s;s.kids&=t.kids;s.seen=Math.max(s.seen,t.seen);if(s.art.isEmpty())s.art=t.art;}
         for(Show s:cat.shows.values())s.episodes.sort(EPISODE_ORDER);
-        cat.rows.addAll(rows(cat,lib.kids,store,now));
+        cat.rows.addAll(rows(cat,lib.kids,store,favourites,now));
         return cat;
     }
     static final Comparator<Title> EPISODE_ORDER=(a,b)->{
@@ -118,9 +123,11 @@ final class LibraryCatalogue {
     /** Newest year first; titles with no year after, A to Z. */
     static final Comparator<Card> NEWEST=(a,b)->{int c=b.year().compareTo(a.year());return c!=0?c:A_TO_Z.compare(a,b);};
 
-    static List<Row> rows(Catalogue cat,boolean kids,ResumeStore store,long now){
+    static List<Row> rows(Catalogue cat,boolean kids,ResumeStore store,long now){return rows(cat,kids,store,Collections.emptyList(),now);}
+    static List<Row> rows(Catalogue cat,boolean kids,ResumeStore store,List<String> favourites,long now){
         List<Row> out=new ArrayList<>();
         List<Card> cont=continueWatching(cat.titles,store,now);if(!cont.isEmpty())out.add(new Row("continue","Continue Watching",cont));
+        List<Card> fav=favourites(cat,favourites);if(!fav.isEmpty())out.add(new Row("favourites","Favourites",fav));
         List<Card> recent=recent(cat);if(!recent.isEmpty())out.add(new Row("recent","Recently added",recent));
         List<Card> films=new ArrayList<>(),tv=new ArrayList<>(),kidsRow=new ArrayList<>();
         for(Title t:cat.titles)if(t.kind==Kind.FILM)(t.kids&&!kids?kidsRow:films).add(new Card(t));
@@ -138,6 +145,15 @@ final class LibraryCatalogue {
             if(p==null)continue;Card c=new Card(t);c.resume=p.position;c.duration=p.duration;c.at=p.at;out.add(c);}
         out.sort((a,b)->Long.compare(b.at,a.at));
         return out.size()>CONTINUE_MAX?new ArrayList<>(out.subList(0,CONTINUE_MAX)):out;
+    }
+    /** SET-032: the profile's favourites found in this catalogue, in the saved order (newest first); others are left out. */
+    static List<Card> favourites(Catalogue cat,List<String> keys){
+        List<Card> out=new ArrayList<>();if(keys==null||keys.isEmpty())return out;
+        Set<String> wanted=new HashSet<>(keys);Map<String,Card> found=new HashMap<>();
+        for(Title t:cat.titles){String k="t:"+t.stableId;if(wanted.contains(k))found.put(k,new Card(t));}
+        for(Show s:cat.shows.values()){String k="s:"+s.key;if(wanted.contains(k))found.put(k,new Card(s));}
+        for(String k:keys){Card c=found.get(k);if(c!=null)out.add(c);}
+        return out;
     }
     /** Titles that arrived after the list was first made, newest first; a programme's new episodes share its tile. */
     static List<Card> recent(Catalogue cat){

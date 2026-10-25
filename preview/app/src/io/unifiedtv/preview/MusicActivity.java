@@ -11,7 +11,7 @@ import java.util.Locale;
  * Unified TV see media notifications and something is playing, Music opens Now Playing, which shows and controls only
  * what that app reports to Android (spec 11, Music).
  *
- * OD-11: this page shows no music of its own (no artwork, lists or playback); it only chooses where to go: Amazon Music,
+ * OD-19: this page shows no music of its own (no artwork, lists or playback); it only chooses where to go: Amazon Music,
  * the app store, or Now Playing. A choice page like that is the glass sidebar over a still Home, never a full-screen page.
  * The content it leads to (Now Playing, the Amazon Music app) stays full screen.
  */

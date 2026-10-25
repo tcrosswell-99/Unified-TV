@@ -21,6 +21,10 @@ import java.util.concurrent.*;
  * in the app's private storage (about 80 MB, oldest first out), decoded pictures in a small memory cache. With the cache,
  * the library works offline. Lookups run one at a time at a gentle pace (TMDB's rate limits; a "slow down" reply waits
  * as asked). The tile in focus and its neighbours jump the queue.
+ *
+ * SET-034 manual correction: the household can choose a tile's picture itself ("Wrong picture?", PictureFixActivity): one
+ * of TMDB's candidates, or no picture at all. The choice is kept per item (server UDN and item id, or the programme's key)
+ * in its own file, wins over any automatic match and over the server's own picture, and survives clearing the cache.
  */
 final class Posters {
     static final long DISK=80L*1024*1024,MISS_RETRY_MS=14L*24*60*60*1000,KEY_TTL_MS=60_000,GAP_MS=120;
@@ -44,7 +48,7 @@ final class Posters {
     private final Map<String,List<Callback>> waiting=new HashMap<>();
     /** Summaries of matched titles for the main thread: filled as matches are read, never locked against the disk. */
     private final ConcurrentHashMap<String,String[]> summaries=new ConcurrentHashMap<>();
-    private JSONObject matches;private boolean dirty;private long savedAt,lastCall,keyAt;private String key="";
+    private JSONObject matches,fixes;private boolean dirty;private long savedAt,lastCall,keyAt;private String key="";
 
     private Posters(Context app){
         this.app=app;dir=new File(app.getFilesDir(),"posters");disk=new PhotoCache(new File(dir,"img"),DISK);
@@ -80,11 +84,11 @@ final class Posters {
         if(!wait(k,cb))return;
         LookupJob job=new LookupJob(card,udn);
         submit(lookups,lookupQueue,urgent,()->{
-            Tmdb.Match m=match(job);String path=m!=null?m.poster:"";
+            Tmdb.Match m=match(job);String path=m!=null?m.poster:"";boolean none=noPicture(job.udn,job.lookupKey);
             submit(pictures,pictureQueue,urgent,()->{
                 Bitmap out=null;
                 if(!path.isEmpty())out=tmdbImage(path,"w342",POSTER_W,POSTER_H);
-                if(out==null&&!job.serverArt.isEmpty())out=serverImage(job.serverArt,POSTER_W,POSTER_H);
+                if(out==null&&!none&&!job.serverArt.isEmpty())out=serverImage(job.serverArt,POSTER_W,POSTER_H);
                 if(out!=null)memory.put(k,out);deliver(k,out);
             });
         });
@@ -98,13 +102,13 @@ final class Posters {
         if(!wait(k,cb))return;
         LookupJob job=new LookupJob(card,udn);
         submit(lookups,lookupQueue,true,()->{
-            Tmdb.Match m=match(job);String back=m!=null&&!light?m.backdrop:"",poster=m!=null?m.poster:"";
+            Tmdb.Match m=match(job);String back=m!=null&&!light?m.backdrop:"",poster=m!=null?m.poster:"";boolean none=noPicture(job.udn,job.lookupKey);
             submit(pictures,pictureQueue,true,()->{
                 Bitmap out=null;
                 if(!back.isEmpty())out=tmdbImage(back,"w780",BACK_W,BACK_H);
                 if(out==null){Bitmap p=memory.get("p:"+job.lookupKey);
                     if(p==null&&!poster.isEmpty())p=tmdbImage(poster,"w342",POSTER_W,POSTER_H);
-                    if(p==null&&!job.serverArt.isEmpty())p=serverImage(job.serverArt,POSTER_W,POSTER_H);
+                    if(p==null&&!none&&!job.serverArt.isEmpty())p=serverImage(job.serverArt,POSTER_W,POSTER_H);
                     if(p!=null){memory.put("p:"+job.lookupKey,p);out=Backdrops.fromPoster(p);}}
                 if(out!=null)memory.put(k,out);deliver(k,out);
             });
@@ -127,6 +131,9 @@ final class Posters {
     /** The cached match, or a TMDB lookup (on the lookup thread). Null when there is none, no key, or no network. */
     private Tmdb.Match match(LookupJob j){
         String id=id(j.udn,j.lookupKey),q=hash((j.tv?"tv":"movie")+"\n"+j.title+"\n"+j.year);long now=System.currentTimeMillis();
+        JSONObject chosen=fix(j.udn,j.lookupKey);   // the household's own choice wins, and is never looked up again
+        if(chosen!=null){if(chosen.optBoolean("none"))return null;summaries.put(id,new String[]{chosen.optString("o"),chosen.optString("y")});
+            return new Tmdb.Match(chosen.optString("t"),chosen.optLong("id"),chosen.optString("p"),chosen.optString("b"),chosen.optString("n"),chosen.optString("y"));}
         JSONObject m=matches().optJSONObject(id);
         if(m!=null&&q.equals(m.optString("q"))){
             if(!m.optBoolean("miss")){summaries.put(id,new String[]{m.optString("o"),m.optString("y")});return new Tmdb.Match(m.optString("t"),m.optLong("id"),m.optString("p"),m.optString("b"),"","");}
@@ -200,6 +207,55 @@ final class Posters {
     String[] details(LibraryCatalogue.Card card,String udn){return summaries.get(id(udn,card.lookupKey()));}
     /** For tests: the match saved for a tile, or null. */
     synchronized JSONObject saved(String udn,String lookupKey){return matches().optJSONObject(id(udn,lookupKey));}
-    /** Settings > Privacy (or a reset): forget matches and pictures. */
+    /** Settings > Privacy (or a reset): forget matches and pictures. The household's own corrections (SET-034) stay. */
     synchronized void clear(){memory.evictAll();summaries.clear();matches=new JSONObject();dirty=true;save();disk.clear();}
+
+    // --- SET-034: the household's own choice of picture
+    /** The saved choice for this tile ({"none":true}, or a TMDB match), or null when the picture is chosen automatically. */
+    synchronized JSONObject fix(String udn,String lookupKey){return fixes().optJSONObject(id(udn,lookupKey));}
+    /** Whether the household chose "No picture" for this tile: no TMDB picture and not the server's own either. */
+    boolean noPicture(String udn,String lookupKey){JSONObject f=fix(udn,lookupKey);return f!=null&&f.optBoolean("none");}
+    /** Keeps the household's choice for this tile: {@code m} one of TMDB's candidates, or null for no picture. */
+    void choose(String udn,String lookupKey,Tmdb.Match m){
+        try{JSONObject rec=m==null?new JSONObject().put("none",true)
+                :new JSONObject().put("t",m.type).put("id",m.id).put("p",m.poster).put("b",m.backdrop).put("o",m.overview).put("y",m.year).put("n",m.title);
+            synchronized(this){fixes().put(id(udn,lookupKey),rec.put("at",System.currentTimeMillis()));saveFixes();}}
+        catch(JSONException ignored){}
+        forget(udn,lookupKey);
+    }
+    /** Back to the automatic picture (TMDB's cautious match, then the server's): the choice is removed and looked up again. */
+    void automatic(String udn,String lookupKey){
+        synchronized(this){fixes().remove(id(udn,lookupKey));matches().remove(id(udn,lookupKey));dirty=true;save();saveFixes();}
+        forget(udn,lookupKey);
+    }
+    /** For Settings (Library &amp; Media or Privacy &amp; Data): how many titles have a picture chosen by hand, and forgetting them all. */
+    synchronized int choices(){return fixes().length();}
+    synchronized void forgetChoices(){fixes=new JSONObject();saveFixes();memory.evictAll();summaries.clear();}
+    /** Drops this tile's pictures and summary from memory, so the next ask uses the new choice. */
+    private void forget(String udn,String lookupKey){
+        for(String prefix:new String[]{"p:","b:","bl:"})memory.remove(prefix+lookupKey);
+        summaries.remove(id(udn,lookupKey));
+    }
+    /**
+     * Up to {@code max} of TMDB's results for a title the household chose (the cleaned title, or one typed on the TV), for
+     * picking by eye: not filtered by the cautious matching, which the household is overriding. Throws when there is no
+     * key or TMDB can't be reached (Busy when it asks to wait). Only the title (and nothing else) is sent.
+     */
+    List<Tmdb.Match> candidates(boolean tv,String title,String year,int max)throws IOException{
+        Tmdb t=tmdb();if(t==null)throw new IOException("no key");if(MediaName.normal(title).isEmpty())return new ArrayList<>();
+        return Tmdb.candidates(t.search(tv,title.trim(),""),tv,year,max);
+    }
+    /** A candidate's small poster for the chooser (cached like any other), or null. Off the main thread. */
+    Bitmap candidatePoster(Tmdb.Match m){return m==null||m.poster.isEmpty()?null:tmdbImage(m.poster,"w185",POSTER_W/2,POSTER_H/2);}
+    private synchronized JSONObject fixes(){
+        if(fixes!=null)return fixes;
+        try(InputStream in=new FileInputStream(new File(dir,"fixes.json"))){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);fixes=new JSONObject(out.toString("UTF-8"));}
+        catch(Exception e){fixes=new JSONObject();}
+        return fixes;
+    }
+    private synchronized void saveFixes(){
+        try{if(!dir.isDirectory()&&!dir.mkdirs())return;File tmp=new File(dir,"fixes.tmp"),f=new File(dir,"fixes.json");
+            try(OutputStream o=new FileOutputStream(tmp)){o.write(fixes().toString().getBytes(StandardCharsets.UTF_8));}
+            if(!tmp.renameTo(f))tmp.delete();}catch(Exception ignored){}
+    }
 }

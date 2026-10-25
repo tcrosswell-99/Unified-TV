@@ -21,7 +21,8 @@ import java.util.concurrent.*;
  * <pre>Search · Your folders
  * [title, year, summary of the highlighted tile]
  * Continue Watching · Recently added · Films · TV · Kids (Adults only)   each row ends with "All"
- * OK: a film or episode plays; a programme opens its seasons; "All" opens the whole row as a grid.</pre>
+ * OK: a film or episode plays; a programme opens its seasons; "All" opens the whole row as a grid.
+ * Hold OK on a tile: Add to (or Remove from) Favourites; for Adults also "Wrong picture?" (SET-034, PictureFixActivity).</pre>
  *
  * Loading always says so: the first list shows a spinner and how many titles have been found; a later refresh shows a
  * small "Checking for new titles" while the saved list stays usable. Focus never waits for the network: pictures arrive
@@ -74,6 +75,12 @@ public final class DlnaLibraryActivity extends Screen {
         load();
     }
     @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)rebuild(false);}   // Continue Watching may have changed
+    /** Back from "Wrong picture?" (a sidebar: this screen was only paused): the tiles and background ask for the chosen picture. */
+    @Override protected void onResume(){super.onResume();if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}}
+    /** The tile whose picture is being corrected, while "Wrong picture?" is open. */
+    private String fixing;
+    /** The focused view straight from the window's views (as SettingsActivity reads it), so a refresh keeps the same tile. */
+    @Override public View getCurrentFocus(){View decor=getWindow().peekDecorView();return decor==null?null:decor.findFocus();}
     @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);walker.shutdownNow();quick.shutdownNow();super.onDestroy();}
     private void setup(){try{startActivity(new Intent(this,LibrarySetupActivity.class));overridePendingTransition(0,0);}catch(RuntimeException e){note("Unable to open Films & TV setup");}}
     private int px(float at1080){return Math.round(at1080*unit);}
@@ -144,7 +151,8 @@ public final class DlnaLibraryActivity extends Screen {
         });
     }
     private LibraryCatalogue.Catalogue build(LibraryIndex.Index index){
-        return LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(getApplicationContext()),ResumeStore.load(getApplicationContext()),System.currentTimeMillis());
+        return LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(getApplicationContext()),ResumeStore.load(getApplicationContext()),
+            Favourites.load(getSharedPreferences(HouseholdSettings.PREFS,0)),System.currentTimeMillis());
     }
     /** The first time: a spinner and a count, never a blank screen. */
     private void loading(int found){
@@ -305,6 +313,7 @@ public final class DlnaLibraryActivity extends Screen {
         PosterView v=new PosterView(this,unit,calm);v.show(card);
         Bitmap b=posters.cachedPoster(card);if(b!=null)v.art(b);else posters.poster(card,udn,false,bmp->{if(v.card==card&&bmp!=null)v.art(bmp);});
         v.setOnClickListener(x->open(card));
+        v.setOnLongClickListener(x->{actions(card);return true;});   // hold OK
         v.setOnFocusChangeListener((x,focused)->{if(!focused)return;hero(card);
             // The tile in focus and its neighbours come first in the picture queue.
             for(int d=-2;d<=4;d++){int i=at+d;if(i<0||i>=neighbours.size())continue;LibraryCatalogue.Card n=neighbours.get(i);if(posters.cachedPoster(n)==null)posters.poster(n,udn,true,d==0?bmp->{if(v.card==card&&bmp!=null&&!v.hasArt())v.art(bmp);}:null);}});
@@ -352,6 +361,20 @@ public final class DlnaLibraryActivity extends Screen {
         LibraryCatalogue.Title t=c.title;
         Intent play=PlaybackPrefs.player(this,t);   // with the following episodes, for SET-033's autoplay
         try{startActivity(play);}catch(RuntimeException e){note("Unable to play this title");}
+    }
+    /**
+     * Hold OK on a tile (SET-032, SET-034): Favourites for this profile, kept by the title's server id; and, for Adults, the
+     * "Wrong picture?" sidebar to choose the right poster or none. Kids can keep favourites but never change pictures.
+     */
+    private void actions(LibraryCatalogue.Card c){
+        android.content.SharedPreferences prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
+        boolean favourite=Favourites.has(prefs,c.key());List<String> items=new ArrayList<>();items.add(Favourites.action(favourite));
+        if(!lib.kids)items.add(PictureFixActivity.ACTION);items.add("Cancel");
+        new android.app.AlertDialog.Builder(this).setTitle(c.name()+(c.year().isEmpty()?"":" ("+c.year()+")")).setItems(items.toArray(new String[0]),(d,n)->{
+            String pick=items.get(n);
+            if(pick.equals(PictureFixActivity.ACTION)){fixing=c.key();try{startActivity(PictureFixActivity.intent(this,c,udn));overridePendingTransition(0,0);}catch(RuntimeException e){fixing=null;note("Unable to open Wrong picture?");}}
+            else if(!pick.equals("Cancel")){rememberFocus();boolean now=Favourites.toggle(prefs,c.key());note(now?"Added to Favourites":"Removed from Favourites");rebuild(true);}
+        }).show();
     }
     private void rememberFocus(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();}
     @Override public void onBackPressed(){

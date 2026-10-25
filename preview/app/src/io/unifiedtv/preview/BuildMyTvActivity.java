@@ -28,7 +28,7 @@ import java.util.*;
  * only on Save. Kids (SET-BUILD-07): Kids choices are their own; only adult-allowed apps can be chosen, and the app store
  * is never offered. Live TV stays fail-closed whatever is chosen here: installed is not protected.
  */
-/* OD-11: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
+/* OD-19: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
 public final class BuildMyTvActivity extends GlassScreen {
     /** The public way in, for Settings and Home. */
     public static void start(Activity a){try{a.startActivity(new Intent(a,BuildMyTvActivity.class));}catch(RuntimeException e){Toast.makeText(a,"Build My TV couldn't open",Toast.LENGTH_LONG).show();}}

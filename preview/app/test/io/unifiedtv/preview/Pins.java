@@ -19,5 +19,5 @@ final class Pins {
     }
     static EditText field(View v){if(v instanceof EditText)return (EditText)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){EditText e=field(((ViewGroup)v).getChildAt(i));if(e!=null)return e;}return null;}
     /** Types {@code pin} into the open "Adult access" dialog and presses Unlock. */
-    static void type(AlertDialog d,String pin){field(d.getWindow().getDecorView()).setText(pin);d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}
+    static void type(AlertDialog d,String pin){field(d.getWindow().getDecorView()).setText(pin);d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();}
 }

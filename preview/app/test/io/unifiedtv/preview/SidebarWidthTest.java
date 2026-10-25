@@ -13,7 +13,7 @@ import org.robolectric.android.controller.ActivityController;
 import java.util.*;
 
 /**
- * OD-11 on a 1080p TV (960 × 540 dp at xhdpi): representative settings and setup screens open as the glass sidebar on the
+ * OD-19 on a 1080p TV (960 × 540 dp at xhdpi): representative settings and setup screens open as the glass sidebar on the
  * right, about half the screen (three quarters for a wide task), over a still, visible Home. SidebarRuleTest makes sure
  * every settings or setup screen is one of these.
  */

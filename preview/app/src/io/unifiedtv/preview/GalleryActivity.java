@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.util.concurrent.*;
 
 /** Foreground-only gallery: no permanent clock, dock or status badges. */
-/* OD-11: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
+/* OD-19: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
 public final class GalleryActivity extends GlassScreen {
     private final Handler timer=new Handler(Looper.getMainLooper());
     private final ExecutorService images=Executors.newSingleThreadExecutor();

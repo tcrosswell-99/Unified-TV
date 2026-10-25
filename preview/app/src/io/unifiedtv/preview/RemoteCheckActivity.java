@@ -13,7 +13,7 @@ import android.widget.TextView;
  * are recorded and still passed on to Android. Nothing is sent anywhere; the summary stays on the TV.
  * Hold OK for two seconds, or press Back twice, to finish.
  */
-/* OD-11: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
+/* OD-19: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
 public final class RemoteCheckActivity extends GlassScreen {
     static final String REPORT_FILE = "remote-check.txt";
     private final RemoteLog log = new RemoteLog();

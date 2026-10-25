@@ -13,7 +13,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import static org.junit.Assert.*;
 
 /**
- * Owner principle OD-11 (SPEC §3; DESIGN_SYSTEM "Settings and setup always use the sidebar"), enforced: every settings or
+ * Owner principle OD-19 (SPEC §3; DESIGN_SYSTEM "Settings and setup always use the sidebar"), enforced: every settings or
  * setup screen is the glass sidebar over a still Home, and a full-screen page has to be listed here, on purpose, as content.
  *
  * Rules, read from preview/app/AndroidManifest.xml and the classes themselves:
@@ -42,6 +42,7 @@ public class SidebarRuleTest {
         "OwnerDiagnosticsActivity",  // Updates & About > Advanced > Owner diagnostics (wide)
         "PerformanceActivity",       // TV Performance & Cleanup: read-only measurements
         "PhotoFoldersActivity",      // Wallpaper > My Photos: choosing picture folders
+        "PictureFixActivity",        // Your Films & TV > hold OK > Wrong picture?: choosing a title's poster (SET-034)
         "QuickConnectActivity",      // signing in with your phone
         "RemoteCheckActivity",       // Check your remote's buttons
         "ServiceDiscoveryActivity"));// finding the media server on the home network
@@ -52,7 +53,7 @@ public class SidebarRuleTest {
         "HouseholdActivity"));       // no page: hands over to Settings' household task inside the sheet
 
     /**
-     * Not settings or setup, so they may use the whole screen (OD-11: "Browsing and watching content may be full screen").
+     * Not settings or setup, so they may use the whole screen (OD-19: "Browsing and watching content may be full screen").
      * Add to this list only for something the household watches or browses, never for a page of choices.
      */
     static final Set<String> CONTENT=new TreeSet<>(Arrays.asList(
@@ -94,18 +95,18 @@ public class SidebarRuleTest {
         for(Set<String> l:Arrays.asList(SETUP,OWN_SHEET,CONTENT))for(String n:l)assertTrue(n+" is in more than one list",listed.add(n));
         Set<String> declared=manifest().keySet();
         Set<String> unlisted=new TreeSet<>(declared);unlisted.removeAll(listed);
-        assertTrue("OD-11: decide whether each of these is a settings/setup screen (SETUP: the sidebar) or content (CONTENT), and list it in SidebarRuleTest: "+unlisted,unlisted.isEmpty());
+        assertTrue("OD-19: decide whether each of these is a settings/setup screen (SETUP: the sidebar) or content (CONTENT), and list it in SidebarRuleTest: "+unlisted,unlisted.isEmpty());
         Set<String> stale=new TreeSet<>(listed);stale.removeAll(declared);
         assertTrue("listed in SidebarRuleTest but not in the manifest: "+stale,stale.isEmpty());
     }
     @Test public void settingsAndSetupUseTheSidebarTheme()throws Exception{
         Map<String,String> themes=manifest();
         for(Set<String> l:Arrays.asList(SETUP,OWN_SHEET))for(String n:l)
-            assertEquals("OD-11: "+n+" is a settings or setup screen, so it needs android:theme=\""+THEME+"\" (translucent: Home stays visible and still)",THEME,themes.get(n));
+            assertEquals("OD-19: "+n+" is a settings or setup screen, so it needs android:theme=\""+THEME+"\" (translucent: Home stays visible and still)",THEME,themes.get(n));
     }
     @Test public void setupScreensAreGlassScreensAndOnlyThey()throws Exception{
         for(String n:manifest().keySet()){Class<?> c=type(n);boolean glass=GlassScreen.class.isAssignableFrom(c);
-            if(SETUP.contains(n))assertTrue("OD-11: "+n+" must extend GlassScreen, the sidebar base",glass);
+            if(SETUP.contains(n))assertTrue("OD-19: "+n+" must extend GlassScreen, the sidebar base",glass);
             else assertFalse(n+" is a GlassScreen sidebar: list it in SETUP, not "+(CONTENT.contains(n)?"CONTENT":"OWN_SHEET"),glass);}
     }
     @Test public void everyFullScreenScreenIsListedAsContent()throws Exception{
@@ -119,7 +120,7 @@ public class SidebarRuleTest {
         for(File f:sources){Matcher m=extendsScreen.matcher(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8));
             while(m.find())if(!m.group(1).equals("GlassScreen"))plain.add(m.group(1));}
         assertTrue("found no full-screen Screen classes: the scan is broken",plain.contains("PlayerActivity"));
-        for(String n:plain)assertTrue("OD-11: "+n+" extends the full-screen Screen. A settings or setup screen must extend GlassScreen "
+        for(String n:plain)assertTrue("OD-19: "+n+" extends the full-screen Screen. A settings or setup screen must extend GlassScreen "
             +"(the sidebar); only content may be full screen, listed with a reason in SidebarRuleTest.CONTENT",CONTENT.contains(n)||OWN_SHEET.contains(n));
     }
 }

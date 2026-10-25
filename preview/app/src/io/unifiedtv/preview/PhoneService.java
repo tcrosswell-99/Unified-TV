@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * A service that needs an account, sign-in or key, described once so phone setup can offer it (owner decision OD-09,
+ * A service that needs an account, sign-in or key, described once so phone setup can offer it (owner decision OD-17,
  * 25 October 2026: every such service is set up by QR code on the phone; typing on the TV is only an Advanced fallback).
  * A descriptor gives the name, the sign-up link, plain steps, the fields to paste, and one validate-and-save callback;
  * {@link PhoneFlows.Form} draws the phone page from it. A service with its own sign-in (Home Assistant) supplies a

@@ -33,7 +33,7 @@ public final class SettingsActivity extends Screen {
     /** Tasks inside a category: a wider sheet for complex ones, the same width for a collapsed Advanced section. */
     static final String NAVIGATION="navigation",APPEARANCE_ADVANCED="appearance-advanced",ADVANCED="advanced";
     /** Setup tasks (SetupPages): phone setup per service ("phone-" + PhoneService id), Home Assistant's Advanced, the team
-     *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-11). */
+     *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-19). */
     static final String PHONE_HA="phone-"+PhoneService.HA,PHONE_FOOTBALL="phone-"+PhoneService.FOOTBALL,PHONE_TMDB="phone-"+PhoneService.TMDB,
         HA_ADVANCED="ha-advanced",TEAM="team",HOUSEHOLD="household";
     /** Privacy & Data tasks: the event log (SET-055) and settings backup on the phone (SET-081). */

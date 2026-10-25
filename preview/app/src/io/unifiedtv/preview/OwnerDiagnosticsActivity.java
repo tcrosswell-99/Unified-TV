@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 /**
  * Settings > Updates & About > Advanced > Owner diagnostics (owner, 25 October 2026): one scrolling page of read-only checks, Adults
  * only and behind the PIN, never on Home. Nothing is changed, saved or sent. No token or secret is shown; addresses only
- * after "Show advanced details". A settings screen, so the glass sidebar over a still Home (OD-11), wide (about three
+ * after "Show advanced details". A settings screen, so the glass sidebar over a still Home (OD-19), wide (about three
  * quarters) for its long report lines.
  */
 public final class OwnerDiagnosticsActivity extends GlassScreen {

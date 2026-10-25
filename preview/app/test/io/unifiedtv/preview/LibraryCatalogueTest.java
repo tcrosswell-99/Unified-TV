@@ -88,6 +88,36 @@ public class LibraryCatalogueTest {
         LibraryCatalogue.Row films=LibraryCatalogue.build(walk(lib,1000),lib,KidsPolicy.Scheme.UK_BBFC,null,5000).row("films");
         assertEquals(LibraryCatalogue.ROW_MAX,films.shown().size());assertEquals(LibraryCatalogue.ROW_MAX+15,films.all.size());
     }
+    // SET-032: Favourites, after Continue Watching, only when the profile has some in its own catalogue; kept by server id.
+    @Test public void favouritesFollowContinueWatchingOnlyWhenThereAreSome()throws Exception{
+        LibraryFolders.Library lib=LibraryFolders.library(household,kids,false);LibraryIndex.Index index=walk(lib,1000);
+        List<String> fav=Arrays.asList("s:doctor who|2005","t:dlna:uuid:test-nas:heat","t:dlna:uuid:other-nas:heat","t:dlna:uuid:test-nas:gone");
+        LibraryCatalogue.Catalogue c=LibraryCatalogue.build(index,lib,KidsPolicy.Scheme.UK_BBFC,new ResumeStore(""),fav,5000);
+        List<String> rows=new ArrayList<>();for(LibraryCatalogue.Row r:c.rows)rows.add(r.id);assertEquals(Arrays.asList("favourites","films","tv","kids"),rows);
+        assertEquals("saved order, newest first; another server's title of the same name and a title gone from the NAS are left out",Arrays.asList("Doctor Who","Heat"),names(c.row("favourites")));
+        assertEquals("Favourites",c.row("favourites").label);
+        ResumeStore store=new ResumeStore("");store.record(ResumeStore.key("dlna:uuid:test-nas:alien"),900_000,7_000_000,2000);
+        rows.clear();for(LibraryCatalogue.Row r:LibraryCatalogue.build(index,lib,KidsPolicy.Scheme.UK_BBFC,store,fav,5000).rows)rows.add(r.id);
+        assertEquals("after Continue Watching",Arrays.asList("continue","favourites","films","tv","kids"),rows);
+        assertNull("none chosen: no row",LibraryCatalogue.build(index,lib,KidsPolicy.Scheme.UK_BBFC,store,new ArrayList<>(),5000).row("favourites"));
+        assertNull("none of them here: no row",LibraryCatalogue.build(index,lib,KidsPolicy.Scheme.UK_BBFC,store,Arrays.asList("t:dlna:uuid:test-nas:gone"),5000).row("favourites"));
+    }
+    @Test public void kidsFavouritesStayInsideKids()throws Exception{
+        LibraryFolders.Library lib=LibraryFolders.library(household,kids,true);
+        LibraryCatalogue.Catalogue c=LibraryCatalogue.build(walk(lib,1000),lib,KidsPolicy.Scheme.UK_BBFC,new ResumeStore(""),Arrays.asList("t:dlna:uuid:test-nas:heat","t:dlna:uuid:test-nas:scary","t:dlna:uuid:test-nas:frozen"),5000);
+        assertEquals("an adult title and a 15 never show in Kids, even as favourites",Arrays.asList("Frozen"),names(c.row("favourites")));
+    }
+    @Test public void favouritesAreAListPerProfile(){
+        List<String> one=Favourites.toggle(new ArrayList<>(),"t:a");List<String> two=Favourites.toggle(one,"s:b");
+        assertEquals("newest first",Arrays.asList("s:b","t:a"),two);assertEquals("again removes it",Arrays.asList("s:b"),Favourites.toggle(two,"t:a"));
+        assertEquals(two,Favourites.parse(Favourites.write(two)));assertTrue(Favourites.parse("not json").isEmpty());assertTrue(Favourites.parse(null).isEmpty());
+        List<String> many=new ArrayList<>();for(int i=0;i<Favourites.MAX+5;i++)many=Favourites.toggle(many,"t:"+i);
+        assertEquals(Favourites.MAX,many.size());assertEquals("the oldest goes first","t:"+(Favourites.MAX+4),many.get(0));
+        assertNotEquals(Favourites.key(Profiles.ADULT),Favourites.key(Profiles.CHILD));assertEquals(Favourites.key("anything"),Favourites.key(Profiles.ADULT));
+        assertEquals("Add to Favourites",Favourites.action(false));
+        MapPrefs p=new MapPrefs();Favourites.toggle(p,"t:x");assertEquals(1,Favourites.count(p,Profiles.ADULT));assertEquals(0,Favourites.count(p,Profiles.CHILD));
+        Favourites.clear(p,Profiles.ADULT);assertEquals(0,Favourites.count(p,Profiles.ADULT));assertEquals("Remove from Favourites",Favourites.action(true));
+    }
     @Test public void namesAreReadFromFoldersWhenTheFileSaysLittle(){
         LibraryIndex.Entry e=new LibraryIndex.Entry();e.id="1";e.root="v";e.title="movie.mkv";e.url="http|80|/1.mkv";e.pathNames.add("Arrival (2016)");e.pathIds.add("a");
         LibraryCatalogue.Title t=LibraryCatalogue.classify(e,"Video",null,"u");assertEquals(LibraryCatalogue.Kind.FILM,t.kind);assertEquals("Arrival",t.name);assertEquals("2016",t.year);

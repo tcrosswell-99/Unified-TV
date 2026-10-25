@@ -11,7 +11,7 @@ import android.view.Choreographer;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
-/* OD-11: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
+/* OD-19: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
 public final class PerformanceActivity extends GlassScreen {
     static final String REPORT_FILE="home-measurement.txt";
     @Override public void onCreate(Bundle state){super.onCreate(state);page("TV Performance & Cleanup");

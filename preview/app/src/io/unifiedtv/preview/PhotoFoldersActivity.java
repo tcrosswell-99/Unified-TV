@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * folders on the NAS, found the way the film folders are (the film library's server first, else a search), with no
  * typing. The choice is saved encrypted in the Vault ("photos"), like the film folders; the Wallpaper only ever walks
  * inside it. Adults only: Child never reaches this screen or the pictures (WP-11). Shown as the glass sheet over a still
- * Home (OD-11), like Settings.
+ * Home (OD-19), like Settings.
  */
 public final class PhotoFoldersActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();

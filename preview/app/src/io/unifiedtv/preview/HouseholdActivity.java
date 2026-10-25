@@ -5,7 +5,7 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 /**
- * Household setup now lives inside the Settings glass sheet (HouseholdPage, task "household"; OD-11): this entry only
+ * Household setup now lives inside the Settings glass sheet (HouseholdPage, task "household"; OD-19): this entry only
  * hands over to it. The room actions other screens run (Xbox, and the Frame's scripts for older records) stay here.
  */
 public final class HouseholdActivity extends android.app.Activity {

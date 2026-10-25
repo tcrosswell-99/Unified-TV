@@ -119,6 +119,24 @@ final class Tmdb {
         String o=r.optString("overview","").trim();m.overview=o.length()>400?o.substring(0,397).trim()+"…":o;
         return m;
     }
+    /**
+     * SET-034: the first {@code max} results as candidates for the household to choose from by eye ("Wrong picture?"), in
+     * TMDB's order except that titles from the known year (one either way) come first. Adult titles are never offered;
+     * results with neither a poster nor a backdrop are left out, since choosing one would show nothing.
+     */
+    static List<Match> candidates(JSONArray results,boolean tv,String year,int max){
+        List<Match> near=new ArrayList<>(),rest=new ArrayList<>();if(results==null)return near;
+        boolean hasYear=year!=null&&year.matches("\\d{4}");int want=hasYear?Integer.parseInt(year):0;
+        for(int i=0;i<Math.min(20,results.length());i++){JSONObject r=results.optJSONObject(i);if(r==null||r.optBoolean("adult"))continue;
+            String poster=r.isNull("poster_path")?"":r.optString("poster_path"),backdrop=r.isNull("backdrop_path")?"":r.optString("backdrop_path");
+            if(poster.isEmpty()&&backdrop.isEmpty())continue;
+            String date=r.optString(tv?"first_air_date":"release_date");int y=date.matches("\\d{4}.*")?Integer.parseInt(date.substring(0,4)):0;
+            Match m=new Match(tv?"tv":"movie",r.optLong("id"),poster,backdrop,r.optString(tv?"name":"title"),y>0?String.valueOf(y):"");
+            String o=r.optString("overview","").trim();m.overview=o.length()>400?o.substring(0,397).trim()+"…":o;
+            (hasYear&&y>0&&Math.abs(y-want)<=1?near:rest).add(m);
+        }
+        near.addAll(rest);return near.size()>max?new ArrayList<>(near.subList(0,max)):near;
+    }
     static int titleScore(String want,String have){
         if(have.isEmpty())return 0;if(want.equals(have))return 100;
         // "Alien" against "Alien: Romulus" is no match, nor "Mission Impossible" against "Mission Impossible Fallout":

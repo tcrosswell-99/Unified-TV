@@ -5,7 +5,7 @@ import android.widget.*;
 import org.json.JSONObject;
 import java.util.concurrent.*;
 
-/** Sign in with your phone: a short code on the TV, approved in the Jellyfin app. Typing stays an advanced option. The glass sheet over Home (OD-11). */
+/** Sign in with your phone: a short code on the TV, approved in the Jellyfin app. Typing stays an advanced option. The glass sheet over Home (OD-19). */
 public final class QuickConnectActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();private final Handler timer=new Handler(Looper.getMainLooper());
     private String key,base,name;private JSONObject pending;private QuickConnect.Start start;private TextView code,state;private long until;private boolean active;

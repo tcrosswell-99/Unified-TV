@@ -8,7 +8,7 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.*;
 
 /**
- * The one base for every settings or setup screen (owner principle OD-11, SPEC §3; DESIGN_SYSTEM "Settings and setup
+ * The one base for every settings or setup screen (owner principle OD-19, SPEC §3; DESIGN_SYSTEM "Settings and setup
  * always use the sidebar"): the module 13 glass sidebar over a still Home, never a full-screen page. Half the screen, about
  * three quarters for a wide task ({@link #wide(boolean)}), from the right, with Settings' own material and sizes
  * (SettingsGlass frost, tint, sheen and edge; SettingsOverlay widths and motion: a slide in, or a short crossfade with

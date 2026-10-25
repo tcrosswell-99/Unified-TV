@@ -11,7 +11,7 @@ import java.util.*;
  * Settings > Profiles & Family > Kids settings (behind the adult PIN). One page: the Kids folders on the NAS, the apps Kids may
  * open, the optional Kids app guard, and where the TV's own parental controls are. It says plainly what each one can and
  * can't do; none of it has been tried on the household's TVs yet. A settings screen, so the glass sidebar over a still Home
- * (OD-11), redrawn in place each time it comes back to the front.
+ * (OD-19), redrawn in place each time it comes back to the front.
  */
 public final class KidsActivity extends GlassScreen {
     @Override protected void onResume(){super.onResume();show();}
