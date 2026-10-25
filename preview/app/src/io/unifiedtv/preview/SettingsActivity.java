@@ -40,13 +40,13 @@ public final class SettingsActivity extends Screen {
         if(state==null&&getIntent().getBooleanExtra("stopAlerts",false))stopAlerts();
     }
     @Override protected void onDestroy(){if(teamWorker!=null)teamWorker.interrupt();super.onDestroy();}
-    /** Right from the rail: the first focusable control in the panel, however deeply it sits in a row or group. */
-    private void enter(){View first=firstFocusable(details);if(first!=null)first.requestFocus();}
-    private static View firstFocusable(View v){
-        if(v.getVisibility()!=View.VISIBLE)return null;
-        if(!(v instanceof ViewGroup))return v.isFocusable()?v:null;
-        ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View f=firstFocusable(g.getChildAt(i));if(f!=null)return f;}
-        return null;
+    /** Right from the rail: the first control in the panel that actually takes focus, however deeply it sits. */
+    private void enter(){focusFirst(details);}
+    private static boolean focusFirst(View v){
+        if(v.getVisibility()!=View.VISIBLE)return false;
+        if(!(v instanceof ViewGroup))return v.isFocusable()&&v.requestFocus();
+        ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(focusFirst(g.getChildAt(i)))return true;
+        return false;
     }
     @Override Button button(String title,Runnable action){Button b=super.button(title,action);b.setTextSize(17);b.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_DPAD_LEFT){if(e.getAction()==KeyEvent.ACTION_DOWN&&category>=0)navigation[category].requestFocus();return true;}return false;});return b;}
     private void heading(String title,String description){details.removeAllViews();column=details;text(title,25);text(description,17);}
@@ -354,7 +354,7 @@ public final class SettingsActivity extends Screen {
     }
     private void toggle(String name,String key){toggle(name,key,on->{});}
     private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){toggle(name,key,false,after);}
-    private void toggle(String name,String key,boolean byDefault,java.util.function.Consumer<Boolean> after){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,byDefault));c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
+    private void toggle(String name,String key,boolean byDefault,java.util.function.Consumer<Boolean> after){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,byDefault));c.setFocusableInTouchMode(true);c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
     /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
     private void homeSetup(){
         new AlertDialog.Builder(this).setTitle("Make Unified TV the Home screen").setMessage("Pressing Home will open Unified TV instead of the original TV interface. The original interface stays on the TV, and you can switch back at any time from this screen.\n\nYour TV will ask you to choose: pick Unified TV.")
