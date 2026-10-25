@@ -41,6 +41,16 @@ A calm, premium, remote-first home experience inspired by the principles of the 
 10. **No blanket cleanup.** Any optional TV tidying reads firmware and package state, needs explicit consent per change, records a backup and verifies rollback. Disable, never uninstall.
 11. **No fabricated capabilities:** desired behaviour and tested behaviour are always kept apart.
 
+**Product structure** *(owner, 25 October 2026)*: **Home → Library → Apps → Settings**, with **Adults/Kids** as a lightweight profile layer and household notifications (Section 10) working across all of it.
+
+- **Library** is reachable from a dock item the household can place, move or remove like an app tile, and by normal remote navigation (the Down shelf stays). Opening or closing it keeps Home's focus and Unified TV's own playback position wherever technically possible.
+- **Profiles:** the TV opens straight into the **last-used profile**; it never asks on every start. Switching is quick from Home and Settings. Moving **into Adults always needs the PIN**; moving into Kids does not (Kids can only be enabled once a PIN exists).
+- **Kids:** NAS content is restricted by **adult-approved Kids folders and by rating metadata** in the data and playback path, not by hiding posters. Apps are restricted by a central launch check inside Unified TV plus, where Android allows, an optional **Kids app guard** that returns to Home when a non-approved app comes to the front. Hiding an icon alone is never called parental control. Native controls (Google TV Kids profiles on the Sony; Android TV restricted profiles where offered) are recommended where they exist.
+- **Continue Watching:** separate Adults and Kids histories for **Unified TV's own player**, kept on the TV and labelled as such. Third-party watch progress only through supported APIs; none is integrated (another app's Android TV Watch Next rows are not readable by a third-party launcher).
+- **Ring in Kids:** the person toast (RING-02) can be switched off for Kids; doorbell presses and smoke/CO keep their priority in every profile.
+- **Universal search (later):** the catalogue uses one item model (title, year, kind, source, stable id, folder/root, rating, poster reference) so a search index can be added without rebuilding it. No streaming-service integration is built now.
+- **Owner diagnostics:** a hidden screen in Settings (Adults, PIN), never on Home, checking NAS discovery and catalogue, Ring/Home Assistant connectivity, VPN fail-closed status, version and signing, and listing hardware tests.
+
 Detail: PRODUCT_SPEC.md Sections 1–3, 15.
 
 ## 3. Owner decisions
@@ -244,9 +254,9 @@ Detail: PRODUCT_SPEC.md Sections 9, 33.
 - **Honest DLNA limits:** DLNA provides discovery, browse and direct play. It does **not** provide reliable metadata, posters, search, series structure or server-synchronised progress. The premium poster-first catalogue needs an authenticated catalogue adapter (for example a verified Jellyfin-compatible service) where available; otherwise label the limitation. Never invent artwork or claim Continue Watching from bare DLNA; a local DLNA resume, if built, is labelled local.
 - **Pagination:** use SOAP `NumberReturned` and `TotalMatches`, not the count of accepted videos.
 - **Playback:** embedded Media3 (Android) and AVPlay (Tizen). VLC excluded; no external player hand-off. Direct play preferred; MKV is a container, not a guarantee; unsupported media fails with a useful message. Measure first frame, seek and buffering per device.
-- **Profiles:** separate Adult and restricted Child server accounts, enforced by the server for browse, search, images and playback. A Child profile never uses unauthenticated DLNA. A launcher PIN does not switch streaming-app accounts or lock the OS.
+- **Profiles** *(changed 25 October 2026 by the owner; this replaces "a Child profile never uses unauthenticated DLNA")*: Kids may use the DLNA library, restricted to adult-approved **Kids folders** (by object ID, stored encrypted) and by rating metadata where the server supplies it: only UK U/PG and US G/PG/TV-Y/TV-Y7/TV-G/TV-PG; an unrated item only inside a Kids folder. The check runs when browsing, on the Home shelf, in Continue Watching and again at playback. **Honest limit:** DLNA has no accounts, so this restricts Unified TV only; any other DLNA app on the home network can still see every shared folder. Server-enforced restricted accounts (for example a Jellyfin-compatible service) remain the stronger option where available. A launcher PIN does not switch streaming-app accounts or lock the OS.
 - **Private authentication:** scoped credentials in headers on Android, credential-bearing redirects refused; never long-lived tokens in URLs. Tizen private playback needs a validated LAN media broker or scoped cookie first.
-- **Continue Watching** appears only after an authenticated progress round-trip is proven on the server.
+- **Continue Watching** *(changed 25 October 2026)*: for Unified TV's own player, separate Adults and Kids histories kept on the TV and labelled "on this TV". Server-synchronised progress appears only after an authenticated round-trip is proven on the server.
 - An unavailable NAS never blocks Home or installed apps.
 
 Detail: PRODUCT_SPEC.md Sections 0.3, 5, 24.4, 27.2–27.3.
@@ -524,7 +534,7 @@ Each ID has its full pass condition in PRODUCT_SPEC.md; its status is in the reg
 | P05-02 | Six defaults, correct artwork or fallback, legible glass/focus, predictable D-pad/OK/Back |
 | P05-03 | Apps grid and long-OK menu; edits persist; cancel does not save; child protected; Live TV guarded everywhere |
 | P05-04 | NAS discovered by name on the TCL; Retry; no server distinguished from failed authorisation |
-| P05-05 | Only the three roots by object ID; no other collection; child DLNA refused; survives NAS restart |
+| P05-05 | Only the chosen roots by object ID; no other collection; Kids confined to Kids folders and allowed ratings; survives NAS restart |
 | P05-06 | Real content browsed without pagination loss; accurate titles or honest fallback |
 | P05-07 | A real NAS video plays in Media3 with pause, seek, stop, Back; format and first frame recorded |
 | P05-08 | NAS/Wi-Fi loss, app switch, standby and cancel recover without spinners or lost focus |
@@ -665,6 +675,21 @@ A simulated or TEST event never counts as an end-to-end detector pass.
 | RING-03 | Press the doorbell during Home, during playback and in Wallpaper: the live picture-in-picture card appears without input, playback stays visible, Back closes it and focus returns where it was; with the camera unreachable, "Live view unavailable" appears |
 | RING-04 | Press the doorbell during an alarm TEST: no camera over the alarm; after ending the test, the card or the "Doorbell rang at HH:mm" note |
 | RING-05 | RING-01..04 on the TCL, the Sony and the Frame, each limitation recorded with the model and firmware |
+
+### 15.11b Product structure, profiles and Kids (owner, 25 October 2026; Section 2)
+
+| ID | Test |
+|---|---|
+| LIB-DOCK-01 | A Library dock item can be added, moved and removed; OK opens the library; Back returns to the same tile with the scene unchanged |
+| PROFILE-01 | After a restart the TV opens in the last-used profile without asking |
+| PROFILE-02 | Switching to Adults asks for the PIN every time (lock-out after repeated failures); switching to Kids needs no PIN |
+| KIDS-01 | In Kids only Kids-folder items within the allowed ratings appear anywhere (library, shelf, Continue Watching), and a stale link to an adult item is refused at playback |
+| KIDS-02 | In Kids, a non-approved app cannot be opened from Unified TV by any route (dock, Apps, voice, search) |
+| KIDS-03 | With the Kids app guard on, a non-approved app opened another way returns to Unified TV Home; its limits are shown honestly |
+| KIDS-04 | "Show person alerts in Kids" off: no person toast in Kids; doorbell press and smoke/CO unchanged |
+| CW-01 | Adults and Kids have separate Continue Watching for Unified TV's player, surviving restart and profile switches |
+| DIAG-01 | Owner diagnostics (Settings, Adults, PIN) shows NAS discovery and catalogue, Home Assistant/Ring, VPN fail-closed state, version and signing, without secrets |
+| SEARCH-READY-01 | Library, Continue Watching and Kids policy share one catalogue item model (code review; no search UI) |
 
 ### 15.12 Hardware and service gates (GATE; PRODUCT_SPEC.md Sections 2, 2.1, 5–8)
 
