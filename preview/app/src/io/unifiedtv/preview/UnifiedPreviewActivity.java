@@ -59,7 +59,7 @@ public final class UnifiedPreviewActivity extends Activity {
     @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery);
         int minutes = wallpaperOn() ? WallpaperPolicy.idle(getSharedPreferences("unified-tv-preview",0).getInt("wallpaperIdle",-1)) : 5;
         if (minutes > 0) idleHandler.postDelayed(gallery, minutes * 60_000L); }
-    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null)surface.refresh();
+    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
         LiveTvGuard.stop(this);
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
     }
@@ -76,7 +76,12 @@ public final class UnifiedPreviewActivity extends Activity {
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         surface = new Preview(this);
-        setContentView(surface);
+        // Back to front: the compositor-moved app light, then Home itself (transparent where the light shows through).
+        AmbientLayer layer = new AmbientLayer(this);
+        android.widget.FrameLayout stack = new android.widget.FrameLayout(this);
+        stack.addView(layer); stack.addView(surface);
+        setContentView(stack);
+        surface.layer = layer; surface.aim(surface.currentScene(), false);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
@@ -104,7 +109,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private static final int W = 1920, H = 1080;
         private static final int WHITE = 0xFFFAFAFC;
         private static final int MUTED = 0xFFC8CCD5;
-        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 400, DRIFT_FRAME_MS = 33, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
+        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 400, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
         private Activity activity;
         private final SharedPreferences prefs;
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -123,7 +128,15 @@ public final class UnifiedPreviewActivity extends Activity {
         // Spec 32: an app's scene follows focus at once and crossfades in 400 ms; a title's poster scene waits for a short
         // settle (spec 4.4), because its artwork may still be decoding. The scene is an app id, "poster:<id>" or "neutral".
         private final Backdrops backdrops = new Backdrops();
-        private final AmbientMesh mesh = new AmbientMesh();
+        /** The compositor-moved app light behind this view (set by the activity); null in tests without it. */
+        AmbientLayer layer;
+        /** Points the light behind Home at this app; Lightweight hides it and the cached still frames are drawn instead. */
+        void aim(String key, boolean animate) {
+            if (layer == null) return;
+            layer.setVisibility(light() ? GONE : VISIBLE);
+            if (!light() && app(key)) layer.show(key, animate && fadeMs() > 0);
+            layer.drift(drifting());
+        }
         private String scene = "neutral", formerScene = null, sceneTitle = "";
         private long titleAt = 0;
         private boolean titleHidden = false;
@@ -182,7 +195,7 @@ public final class UnifiedPreviewActivity extends Activity {
             boolean fading = fadeAt != 0 && now - fadeAt < fadeMs();
             if (!key.equals(scene)) {
                 if (!(fading && (now - fadeAt) < fadeMs() / 2 && formerScene != null)) formerScene = scene;
-                scene = key; fadeAt = fadeMs() == 0 ? 0 : now;
+                scene = key; fadeAt = fadeMs() == 0 ? 0 : now; aim(key, true);
                 if (!key.startsWith("poster:")) prefs.edit().putString("scene", key).apply();
             }
             // The dock's title, halo and light change together (spec 32.6); a title's name waits for its scene.
@@ -236,6 +249,7 @@ public final class UnifiedPreviewActivity extends Activity {
             installed.clear();dock.clear();scanInstalled();loadDock();
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
+            aim(scene,false);
             formerScene=null;fadeAt=0;if(shelf)loadPosters();invalidate();
         }
         void home() {
@@ -244,7 +258,9 @@ public final class UnifiedPreviewActivity extends Activity {
             if (shelf) { shelf = false; shelfAt = 0; }
             messageUntil = 0; moved(); invalidate();
         }
+        String currentScene() { return scene; }
         void pause() {
+            if (layer != null) layer.pause();
             handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);
             handler.removeCallbacks(hold); okDown=false;held=false;
             if(moving) goBack();
@@ -519,8 +535,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (dim > 0 && dim < .45f) postInvalidateDelayed(33);   // the 10-second fade
             boolean animating = (fadeAt != 0 && now - fadeAt < fadeMs()) || (titleAt > now - TITLE_MS) || (shelfAt != 0 && now - shelfAt < SHELF_MS);
             if (animating) postInvalidateDelayed(16);
-            // The light keeps drifting while Home is on screen; with Home hidden nothing draws, so the loop stops by itself.
-            else if (app(scene) && drifting()) postInvalidateDelayed(DRIFT_FRAME_MS);
+            // The light drifts in the AmbientLayer, moved by the compositor; this view only redraws when something changes.
             if (fadeAt != 0 && now - fadeAt >= fadeMs()) { fadeAt = 0; formerScene = null; }
             if (shelfAt != 0 && now - shelfAt >= SHELF_MS) shelfAt = 0;
         }
@@ -541,16 +556,18 @@ public final class UnifiedPreviewActivity extends Activity {
             long fade = fadeMs();
             float t = fadeAt == 0 || fade == 0 ? 1 : Math.min(1, (now - fadeAt) / (float) fade);
             String former = formerScene == null ? "neutral" : formerScene;
-            if (t < 1) drawScene(c, former, 255, 0, now);
             float e = t * t * (3 - 2 * t);   // ease in and out (spec 32.1)
+            // App light lives in the AmbientLayer behind this view (unless Lightweight): here it is simply not drawn, so
+            // a title's picture fades over it, or fades away from it, and app-to-app changes are the layer's alone.
+            boolean layered = !light();
+            if (layered && app(scene)) { if (t < 1 && !app(former)) drawScene(c, former, Math.round(255 * (1 - e)), 0, now); return; }
+            if (t < 1 && !(layered && app(former))) drawScene(c, former, 255, 0, now);
             drawScene(c, scene, t < 1 ? Math.round(e * 255) : 255, t < 1 && !calm() && !light() && !app(scene) ? .02f * (1 - e) : 0, now);
-            if (!light() && (app(scene) || (t < 1 && app(former)))) mesh.protect(c, W, H);
         }
 
         private final RectF sceneRect = new RectF();
         /** An app's own branded atmosphere, a title's own poster expanded, or the neutral scene; never another item's image. */
         private void drawScene(Canvas c, String key, int alpha, float drift, long now) {
-            if (app(key) && !light()) { mesh.draw(c, key, W, H, alpha, now / 1000.0, drifting()); return; }
             Bitmap b = key.equals("neutral") ? null : key.startsWith("poster:") ? backdrops.get(key) : backdrops.app(key);
             if (b == null) {
                 drawNeutral(c, alpha);

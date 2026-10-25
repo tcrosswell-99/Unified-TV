@@ -21,12 +21,14 @@ public class RemoteJourneyTest {
     @Before public void start()throws Exception{
         Context c=RuntimeEnvironment.getApplication();c.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();
         controller=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup();activity=controller.get();
-        home=((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0);
+        home=homeIn(activity);
         key=home.getClass().getDeclaredMethod("key",KeyEvent.class);key.setAccessible(true);
     }
     @After public void stop(){controller.pause().stop().destroy();}
     private void press(int code)throws Exception{key.invoke(home,new KeyEvent(KeyEvent.ACTION_DOWN,code));key.invoke(home,new KeyEvent(KeyEvent.ACTION_UP,code));}
     private void hold()throws Exception{key.invoke(home,new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER));Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMillis(560));key.invoke(home,new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER));}
+    /** Home sits in front of the AmbientLayer: the view that handles the remote. */
+    static View homeIn(android.app.Activity a)throws Exception{ViewGroup stack=(ViewGroup)((ViewGroup)a.findViewById(android.R.id.content)).getChildAt(0);for(int i=0;i<stack.getChildCount();i++){for(java.lang.reflect.Method m:stack.getChildAt(i).getClass().getDeclaredMethods())if(m.getName().equals("key"))return stack.getChildAt(i);}throw new AssertionError("no Home view");}
     private Object field(String name)throws Exception{java.lang.reflect.Field f=home.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(home);}
     // Spec 4.6: Down raises Films & TV within Home itself, not a separate-looking screen, and leaves the dock untouched.
     @Test public void downRevealsMediaWithoutChangingDock()throws Exception{
@@ -71,7 +73,7 @@ public class RemoteJourneyTest {
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         String saved=activity.getSharedPreferences("unified-tv-preview",0).getString("dock","");assertTrue(saved.startsWith("netflix,smartutube,"));
         controller.recreate();assertEquals(saved,controller.get().getSharedPreferences("unified-tv-preview",0).getString("dock",""));
-        View recreated=((ViewGroup)controller.get().findViewById(android.R.id.content)).getChildAt(0);
+        View recreated=homeIn(controller.get());
         java.lang.reflect.Field index=recreated.getClass().getDeclaredField("index");index.setAccessible(true);
         assertEquals("The moved shortcut must retain focus after restart",1,index.getInt(recreated));
     }

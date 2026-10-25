@@ -17,7 +17,7 @@ Android Preview **0.5** (`0.5-preview`, versionCode 5), "The Viewing Experience"
 - **One Home journey** (spec 4.6 and 32):
   - **Each app has its own light** (spec 32): SmartTube crimson, Netflix a dark red glow, Disney+ navy with a cyan bloom behind the dock, BBC magenta, Live TV violet, Music peach and pink. Soft light fields drift slowly (20 to 40 second paths) behind frosted glass. Any other app gets a quiet slate light.
   - **Focus changes the whole scene at once:** a 400 ms crossfade starts the moment focus moves; the latest app always wins, and the name and the tile's glow change with it. The focused tile has a crisp outline and a soft halo in the app's colour.
-  - **Light on the TCL:** the light is a few pre-drawn images moved and blended by the graphics chip, never full-screen gradients redrawn every frame. The blurred glass is kept per app, so moving along the dock never re-blurs.
+  - **Light on the TCL:** the light is a few pre-drawn images in their own layer behind Home, moved and blended by the system's compositor; Home itself doesn't redraw for the light at all (v3.3: "compositor-transformed"). The blurred glass is kept per app, so moving along the dock never re-blurs.
   - **Motion settings:** Settings → Appearance → **Keep the Home background still** stops the drift but keeps the crossfade; **Reduce motion** makes changes instant; **Lightweight rendering** uses still frames.
   - **Titles:** moving along your films settles for a moment, then shows that title's own poster, softened and darkened. Never another title's image.
   - **The dock** rests low and quiet, and rises when you move.
