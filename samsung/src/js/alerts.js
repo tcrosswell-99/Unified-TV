@@ -1,0 +1,196 @@
+/*
+ * Unified TV for Samsung Frame: the alert model (spec 10, owner decision OD-07, 25 October 2026).
+ *
+ * A line-for-line port of Android's AlertPolicy (preview/app/src/io/unifiedtv/preview/AlertPolicy.java), so both TVs
+ * follow the same rules; samsung/test/alerts.test.js mirrors AlertPolicyTest case by case.
+ * Smoke and carbon monoxide alarms come first and are equal, then Ring, then detector warnings, then reminders.
+ * Ring never covers an active alarm; it waits until every alarm has cleared. Duplicates are bounded, a reminder during
+ * Ring waits briefly, stale reminders are dropped, and reminders during an emergency are dropped.
+ * On the Frame this only runs while Unified TV is open and in front: Tizen may suspend a hidden app, so nothing here
+ * claims to reach a viewer who is in another app, in Art Mode or has the TV off (spec 10.8, PRODUCT_SPEC 24.3).
+ * This is a supplementary display, never a certified alarm.
+ */
+(function (root, factory) {
+  'use strict';
+  var api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else { root.UTV = root.UTV || {}; root.UTV.Alerts = api; }
+}(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  /** Home Assistant and TV clocks are independently set: allow the same small lead the event filter accepts. */
+  const SKEW = 5000, RELEVANT = 30000;
+  const ALARM = 'alarm', NORMAL = 'normal', OFFLINE = 'offline', TEST = 'test', FAULT = 'fault';
+  const NONE = 0, CHANGED = 1, NEW_ALARM = 2;
+  const RING_STILL_RELEVANT = 45000, RING_WINDOW = 45000, RING_REPEAT = 15000;
+
+  /** One detector's current reading. An alarm keeps its first time; "lost" marks an alarm whose detector stopped answering. */
+  class Detector {
+    constructor(entity, kind, name, state, since, simulated) {
+      this.entity = entity; this.kind = kind; this.name = name; this.state = state; this.since = since;
+      this.simulated = simulated; this.acknowledged = false; this.lost = false;
+    }
+    alarm() { return this.state === ALARM; }
+    /** "SMOKE ALARM" or "CARBON MONOXIDE ALARM"; simulated ones always say TEST. */
+    title() { return (this.simulated ? 'TEST · ' : '') + (this.kind === 'smoke' ? 'SMOKE ALARM' : 'CARBON MONOXIDE ALARM'); }
+    advice() {
+      return this.kind === 'smoke' ? 'Get everyone out, stay out, and call the fire service.'
+        : 'Get everyone outside into fresh air and call for help. Don\'t go back in until it\'s safe.';
+    }
+    warning() {
+      const what = this.kind === 'smoke' ? 'Smoke detector' : 'Carbon monoxide detector';
+      return (this.simulated ? 'TEST · ' : '') + what + (this.state === TEST ? ' test' : this.state === FAULT ? ' fault' : ' offline');
+    }
+  }
+
+  function alarmKind(entity, deviceClass) {
+    // binary_sensor only: a sensor.* with device class carbon_monoxide is a concentration in ppm, not an alarm.
+    if (typeof entity !== 'string' || entity.indexOf('binary_sensor.') !== 0) return null;
+    return deviceClass === 'smoke' || deviceClass === 'carbon_monoxide' ? deviceClass : null;
+  }
+  /** Home Assistant's state to ours. Test and fault exist only where an integration reports them; nothing is assumed. */
+  function reading(state) {
+    switch (state) {
+      case 'on': return ALARM;
+      case 'off': return NORMAL;
+      case 'unavailable': case 'unknown': return OFFLINE;
+      case 'test': return TEST;
+      case 'fault': return FAULT;
+      default: return null;
+    }
+  }
+  function rising(entity, door, person, oldState, next) {
+    if (!entity || !(entity === door || entity === person)) return false;
+    // Newer Ring, Nest and UniFi integrations report a press as an event entity whose state is the time of the last
+    // press: any new time is a new press. Coming back from unavailable (a restart) is not.
+    if (entity.indexOf('event.') === 0) {
+      return typeof next === 'string' && next !== oldState && next !== 'unavailable' && next !== 'unknown' && oldState !== 'unavailable';
+    }
+    return oldState === 'off' && next === 'on';
+  }
+  /** HA's last_changed (ISO 8601, often with microseconds) to epoch ms; 0 when unreadable. */
+  function time(iso) {
+    if (typeof iso !== 'string' || !iso) return 0;
+    const trimmed = iso.replace(/(\.\d{3})\d+/, '$1');
+    const ms = Date.parse(trimmed);
+    return isNaN(ms) ? 0 : ms;
+  }
+  function name(attributes) {
+    const n = attributes && typeof attributes.friendly_name === 'string' ? attributes.friendly_name : '';
+    return n.length > 60 ? n.substring(0, 60) : n;
+  }
+  /** Every smoke and CO detector in a successful get_states result, as [entity, kind, name, state, since]; null for anything else, so a refusal never clears an alarm. */
+  function detectorsIn(message, id) {
+    let value;
+    try { value = typeof message === 'string' ? JSON.parse(message) : message; } catch (e) { return null; }
+    if (!value || typeof value !== 'object' || value.id !== id || value.type !== 'result' || value.success !== true) return null;
+    const states = value.result;
+    if (!Array.isArray(states)) return null;
+    const out = [];
+    states.forEach(function (s) {
+      if (!s || typeof s !== 'object') return;
+      const attr = s.attributes && typeof s.attributes === 'object' ? s.attributes : null;
+      const entity = typeof s.entity_id === 'string' ? s.entity_id : '';
+      const kind = alarmKind(entity, attr ? attr.device_class : '');
+      if (kind) out.push([entity, kind, name(attr), String(s.state), String(time(s.last_changed))]);
+    });
+    return out;
+  }
+
+  class Policy {
+    constructor() {
+      this.seen = new Map(); this.ringUntil = 0; this.deferred = ''; this.deferredFired = 0;
+      this.detectors = new Map(); this.connected_ = true; this.queuedRing = 0;
+    }
+    acceptRing(id, now) {
+      const previous = this.seen.get(id);
+      if (previous !== undefined && now - previous < RING_REPEAT) return false;
+      this.seen.set(id, now);
+      while (this.seen.size > 128) this.seen.delete(this.seen.keys().next().value);
+      this.ringUntil = now + RING_WINDOW;
+      return true;
+    }
+    reminderAllowed(fired, now) { return !this.emergency() && now >= this.ringUntil && fired - now <= SKEW && now - fired <= RELEVANT; }
+    ringing(now) { return now < this.ringUntil; }
+    /** Spec 10.2: a reminder that arrives during Ring is held (latest only), then shown if still relevant. */
+    defer(text, fired) { if (typeof text === 'string' && text.trim()) { this.deferred = text; this.deferredFired = fired; } }
+    release(now) { const text = this.deferred; this.deferred = ''; return text && this.reminderAllowed(this.deferredFired, now) ? text : null; }
+    dismiss() { this.ringUntil = 0; }
+
+    /**
+     * Records one detector's state. NEW_ALARM when an alarm starts (the full screen comes back), CHANGED when anything
+     * shown changes. Normal removes it: that is "no alarm from this detector", never "safe". An alarm whose detector
+     * goes quiet stays an alarm, marked lost, because the detector may have failed in the fire.
+     */
+    update(entity, kind, nm, haState, since, simulated) {
+      const state = reading(haState);
+      if (!kind || !state) return NONE;
+      const d = this.detectors.get(entity);
+      const n = nm || '';
+      if (state === NORMAL) return this.detectors.delete(entity) ? CHANGED : NONE;
+      if (d && d.alarm() && (state === OFFLINE || state === FAULT)) { if (d.lost) return NONE; d.lost = true; return CHANGED; }
+      if (d && d.alarm() && state === ALARM) { const changed = d.lost || d.name !== n; d.lost = false; d.name = n; return changed ? CHANGED : NONE; }
+      if (d && d.state === state && d.name === n) return NONE;
+      this.detectors.set(entity, new Detector(entity, kind, n, state, since, !!simulated));
+      return state === ALARM ? NEW_ALARM : CHANGED;
+    }
+    /**
+     * The full picture after (re)connecting: every smoke and CO detector with its state. Detectors no longer reported are
+     * dropped; simulated ones are kept. Acknowledgements survive for alarms still sounding.
+     */
+    snapshot(all) {
+      this.connected_ = true;
+      let result = NONE;
+      const seen = {};
+      const self = this;
+      all.forEach(function (d) {
+        seen[d[0]] = true;
+        const since = parseInt(d[4], 10);
+        result = Math.max(result, self.update(d[0], d[1], d[2], d[3], isNaN(since) ? 0 : since, false));
+      });
+      Array.from(this.detectors.values()).forEach(function (d) {
+        if (!d.simulated && !seen[d.entity]) { self.detectors.delete(d.entity); result = Math.max(result, CHANGED); }
+      });
+      return result;
+    }
+    /** Losing Home Assistant never clears an alarm; it is shown as "status unknown" until the next full picture. */
+    connection(up) { this.connected_ = !!up; }
+    connected() { return this.connected_; }
+    emergency() { return Array.from(this.detectors.values()).some(function (d) { return d.alarm(); }); }
+    /** The full screen is shown while any alarm is unacknowledged. */
+    screen() { return Array.from(this.detectors.values()).some(function (d) { return d.alarm() && !d.acknowledged; }); }
+    alarms() {
+      return Array.from(this.detectors.values()).filter(function (d) { return d.alarm(); })
+        .sort(function (a, b) { return a.since - b.since; });
+    }
+    warnings() { return Array.from(this.detectors.values()).filter(function (d) { return !d.alarm(); }); }
+    /** Acknowledges one alarm only; others stay on screen. The detector itself is never touched. */
+    acknowledge(entity) {
+      const d = this.detectors.get(entity);
+      if (!d || !d.alarm() || d.acknowledged) return false;
+      d.acknowledged = true; return true;
+    }
+    /** Ends a test: removes simulated detectors only. */
+    endSimulation() {
+      let n = 0; const self = this;
+      Array.from(this.detectors.values()).forEach(function (d) { if (d.simulated) { self.detectors.delete(d.entity); n++; } });
+      return n > 0 ? CHANGED : NONE;
+    }
+    /** A doorbell visit during an emergency: no camera, only the latest visit is remembered. */
+    queueRing(now) { this.queuedRing = now; }
+    /** After every alarm has cleared: 1 to show the doorbell card (visit still recent), -1 for a "rang during the alarm" note, 0 for nothing. */
+    ringAfterAlarm(now) {
+      if (this.queuedRing === 0 || this.emergency()) return 0;
+      const at = this.queuedRing; this.queuedRing = 0;
+      return now - at <= RING_STILL_RELEVANT ? 1 : -1;
+    }
+    queuedRingAt() { return this.queuedRing; }
+  }
+
+  return {
+    SKEW: SKEW, RELEVANT: RELEVANT, ALARM: ALARM, NORMAL: NORMAL, OFFLINE: OFFLINE, TEST: TEST, FAULT: FAULT,
+    NONE: NONE, CHANGED: CHANGED, NEW_ALARM: NEW_ALARM, RING_STILL_RELEVANT: RING_STILL_RELEVANT,
+    Detector: Detector, Policy: Policy, alarmKind: alarmKind, reading: reading, rising: rising, time: time, name: name,
+    detectorsIn: detectorsIn
+  };
+}));

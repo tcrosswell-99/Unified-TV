@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!-- Unified TV for Samsung Frame (2021). Native Tizen web app. Development build: implemented_unverified on the TV.
+     No addresses, tokens, household images or third-party logos belong in this file. -->
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+  <title>Unified TV</title>
+  <link rel="stylesheet" href="css/home.css">
+  <!-- Samsung's product API (AVPlay). Present only inside the TV's web runtime; a desktop browser simply skips it. -->
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+  <div id="stage">
+    <div id="scene" aria-hidden="true">
+      <div class="mesh" id="mesh-a"></div>
+      <div class="mesh" id="mesh-b"></div>
+      <div id="shade"></div>
+    </div>
+
+    <div id="home">
+      <div id="clock">--:--</div>
+      <div id="utilities" class="glass">
+        <span id="vpn">VPN unknown</span>
+        <span class="util" id="util-voice" aria-label="Voice">
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+        <span class="util" id="util-settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+      </div>
+      <div id="notice" class="glass" hidden></div>
+      <div id="title"></div>
+      <div id="dock" class="glass"></div>
+      <div id="more"><span class="chevron"></span><span class="more-label">Films &amp; TV</span></div>
+    </div>
+
+    <section id="page" class="page" hidden></section>
+
+    <section id="player" hidden>
+      <object id="av" type="application/avplayer"></object>
+      <div id="player-bar" class="glass">
+        <div id="player-title"></div>
+        <div id="player-state"></div>
+        <div class="hint">OK: pause or play &middot; Left and Right: 10 seconds &middot; Back: stop</div>
+      </div>
+    </section>
+
+    <section id="wallpaper" hidden>
+      <img id="wallpaper-image" alt="">
+      <div id="wallpaper-clock"><div class="time"></div><div class="date"></div></div>
+    </section>
+
+    <div id="sheet" class="glass" hidden role="dialog"></div>
+    <div id="doorbell" class="glass" hidden role="status"></div>
+    <div id="toast" class="glass" hidden role="status"></div>
+    <div id="alarm-banner" hidden role="alert"></div>
+    <div id="alarm" hidden role="alertdialog" aria-live="assertive"></div>
+  </div>
+
+  <!-- palettes.data.js is generated from palettes.json by samsung/build.sh; without it the page reads palettes.json. -->
+  <script src="js/palettes.data.js"></script>
+  <script src="js/mesh.js"></script>
+  <script src="js/focus.js"></script>
+  <script src="js/keys.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/clock.js"></script>
+  <script src="js/apps.js"></script>
+  <script src="js/livetv.js"></script>
+  <script src="js/alerts.js"></script>
+  <script src="js/ha.js"></script>
+  <script src="js/wallpaper.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/secrets.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/dlna.js"></script>
+  <script src="js/capabilities.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
