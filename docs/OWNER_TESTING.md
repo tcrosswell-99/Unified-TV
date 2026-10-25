@@ -103,6 +103,23 @@ python3 fetch_artwork.py
 
 **Expected:** a "kept …" line for each work and "N of 6 works kept in C:\Users\<you>\UnifiedTV-artwork". Any "skip" line gives its reason. Send back the `.jpg` files, `catalogue.json` and `ARTWORK-rows.md` from that folder (drag them into the chat). The agent checks them and adds them to the app with their licence rows.
 
+## Samsung Frame web app (only when you choose to try it)
+
+The agent built and unit-tested the Frame app; it has never run on the TV. The full procedure, with its rollback, is in [samsung/README.md](../samsung/README.md#installing-on-the-frame-owner-only-on-the-owners-computer). On Windows the same steps are, in PowerShell from the repository folder, after installing Tizen Studio with the **Samsung TV Extension** and **Samsung Certificate Extension** and creating your Samsung certificate profile in its Certificate Manager:
+
+```powershell
+$env:Path += ";C:\tizen-studio\tools;C:\tizen-studio\tools\ide\bin"   # adjust if Tizen Studio is elsewhere
+python samsung\tools\package.py                 # builds samsung\out\UnifiedTV-Frame (unsigned)
+tizen security-profiles list                     # note your profile name
+tizen package -t wgt -s <profile> -- samsung\out\UnifiedTV-Frame
+sdb connect <TV-address>                         # read-only checks first
+sdb devices
+tizen install -n samsung\out\UnifiedTV-Frame\UnifiedTV.wgt -s <device>
+tizen run -p UTVFRAME00.UnifiedTV -s <device>
+```
+
+**Expected:** Unified TV opens on the Frame with the dock and its light; the remote moves focus; Back at Home does nothing; the Samsung Home button returns to Samsung's Home. **To undo:** `tizen uninstall -p UTVFRAME00.UnifiedTV -s <device>`, then `sdb disconnect <TV-address>`, then turn Developer Mode off. This removes only Unified TV's own app; Smart Hub, TV Plus and Art Mode are never touched. Do **not** run anything from [SAMSUNG_HOME_PROPOSAL.md](SAMSUNG_HOME_PROPOSAL.md); it is a proposal awaiting your approval. Keep the certificate files and passwords off the repository and out of the chat.
+
 ## Live TV protection check
 
 Follow [VPN_PROTECTION.md](VPN_PROTECTION.md). It uses `preview/tools/vpn_check.py`, which needs Python and the repository's `tools/requirements.txt`.
