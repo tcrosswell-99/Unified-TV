@@ -59,15 +59,25 @@ final class HouseholdSettings {
 
     // --- Android
     static SharedPreferences prefs(Context c){return c.getSharedPreferences(PREFS,0);}
-    /** Runs the migration once, before anything else writes a setting. Safe to call from every entry point. */
+    /**
+     * Brings the saved settings to the current schema (SettingsSchema: this first migration, then version 2's checks)
+     * before anything else writes a setting, and on every start removes any value that is corrupt, so its default applies
+     * instead of a crash. Never touches the PIN, the alarm switches, connections or Live TV. Safe to call from every entry point.
+     */
     static synchronized void ensure(Context c){
-        SharedPreferences p=prefs(c);if(p.getInt(VERSION,0)>=CURRENT)return;
-        String room=p.getString("room",android.os.Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");
-        Map<String,Object> changes=migrate(p.getAll(),room,Locale.getDefault().getCountry());
+        SharedPreferences p=prefs(c);Map<String,?> all=p.getAll();
+        String room=all.get("room") instanceof String?(String)all.get("room"):android.os.Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl";
+        Object version=all.get(VERSION);
+        Map<String,Object> changes=version instanceof Integer&&(Integer)version>=SettingsSchema.VERSION?SettingsSchema.repair(all):SettingsSchema.migrate(all,room,Locale.getDefault().getCountry());
+        if(changes.isEmpty())return;
         SharedPreferences.Editor e=p.edit();
-        for(Map.Entry<String,Object> x:changes.entrySet()){Object val=x.getValue();
-            if(val==null)e.remove(x.getKey());else if(val instanceof Integer)e.putInt(x.getKey(),(Integer)val);else e.putString(x.getKey(),String.valueOf(val));}
+        for(Map.Entry<String,Object> x:changes.entrySet())put(e,x.getKey(),x.getValue());
         e.commit();
+    }
+    /** One value of a known type into an editor; null removes the key. */
+    static void put(SharedPreferences.Editor e,String key,Object val){
+        if(val==null)e.remove(key);else if(val instanceof Integer)e.putInt(key,(Integer)val);else if(val instanceof Boolean)e.putBoolean(key,(Boolean)val);
+        else if(val instanceof Long)e.putLong(key,(Long)val);else e.putString(key,String.valueOf(val));
     }
     static ZoneId zone(Context c){return zone(prefs(c).getString(ZONE,""),ZoneId.systemDefault());}
     static boolean twentyFour(Context c){try{return android.text.format.DateFormat.is24HourFormat(c);}catch(RuntimeException e){return true;}}

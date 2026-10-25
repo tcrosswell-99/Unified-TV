@@ -52,7 +52,7 @@ class GlassScreen extends Screen {
 
     // --- sizes and material (module 13 tokens, as Settings)
     int px(float at1080){return Math.round(at1080*unit);}
-    float textPx(float at1080){return at1080*unit*getResources().getConfiguration().fontScale;}
+    float textPx(float at1080){return at1080*unit*getResources().getConfiguration().fontScale*Accessibility.scale(prefs);}   // SET-073 Text size
     float shadow(){return px(28);}
     boolean calm(){return prefs.getBoolean("reduceMotion",false)||!AmbientLayer.tvAnimations();}
     private boolean strong(){return prefs.getBoolean("highContrast",false);}

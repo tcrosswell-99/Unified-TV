@@ -38,6 +38,9 @@ import java.util.function.Predicate;
  * <li><b>No third-party resources and no script:</b> inline CSS only; Content-Security-Policy {@code default-src 'none'},
  *     no-store caching, no framing, and {@code Referrer-Policy: no-referrer} so the session path never leaks to the
  *     sign-up sites the page links to.</li>
+ * <li><b>Files:</b> the settings backup (SET-081) is the only download, sent as an attachment under the same session path
+ *     and headers; it never contains a secret (SettingsBackup). The only upload is that file back, as
+ *     multipart/form-data within the same 16 KB body limit; the TV checks it and an adult confirms on the TV.</li>
  * <li><b>Never logged:</b> this class writes no logs at all, and no request body, key, token or code is ever put in a
  *     log, a notification or on the TV screen.</li>
  * </ul>
@@ -68,12 +71,19 @@ final class PhoneSetupServer {
 
     static final class Response {
         final int status; final String html, location; final boolean success;
+        /** A download instead of a page (settings backup, SET-081): its media type and the file name the phone saves. */
+        String type = "text/html; charset=utf-8", filename;
         private Response(int status, String html, String location, boolean success) { this.status = status; this.html = html; this.location = location; this.success = success; }
         static Response page(String html) { return new Response(200, html, null, false); }
         static Response status(int status, String html) { return new Response(status, html, null, false); }
         static Response redirect(String location) { return new Response(303, "", location, false); }
         /** The step is finished: this response is sent, then the session ends. */
         static Response done(String html) { return new Response(200, html, null, true); }
+        /** A file for the phone to save; the session carries on. The name is plain letters, digits, dots and dashes. */
+        static Response file(String body, String type, String filename) {
+            if (filename == null || !filename.matches("[A-Za-z0-9._-]{1,64}") || type == null || !type.matches("[a-z]+/[a-z0-9.+-]+(; charset=utf-8)?")) throw new IllegalArgumentException("file");
+            Response r = new Response(200, body, null, false); r.type = type; r.filename = filename; return r;
+        }
     }
 
     /** What the phone sees under the session path; {@code action} is the rest of the path ("" for the first page). */
@@ -234,9 +244,10 @@ final class PhoneSetupServer {
             if (n < 0 || n > BODY_LIMIT) throw new IllegalArgumentException("body too large");
             byte[] body = new byte[n]; int got = 0;
             while (got < n) { int k = in.read(body, got, n - got); if (k < 0) throw new IllegalArgumentException("truncated body"); got += k; }
-            String type = headers.getOrDefault("content-type", "").toLowerCase(Locale.ROOT);
-            if (n > 0 && !type.startsWith("application/x-www-form-urlencoded")) throw new IllegalArgumentException("content type");
-            form = decode(new String(body, StandardCharsets.UTF_8));
+            String type = headers.getOrDefault("content-type", "");
+            if (n > 0 && type.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) form = multipart(body, boundary(type));
+            else if (n > 0 && !type.toLowerCase(Locale.ROOT).startsWith("application/x-www-form-urlencoded")) throw new IllegalArgumentException("content type");
+            else form = decode(new String(body, StandardCharsets.UTF_8));
         }
         return new Request(first[0], path, headers, decode(query), form, from);
     }
@@ -258,11 +269,48 @@ final class PhoneSetupServer {
         return out;
     }
 
+    /** The boundary of a multipart/form-data content type (RFC 7578): 1 to 70 safe characters, quoted or not. */
+    static String boundary(String contentType) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i);\\s*boundary=(?:\"([^\"]{1,70})\"|([0-9A-Za-z'()+_,./:=?-]{1,70}))").matcher(contentType == null ? "" : contentType);
+        if (!m.find()) throw new IllegalArgumentException("boundary");
+        return m.group(1) != null ? m.group(1) : m.group(2);
+    }
+    /**
+     * multipart/form-data, just enough for one small file and a few fields (the settings backup upload): at most 20 parts,
+     * each named with plain letters; a part's text is read as UTF-8; the first part of a repeated name wins. Anything
+     * malformed throws IllegalArgumentException. The whole body is already within BODY_LIMIT.
+     */
+    static Map<String, String> multipart(byte[] body, String boundary) {
+        String all = new String(body, StandardCharsets.ISO_8859_1), delimiter = "--" + boundary;
+        Map<String, String> out = new LinkedHashMap<>();
+        int at = all.indexOf(delimiter);
+        if (at < 0) throw new IllegalArgumentException("multipart");
+        int parts = 0;
+        while (true) {
+            at += delimiter.length();
+            if (all.startsWith("--", at)) return out;                       // the closing delimiter
+            if (!all.startsWith("\r\n", at)) throw new IllegalArgumentException("multipart");
+            int head = all.indexOf("\r\n\r\n", at + 2), next = all.indexOf("\r\n" + delimiter, at + 2);
+            if (head < 0 || next < 0 || head > next) throw new IllegalArgumentException("multipart");
+            if (++parts > 20) throw new IllegalArgumentException("too many parts");
+            String name = null;
+            for (String line : all.substring(at + 2, head).split("\r\n")) {
+                if (!line.toLowerCase(Locale.ROOT).startsWith("content-disposition:")) continue;
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i);\\s*name=\"([a-z]{1,20})\"").matcher(line);
+                if (m.find()) name = m.group(1);
+            }
+            if (name == null) throw new IllegalArgumentException("multipart name");
+            out.putIfAbsent(name, new String(all.substring(head + 4, next).getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8));
+            at = next + 2;
+        }
+    }
+
     static void write(OutputStream out, Response r) throws IOException {
         byte[] body = (r.html == null ? "" : r.html).getBytes(StandardCharsets.UTF_8);
         StringBuilder h = new StringBuilder("HTTP/1.1 ").append(r.status).append(' ').append(reason(r.status)).append("\r\n");
         if (r.location != null) h.append("Location: ").append(r.location).append("\r\n");
-        h.append("Content-Type: text/html; charset=utf-8\r\nContent-Length: ").append(body.length).append("\r\n")
+        if (r.filename != null) h.append("Content-Disposition: attachment; filename=\"").append(r.filename).append("\"\r\n");
+        h.append("Content-Type: ").append(r.type).append("\r\nContent-Length: ").append(body.length).append("\r\n")
          .append("Cache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\n")
          .append("Content-Security-Policy: ").append(CSP).append("\r\nConnection: close\r\n\r\n");
         out.write(h.toString().getBytes(StandardCharsets.ISO_8859_1)); out.write(body); out.flush();

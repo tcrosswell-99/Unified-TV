@@ -99,6 +99,7 @@ final class PhoneSetup {
         try { old = new Vault(c).read("ha"); } catch (Exception e) { old = new JSONObject(); }
         old.put("base", base).put("enabled", true).put("kind", "ha").put("token", token).put("user", "").put("httpConsent", httpConsent).put("how", how);
         new Vault(c).save("ha", old);
+        EventLog.record(c, EventLog.CONNECTION, "Home Assistant connected");
         restartAlerts(c);
     }
     /** The household alert service uses the saved connection: restart it if alerts are meant to be on. */

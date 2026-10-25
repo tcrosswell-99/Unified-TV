@@ -1,6 +1,7 @@
 package io.unifiedtv.preview;
 
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.os.*;
 import android.view.KeyEvent;
 import androidx.media3.common.*;
@@ -74,7 +75,9 @@ public final class PlayerActivity extends Screen {
         resumeKey=stable!=null&&!stable.isEmpty()?ResumeStore.key(stable):legacyKey;
         ResumeStore places=resumeStore();long now=System.currentTimeMillis();
         long here=position<0?Math.max(places.position(resumeKey,now),resumeKey.equals(legacyKey)?0:places.position(legacyKey,now)):0;
-        runOnUiThread(()->{if(position<0&&here>0)askResume(ticket,here,stream,source);else play(ticket,stream,source);});
+        // SET-033: ask, always resume, or always start over, as the household chose.
+        long chosen=position<0?PlaybackPrefs.start(PlaybackPrefs.resume(getSharedPreferences(HouseholdSettings.PREFS,0)),here):0;
+        runOnUiThread(()->{if(position<0&&chosen<0)askResume(ticket,here,stream,source);else{if(position<0)position=chosen;play(ticket,stream,source);}});
     }
     /**
      * Kids, at play time, whatever opened the player: the server itself must say this title sits inside a Kids folder
@@ -104,6 +107,8 @@ public final class PlayerActivity extends Screen {
         if(position<0)position=0;
         view=new PlayerView(this);setContentView(view);
         player=new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(()->new PrivateDataSource(source))).build();
+        // SET-033 subtitle size: Media3's own subtitle view, scaled as a fraction of the picture's height.
+        if(view.getSubtitleView()!=null)view.getSubtitleView().setFractionalTextSize(PlaybackPrefs.subtitleFraction(getSharedPreferences(HouseholdSettings.PREFS,0)));
         view.setPlayer(player);view.setKeepScreenOn(true);view.setUseController(true);view.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);view.setControllerShowTimeoutMs(3500);view.requestFocus();
         player.addListener(new Player.Listener(){
             @Override public void onIsPlayingChanged(boolean playing){if(playing&&!started&&!dlna){started=true;report("/Sessions/Playing");handler.post(progress);}}
@@ -112,13 +117,28 @@ public final class PlayerActivity extends Screen {
             @Override public void onPlaybackStateChanged(int state){
                 handler.removeCallbacks(stallCheck);
                 if(state==Player.STATE_BUFFERING&&player!=null&&player.getPlayWhenReady()){if(diagnostics.firstFrameMs()>=0)diagnostics.rebuffer();handler.postDelayed(stallCheck,PlaybackPolicy.STALL_MS);}
-                if(state==Player.STATE_ENDED){remember();finish();}
+                if(state==Player.STATE_ENDED){remember();if(!nextEpisode())finish();}
             }
             @Override public void onPlayerError(PlaybackException e){PlaybackPolicy.Kind kind=PlaybackPolicy.kind(e.errorCode);String name=e.getErrorCodeName();handler.post(()->fail(kind,name));}
         });
         player.setMediaItem(MediaItem.fromUri(stream),position);player.setPlayWhenReady(playWhenReady);player.prepare();
         diagnostics.prepared(SystemClock.elapsedRealtime(),position);
         if(!playWhenReady)view.showController();
+    }
+    /**
+     * SET-033 autoplay (off by default): after an episode ends, a card names the next one and plays it after
+     * PlaybackPrefs.NEXT_SECONDS; OK plays it now, Back returns to the library. The next player checks Kids folders and
+     * ratings again before it plays anything. False when there is nothing to play next.
+     */
+    private boolean nextEpisode(){
+        Intent next=dlna&&PlaybackPrefs.autoplay(getSharedPreferences(HouseholdSettings.PREFS,0))?PlaybackPrefs.next(this,getIntent()):null;
+        if(next==null)return false;
+        release();generation++;int ticket=generation;upNext=true;
+        page("Up next");text(next.getStringExtra("title"),26);text("Starts in "+PlaybackPrefs.NEXT_SECONDS+" seconds.",20);
+        Runnable go=()->{if(ticket!=generation||isFinishing())return;try{startActivity(next);}catch(RuntimeException ignored){}finish();};
+        button("Play now",go).requestFocus();button("Back to your films",this::finish);
+        handler.postDelayed(go,PlaybackPrefs.NEXT_SECONDS*1000L);
+        return true;
     }
     /** A plain explanation with Try again and Back; the viewer's place is kept for the retry. */
     private void fail(PlaybackPolicy.Kind kind,String codeName){
@@ -202,7 +222,9 @@ public final class PlayerActivity extends Screen {
         worker.execute(()->{try{LocalApi.post(config,path,new JSONObject().put("ItemId",id).put("PositionTicks",at*10000).put("IsPaused",paused).put("CanSeek",true).put("PlayMethod","DirectStream"));}catch(Exception ignored){/* Do not claim synchronisation succeeded. */}});
     }
     private void release(){handler.removeCallbacks(progress);handler.removeCallbacks(stallCheck);if(player!=null){report("/Sessions/Playing/Stopped");view.setPlayer(null);player.release();player=null;}started=false;}
-    @Override protected void onStop(){remember();generation++;release();super.onStop();}
+    /** The "Up next" card is showing: leaving the player ends it rather than replaying the episode that finished. */
+    private boolean upNext;
+    @Override protected void onStop(){if(upNext&&!isFinishing())finish();remember();generation++;release();super.onStop();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putLong("position",player!=null?player.getCurrentPosition():position);out.putBoolean("playWhenReady",playWhenReady);}
     @Override protected void onDestroy(){release();handler.removeCallbacksAndMessages(null);worker.shutdown();super.onDestroy();}
 }

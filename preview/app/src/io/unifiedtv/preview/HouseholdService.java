@@ -88,7 +88,7 @@ public final class HouseholdService extends Service {
             update("Not configured · open household settings");stopSelf();
         }
     }
-    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;authorised=false;policy.connection(false);if(policy.emergency())render(false);update("Offline · retrying");main.postDelayed(reconnect,retry);retry=Math.min(30000,retry*2);}
+    private void lost(WebSocket ws){if(stopped||ws!=socket)return;socket=null;if(linked){linked=false;EventLog.record(this,EventLog.CONNECTION,"Home Assistant connection lost; retrying");}authorised=false;policy.connection(false);if(policy.emergency())render(false);update("Offline · retrying");main.postDelayed(reconnect,retry);retry=Math.min(30000,retry*2);}
     private void send(WebSocket ws,JSONObject command){ws.send(command.toString());}
     private void message(WebSocket ws,String text){
         if(stopped||ws!=socket)return;
@@ -102,6 +102,7 @@ public final class HouseholdService extends Service {
                 update("Authentication required · update your connection");stopSelf();}
             else if(type.equals("auth_ok")){
                 authorised=true;getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.CONFIGURED,true).apply();
+                if(!linked){linked=true;EventLog.record(this,EventLog.CONNECTION,"Household alerts listening to Home Assistant");}
                 retry=1000;send(ws,new JSONObject().put("id",1).put("type","subscribe_events").put("event_type","state_changed"));
                 if(house.optBoolean("reminders"))send(ws,new JSONObject().put("id",2).put("type","subscribe_events").put("event_type","unified_tv_reminder"));
                 // An alarm already sounding when the TV connects or reconnects is shown straight away.
@@ -139,7 +140,7 @@ public final class HouseholdService extends Service {
             int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"));
             if(kind!=AlertPolicy.RING_NONE)lastEvent(kind==AlertPolicy.RING_PRESS?"doorbell press":"person",now);
             if(kind==AlertPolicy.RING_PRESS){
-                String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}
+                String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now)){EventLog.record(this,EventLog.DOORBELL,policy.emergency()?"Doorbell pressed during an alarm: camera held back":"Doorbell pressed: camera shown");if(policy.emergency()){policy.queueRing(now);render(false);}else show();}
             }else if(kind==AlertPolicy.RING_PERSON&&policy.acceptPerson(entity,now))person();
         }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
@@ -156,7 +157,7 @@ public final class HouseholdService extends Service {
     }
     /** A press and a person detection moments apart are one visit: keep the live stream, extend its time. */
     /** SET-051: the household's auto-close (30 s by default, 60 s, or only with Back); 0 means the card waits for Back. */
-    private long closeMs(){return DoorbellCamera.closeMs(getSharedPreferences("unified-tv-preview",0).getString(DoorbellCamera.CLOSE,""));}
+    private long closeMs(){android.content.SharedPreferences p=getSharedPreferences("unified-tv-preview",0);return Accessibility.time(p,DoorbellCamera.closeMs(p.getString(DoorbellCamera.CLOSE,"")));}   // SET-073 longer times
     private void closeLater(){main.removeCallbacks(timeout);long ms=closeMs();if(ms>0)main.postDelayed(timeout,ms);}
     /** SET-054: whether the visit on screen is a test (household setup's "Test: someone rings the doorbell"). */
     private boolean testVisit;
@@ -215,13 +216,17 @@ public final class HouseholdService extends Service {
     private void person(boolean test){
         if(stopped||policy.emergency()||cameraOverlay!=null||!Settings.canDrawOverlays(this))return;
         android.content.SharedPreferences prefs=getSharedPreferences("unified-tv-preview",0);
-        if(!AlertPolicy.personToastAllowed(Profiles.kids(prefs),prefs.getBoolean(AlertPolicy.KIDS_PERSON_PREF,true)))return;
+        String who=test?"Test: person at the door":"Person at the door";
+        if(!AlertPolicy.personToastAllowed(Profiles.kids(prefs),prefs.getBoolean(AlertPolicy.KIDS_PERSON_PREF,true))){EventLog.record(this,EventLog.PERSON,who+": not shown while Kids is watching");return;}
+        // SET-052: quiet hours hold back person toasts only; doorbell presses and smoke or carbon monoxide alarms never ask.
+        if(!QuietHours.personAllowed(prefs,HouseholdSettings.zone(this),System.currentTimeMillis())){EventLog.record(this,EventLog.PERSON,who+": not shown in quiet hours");return;}
+        EventLog.record(this,EventLog.PERSON,who+": shown");
         removeView(personToast,()->personToast=null);
         TextView toast=new TextView(this);toast.setText(DoorbellCamera.person(cameraName(),test));toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(28,18,28,18);
         android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(28);g.setColor(0xE620293B);g.setStroke(2,0x40FFFFFF);toast.setBackground(g);
         WindowManager.LayoutParams p=params(-2,-2,false);p.flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         personToast=toast;windows.addView(toast,p);
-        main.postDelayed(()->{if(personToast==toast)removeView(toast,()->personToast=null);},AlertPolicy.PERSON_TOAST_MS);
+        main.postDelayed(()->{if(personToast==toast)removeView(toast,()->personToast=null);},Accessibility.time(prefs,AlertPolicy.PERSON_TOAST_MS));
     }
     /** The camera's own name from household setup, else the doorbell's, else plain "Doorbell". */
     private String cameraName(){
@@ -267,8 +272,16 @@ public final class HouseholdService extends Service {
      * a banner stays. Detector warnings are shown apart from emergencies. The doorbell waits until every alarm has cleared.
      * Nothing here touches a detector, and the screen adds to the home's own alarms; it never replaces them.
      */
+    /** SET-055: whether Home Assistant was last recorded as connected, and the alarms already in the event log. */
+    private boolean linked;private final java.util.Set<String> loggedAlarms=new java.util.HashSet<>();
+    private void logAlarms(){
+        for(AlertPolicy.Detector d:policy.alarms())if(loggedAlarms.add(d.entity+":"+d.since))
+            EventLog.record(this,EventLog.ALERT,(d.simulated?"Test: ":"")+("smoke".equals(d.kind)?"Smoke alarm shown":"Carbon monoxide alarm shown"));
+        if(loggedAlarms.size()>64)loggedAlarms.clear();
+    }
     private void render(boolean fresh){
         if(stopped)return;
+        if(fresh)logAlarms();
         boolean screen=policy.screen(),emergency=policy.emergency();
         if(!Settings.canDrawOverlays(this))screen=emergency=false;
         if(screen){
@@ -366,7 +379,7 @@ public final class HouseholdService extends Service {
         TextView toast=new TextView(this);toast.setText(w.warning()+(w.name.isEmpty()?"":": "+w.name)+(policy.warnings().size()>1?" (+"+(policy.warnings().size()-1)+")":""));
         toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(24,18,24,18);toast.setBackgroundColor(0xE8352A12);
         warningToast=toast;windows.addView(toast,params(Math.min(760,getResources().getDisplayMetrics().widthPixels-60),-2,false));
-        main.postDelayed(()->{if(warningToast==toast)removeView(toast,()->warningToast=null);},10000);
+        main.postDelayed(()->{if(warningToast==toast)removeView(toast,()->warningToast=null);},Accessibility.time(getSharedPreferences("unified-tv-preview",0),10000));
     }
     private void removeView(View v,Runnable after){if(v!=null){try{windows.removeView(v);}catch(RuntimeException ignored){}after.run();}}
     /** In-app test only (adult household settings): clearly labelled TEST events; no detector or Home Assistant involved. */
@@ -383,7 +396,7 @@ public final class HouseholdService extends Service {
         if(text.trim().isEmpty())return;if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}
         TextView toast=new TextView(this);toast.setText(text.substring(0,Math.min(240,text.length())));toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(24,18,24,18);toast.setBackgroundColor(0xe820293b);
         reminderOverlay=toast;windows.addView(toast,params(Math.min(650,getResources().getDisplayMetrics().widthPixels-60),-2,false));
-        main.postDelayed(()->{if(reminderOverlay==toast){windows.removeView(toast);reminderOverlay=null;}},7000);
+        main.postDelayed(()->{if(reminderOverlay==toast){windows.removeView(toast);reminderOverlay=null;}},Accessibility.time(getSharedPreferences("unified-tv-preview",0),7000));
     }
     private void dismissViews(){if(cameraPlayer!=null){cameraPlayer.release();cameraPlayer=null;}if(cameraOverlay!=null){windows.removeView(cameraOverlay);cameraOverlay=null;}main.removeCallbacks(tick);main.removeCallbacks(noPicture);cameraScreen=null;cameraClock=null;cameraNote=null;if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}cameraState=null;}
     private void dismiss(){

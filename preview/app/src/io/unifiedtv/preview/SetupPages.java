@@ -42,6 +42,7 @@ final class SetupPages {
     }
     static int category(String task, int current) {
         if (SettingsActivity.PHONE_TMDB.equals(task)) return SettingsActivity.LIBRARY;
+        if (SettingsActivity.PHONE_BACKUP.equals(task)) return SettingsActivity.PRIVACY;
         if ((SettingsActivity.HOUSEHOLD.equals(task) || SettingsActivity.PHONE_HA.equals(task)) && current == SettingsActivity.NOTIFICATIONS) return current;
         return SettingsActivity.SMART_HOME;
     }
@@ -61,6 +62,7 @@ final class SetupPages {
             case SettingsActivity.HA_ADVANCED: return "Address and sign-in details";
             case SettingsActivity.TEAM: return "Choose from the UK teams";
             case SettingsActivity.HOUSEHOLD: return "What Home Assistant shows on this TV";
+            case SettingsActivity.PHONE_BACKUP: return "Using your phone";
             default: return "Set up on your phone";
         }
     }
@@ -146,7 +148,7 @@ final class SetupPages {
             .setMessage("This TV forgets its Home Assistant sign-in. Doorbell and alarm alerts stop on this TV until it is set up again. Nothing changes in Home Assistant itself; you can also remove the TV there.")
             .setPositiveButton("Disconnect", (d, w) -> {
                 try { a.stopService(new android.content.Intent(a, HouseholdService.class)); } catch (RuntimeException ignored) {}
-                new Vault(a).forget("ha"); haChecked = null; haFound = null; a.note("Home Assistant disconnected."); a.refresh();
+                new Vault(a).forget("ha"); EventLog.record(a, EventLog.CONNECTION, "Home Assistant disconnected"); haChecked = null; haFound = null; a.note("Home Assistant disconnected."); a.refresh();
             }).setNegativeButton("Cancel", null).show());
     }
 
@@ -217,7 +219,7 @@ final class SetupPages {
     private void phonePage(String kind) {
         if (Profiles.kids(a)) { a.text("An adult can set this up in Adults.", 16); return; }
         if (PhoneService.of(a.getApplicationContext(), kind) == null) { a.text("This service can't be set up on this TV.", 16); return; }
-        if (phone == null) phone = PhoneSetup.start(a, kind, s -> phoneChanged(s));
+        if (phone == null) { if (PhoneService.BACKUP.equals(kind)) SettingsBackup.discard(); phone = PhoneSetup.start(a, kind, s -> phoneChanged(s)); }
         PhoneService service = phone.service;
         a.text(service.tvIntro, 16);
         boolean live = !phone.over() && phone.link() != null;
@@ -237,6 +239,8 @@ final class SetupPages {
         }
         phoneStatus = a.text(phone.status(), 19); phoneStatus.setFocusable(false);
         if (phone.succeeded()) {
+            // SET-081: the phone sent a settings file; the TV shows what would change, and only an adult applies it.
+            if (PhoneService.BACKUP.equals(kind)) { a.privacy().incoming(); return; }
             if (PhoneSetup.FOOTBALL.equals(kind)) a.button("Choose your team", () -> a.expandTask(SettingsActivity.TEAM));
             a.button("Done", a::back);
             return;

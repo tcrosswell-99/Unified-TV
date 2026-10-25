@@ -16,8 +16,8 @@ import java.util.function.Consumer;
  * task "phone-" + its id.
  */
 final class PhoneService {
-    static final String HA = "ha", FOOTBALL = "football", TMDB = "tmdb";
-    static final String[] IDS = {HA, FOOTBALL, TMDB};
+    static final String HA = "ha", FOOTBALL = "football", TMDB = "tmdb", BACKUP = "backup";
+    static final String[] IDS = {HA, FOOTBALL, TMDB, BACKUP};
     static final String FOOTBALL_SIGNUP = "https://dashboard.api-football.com/register", TMDB_SIGNUP = "https://www.themoviedb.org/signup", TMDB_API = "https://www.themoviedb.org/settings/api";
 
     /** One step for the phone; an optional link opens in a new tab with no referrer. */
@@ -69,6 +69,12 @@ final class PhoneService {
                 if (v == PhoneFlows.Verdict.OK) TmdbKey.save(app, key);
                 return v;
             });
+            // SET-081: not a service sign-in, but the same phone page: the settings file goes to and from the phone.
+            case BACKUP: return new PhoneService(BACKUP, "Settings backup", "Settings backup",
+                "Your phone can save a copy of this TV's settings, or send a copy back. Passwords, keys, the PIN and camera pictures are never in it.", "", new Step[0], Collections.emptyList(), "",
+                null, null, "The settings file arrived. Check what would change below.", "Sent to the TV.", null,
+                (c, progress, background) -> new PhoneFlows.Backup(() -> SettingsBackup.export(c.getSharedPreferences(HouseholdSettings.PREFS, 0).getAll(), java.time.LocalDate.now().toString()),
+                    SettingsBackup::offer, progress));
             default: return null;
         }
     }

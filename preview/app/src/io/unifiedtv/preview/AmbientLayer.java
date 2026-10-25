@@ -64,6 +64,13 @@ final class AmbientLayer extends FrameLayout {
     /** Whether the light is drifting right now (the step loop is running). */
     boolean drifting() { return running; }
 
+    /**
+     * The saved settings that change this light (SET-GLASS-09): Home's preference listener re-applies them through
+     * {@code aim()} the moment one changes, even under the Settings sheet, so switching motion back on lets the light drift
+     * behind the sheet as a live preview, and Reduce motion, Keep still or Lightweight stop it at once.
+     */
+    static final java.util.Set<String> MOTION_KEYS=java.util.Collections.unmodifiableSet(new java.util.HashSet<>(java.util.Arrays.asList("reduceMotion","stillBackground","lightweight")));
+
     /** Said, in plain words, wherever the household looks for why Home's background isn't moving. */
     static final String TV_ANIMATIONS_OFF = "This TV has its animations switched off, so the Home background stays still. To see it move gently, switch animations back on in the TV's own settings.";
     /**

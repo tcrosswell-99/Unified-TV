@@ -44,8 +44,17 @@ import java.util.Set;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
-    @Override protected void onStop(){VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
+    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});
+        getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);}
+    @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
+    /**
+     * SET-GLASS-09 / GLASS-04: Settings is a translucent sheet over Home, so Home is paused, not stopped, and stays on
+     * screen. While Home can be seen (started), an appearance change saved by Settings (or by a timed preview going back)
+     * is re-applied here at once: the dock, labels, light, pill and clock repaint in place, and nothing moves or re-lays
+     * out (HomePreview says what each key needs). Held strongly: Android keeps these listeners only weakly. Stopped (another
+     * full-screen app in front), Home ignores changes and refreshes everything in onResume as before.
+     */
+    private final SharedPreferences.OnSharedPreferenceChangeListener livePreview=(p,key)->{if(surface!=null)surface.preview(key);};
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     /** Idle on Home: the Wallpaper (spec 33; artwork by default), or with Wallpaper off, the owner's gallery if one is set. */
     private boolean wallpaperOn() { return !WallpaperPolicy.OFF.equals(WallpaperPolicy.source(getSharedPreferences("unified-tv-preview",0).getString("wallpaperSource",null))); }
@@ -116,7 +125,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private static final int W = 1920, H = 1080;
         private static final int WHITE = 0xFFFAFAFC;
         private static final int MUTED = 0xFFC8CCD5;
-        private static final long HOLD_MS = 550, BG_WAIT_MS = 135, BG_FADE_MS = 400, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
+        private static final long HOLD_MS = 550, BG_FADE_MS = 400, SHELF_MS = 320, TITLE_MS = 160, TILE_MS = 185;
         private Activity activity;
         private final SharedPreferences prefs;
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -171,8 +180,9 @@ public final class UnifiedPreviewActivity extends Activity {
         private String labels() { return DockLabels.value(prefs.getString(DockLabels.key(Profiles.current(prefs)), DockLabels.FOCUSED_ONLY)); }
         private boolean okDown, held;
         private long focusAt, fadeAt;
-        // Spec 32: an app's scene follows focus at once and crossfades in 400 ms; a title's poster scene waits for a short
-        // settle (spec 4.4), because its artwork may still be decoding. The scene is an app id, "poster:<id>" or "neutral".
+        // Spec 32 and module 05: every scene follows focus at once and crossfades in 400 ms (200 ms Lightweight, none with
+        // Reduce motion); a title whose artwork is still decoding fades from the neutral scene to its own when it arrives.
+        // The scene is an app id, "poster:<id>" or "neutral".
         private final Backdrops backdrops = new Backdrops();
         /** The compositor-moved app light behind this view (set by the activity); null in tests without it. */
         AmbientLayer layer;
@@ -284,10 +294,14 @@ public final class UnifiedPreviewActivity extends Activity {
             if (AmbientLayer.tvAnimations() || calm() || light() || prefs.getBoolean("stillBackground", false) || prefs.getBoolean("stillExplained", false)) return;
             prefs.edit().putBoolean("stillExplained", true).apply(); info(AmbientLayer.TV_ANIMATIONS_OFF, 9000L);
         }
-        /** A focus move: the tile answers at once, the old title steps back, and the scene follows after the settle. */
+        /**
+         * A focus move: the tile answers at once, the old title steps back, and the scene's crossfade starts straight away
+         * (module 05 single focus timing contract, NAV-04: no settle delay; the former 135 ms wait before a title's scene is
+         * gone). Posted rather than run inline only so that several keys handled in one go commit once, to the last.
+         */
         private void moved() {
             focusAt = SystemClock.uptimeMillis(); titleHidden = true;
-            handler.removeCallbacks(commitFocus); handler.postDelayed(commitFocus, shelf ? BG_WAIT_MS : 0);
+            handler.removeCallbacks(commitFocus); handler.post(commitFocus);
         }
 
         Preview(Activity a) {
@@ -324,7 +338,7 @@ public final class UnifiedPreviewActivity extends Activity {
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
-            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();stillOnce();airPlayFollowUps();invalidate();
+            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();stillOnce();airPlayFollowUps();backToGear();invalidate();
         }
         /** Back from AirPin (opened from Unified TV): check AirPlay again a few times while its service starts (AirPlayReceiver). */
         private final Runnable airPlayCheck = () -> { AirPlayReceiver.now(activity, Preview.this::postInvalidate); invalidate(); };
@@ -332,7 +346,47 @@ public final class UnifiedPreviewActivity extends Activity {
             if (!AirPlayReceiver.takeReturn()) return;
             handler.removeCallbacks(airPlayCheck); for (long ms : AirPlayReceiver.FOLLOW_UP_MS) handler.postDelayed(airPlayCheck, ms);
         }
+        /**
+         * SET-GLASS-09: one saved setting changed (key null: all of them) while Home can be seen, usually under the Settings
+         * sheet. Only what that setting touches is re-applied, in place: focus stays on the same tile or icon, the dock keeps
+         * its geometry (a new dock size is drawn, not laid out), and nothing animates that the setting doesn't animate.
+         */
+        void preview(String key) {
+            int what = HomePreview.of(key);
+            if (what == HomePreview.NONE || (savingDock && what == HomePreview.DOCK)) return;   // Home's own save: nothing to preview
+            if (what == HomePreview.DOCK || what == HomePreview.ALL) reloadDock();
+            if (what == HomePreview.PILL || what == HomePreview.ALL) utilities();
+            if (what == HomePreview.CLOCK || what == HomePreview.ALL) household();
+            if (what == HomePreview.LIGHT || what == HomePreview.ALL) {
+                aim(scene, false);
+                if (fadeMs() == 0) { fadeAt = 0; formerScene = null; }   // Reduce motion mid-dissolve: the new scene, at once
+            }
+            invalidate();
+        }
+        /** The household's dock again (another size, profile or list), keeping focus on the same app where it is still there. */
+        private void reloadDock() {
+            if (moving) goBack();
+            String focused = index >= 0 && index < dock.size() ? dock.get(index).id : null;
+            dock.clear(); loadDock();
+            int at = -1; for (int i = 0; i < dock.size(); i++) if (dock.get(i).id.equals(focused)) at = i;
+            index = dock.isEmpty() ? -1 : at >= 0 ? at : Math.max(0, Math.min(dock.size() - 1, index));
+            if (at < 0 && !shelf) { scene = index < 0 ? "neutral" : dock.get(index).id; sceneTitle = index < 0 ? "" : dock.get(index).name; aim(scene, false); }
+        }
+        /** True while Home writes its own dock, so its listener doesn't reload what it has just saved. */
+        private boolean savingDock;
+        /** GLASS-02 / SET-GLASS-06: Settings was opened from the pill's gear, so closing it returns focus to the gear. */
+        private boolean settingsFromGear;
+        /** Back from Settings (onResume): focus on the gear again, wherever the pill now has it. */
+        private void backToGear() {
+            if (!settingsFromGear) return;
+            settingsFromGear = false;
+            int gear = pill.indexOf(HomeUtilities.SETTINGS);
+            if (gear < 0 || menu || moving) return;
+            if (shelf) { shelf = false; shelfAt = 0; }
+            header = true; headerIndex = gear; speak(sceneTitle);
+        }
         void home() {
+            settingsFromGear = false;   // the Home button lands on the dock (spec 28.3), even from Settings
             handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false; header = false;
             if (moving) goBack();
             if (shelf) { shelf = false; shelfAt = 0; }
@@ -447,7 +501,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 out.append(item.id);
             }
             for (String id : overflow) { if (out.length() != 0) out.append(','); out.append(id); }
-            prefs.edit().putString("dock", out.toString()).putInt("focus", index).apply();
+            savingDock = true;
+        try { prefs.edit().putString("dock", out.toString()).putInt("focus", index).apply(); } finally { savingDock = false; }
         }
 
         boolean key(KeyEvent e) {
@@ -579,7 +634,14 @@ public final class UnifiedPreviewActivity extends Activity {
                 case HomeUtilities.AIRPLAY: { String error = Launch.visit(activity, airPin, "AirPin LITE"); if (error != null && !error.isEmpty()) info(error); break; }
                 case HomeUtilities.VPN: VpnGate.connect(activity); break;
                 case HomeUtilities.VOICE: activity.startActivity(new Intent(activity, VoiceActivity.class)); break;
-                default: EditLock.ask(activity, () -> activity.startActivity(new Intent(activity, SettingsActivity.class))); break;
+                default: {
+                    Runnable open = () -> { settingsFromGear = true; activity.startActivity(new Intent(activity, SettingsActivity.class)); };
+                    // Kids with no PIN on record (only if the record itself was lost): EditLock would do nothing, leaving the
+                    // gear dead and Kids a trap. Settings opens, its own changes still behind EditLock, so Profiles & Family
+                    // can return to Adults as Profiles.rule allows (NAV-02: never a dead focus).
+                    if (EditLock.child(activity) && prefs.getString("pin", "").isEmpty()) open.run(); else EditLock.ask(activity, open);
+                    break;
+                }
             }
         }
         private void launch(Item item) {
@@ -889,7 +951,7 @@ public final class UnifiedPreviewActivity extends Activity {
             final float s = DockCapacity.scale(places), cell = DockCapacity.TILE * s, cy = 858;
             float full = DockCapacity.width(places), left = (W - full) / 2;
             glass(c, left, cy - 111 * s, left + full, 1005, 37, 0x54465669, 0x20FFFFFF);
-            String mode = labels(); int labelSize = DockCapacity.labelSize(places);
+            String mode = labels(); int labelSize = Math.round(DockCapacity.labelSize(places) * Accessibility.scale(prefs));   // SET-073 Text size
             for (int i = 0; i < places; i++) {
                 float x = DockCapacity.slotLeft(places, i, W), mid = x + cell / 2;
                 float tileTop = cy - 80 * s, tileBottom = cy + 81 * s, r = 27 * s;
@@ -1056,7 +1118,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (posterIndex < posters.size()) {
                 HomeShelf.Poster p = posters.get(posterIndex);
                 LibraryCatalogue.Title t = p.card == null ? null : p.card.title;
-                if (t != null && !t.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", t.url).putExtra("title", t.kind == LibraryCatalogue.Kind.EPISODE ? t.showName + " " + t.label() : t.name).putExtra("dlnaItem", t.id).putExtra("root", t.root).putExtra("stableId", t.stableId);
+                if (t != null && !t.url.isEmpty()) next = PlaybackPrefs.player(activity, t);
                 else if (p.card != null && p.card.show != null) next = new Intent(activity, DlnaLibraryActivity.class).putExtra("show", p.card.show.key);
                 else next = new Intent(activity, LibraryActivity.class);
             } else { Launch.library(activity); return; }

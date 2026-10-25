@@ -185,6 +185,43 @@ final class PhoneFlows {
     /** A base as shown to a person: without "http://" for plain addresses on the usual port. */
     static String display(String base) { return base; }
 
+    // ---------------------------------------------------------------- settings backup (SET-081)
+    /**
+     * The phone's settings backup page: download this TV's settings file, or send one back. The file is checked on the TV
+     * (SettingsBackup.parse) and only handed over when usable; nothing changes until an adult confirms on the TV with the
+     * PIN, so this page never says "restored".
+     */
+    static final class Backup implements PhoneSetupServer.Flow {
+        private final Supplier<String> export; private final Consumer<SettingsBackup.Incoming> received; private final Consumer<String> progress;
+        Backup(Supplier<String> export, Consumer<SettingsBackup.Incoming> received, Consumer<String> progress) { this.export = export; this.received = received; this.progress = progress; }
+
+        @Override public PhoneSetupServer.Response handle(String action, PhoneSetupServer.Request r) throws Exception {
+            switch (action) {
+                case "": return PhoneSetupServer.Response.page(start(r, null));
+                case "backup/file":
+                    progress.accept("Your phone saved a copy of this TV's settings.");
+                    return PhoneSetupServer.Response.file(export.get(), SettingsBackup.TYPE, SettingsBackup.FILE);
+                case "backup/restore": {
+                    if (!r.post()) return PhoneSetupServer.Response.redirect(r.session + "/");
+                    SettingsBackup.Incoming in = SettingsBackup.parse(r.param("file"));
+                    if (!in.usable()) return PhoneSetupServer.Response.page(start(r, in.problem));
+                    received.accept(in);
+                    return PhoneSetupServer.Response.done(PhonePages.done("Sent to the TV", "The TV shows what would change. Nothing changes until an adult confirms there with the PIN."));
+                }
+                default: return null;
+            }
+        }
+        private String start(PhoneSetupServer.Request r, String problem) {
+            return PhonePages.page("Settings backup", PhonePages.error(problem)
+                + "<h2>Save a copy</h2><p>A small file with this TV's look, Home and dock, playback, notifications and Kids choices.</p>"
+                + "<p class=\"muted\">It never contains passwords, keys, the adult PIN, camera pictures, photos or addresses. Connections are set up again after a restore.</p>"
+                + "<a class=\"button\" href=\"" + PhonePages.esc(r.session) + "/backup/file\" download=\"" + SettingsBackup.FILE + "\">Download the settings file</a>"
+                + "<h2>Restore from a copy</h2><form method=\"post\" enctype=\"multipart/form-data\" action=\"" + PhonePages.esc(r.session) + "/backup/restore\">"
+                + "<label for=\"file\">The settings file</label><input id=\"file\" type=\"file\" name=\"file\" accept=\".json,application/json\" required>"
+                + "<button type=\"submit\">Send to the TV</button></form><p class=\"muted\">The TV shows what would change before anything does.</p>");
+        }
+    }
+
     // ---------------------------------------------------------------- any other service: a form from its descriptor
     /**
      * The generic phone page for a {@link PhoneService}: its plain steps (with the sign-up link), its fields, then one

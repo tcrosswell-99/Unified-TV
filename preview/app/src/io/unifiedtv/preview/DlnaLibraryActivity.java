@@ -350,8 +350,7 @@ public final class DlnaLibraryActivity extends Screen {
         rememberFocus();
         if(c.show!=null){stack.push(new Place(Kind.SHOW,c.show.name,null,c.show.key));show();return;}
         LibraryCatalogue.Title t=c.title;
-        Intent play=new Intent(this,PlayerActivity.class).putExtra("dlnaUrl",t.url).putExtra("title",t.kind==LibraryCatalogue.Kind.EPISODE?t.showName+" "+t.label():t.name)
-            .putExtra("dlnaItem",t.id).putExtra("root",t.root).putExtra("stableId",t.stableId);
+        Intent play=PlaybackPrefs.player(this,t);   // with the following episodes, for SET-033's autoplay
         try{startActivity(play);}catch(RuntimeException e){note("Unable to play this title");}
     }
     private void rememberFocus(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();}

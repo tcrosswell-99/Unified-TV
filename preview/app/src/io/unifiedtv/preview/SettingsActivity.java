@@ -36,6 +36,10 @@ public final class SettingsActivity extends Screen {
      *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-11). */
     static final String PHONE_HA="phone-"+PhoneService.HA,PHONE_FOOTBALL="phone-"+PhoneService.FOOTBALL,PHONE_TMDB="phone-"+PhoneService.TMDB,
         HA_ADVANCED="ha-advanced",TEAM="team",HOUSEHOLD="household";
+    /** Privacy & Data tasks: the event log (SET-055) and settings backup on the phone (SET-081). */
+    static final String EVENTS="events",PHONE_BACKUP="phone-"+PhoneService.BACKUP;
+    /** Tests only: whether Home Assistant counts as set up (the Vault needs Android's keystore, which tests don't have). */
+    static volatile Boolean haForTests;
     private static final Set<Integer> NAVIGATION_KEYS=new HashSet<>(Arrays.asList(KeyEvent.KEYCODE_DPAD_UP,KeyEvent.KEYCODE_DPAD_DOWN,KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,
         KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER,KeyEvent.KEYCODE_BACK,KeyEvent.KEYCODE_ESCAPE,KeyEvent.KEYCODE_MENU,KeyEvent.KEYCODE_TAB,KeyEvent.KEYCODE_BUTTON_A,KeyEvent.KEYCODE_BUTTON_B,KeyEvent.KEYCODE_BUTTON_SELECT));
 
@@ -46,7 +50,14 @@ public final class SettingsActivity extends Screen {
     private SharedPreferences prefs;
     /** SET-093: a navigation change is previewed here and applied only on confirmation; null when there is none. */
     private List<String> draftUtilities;
-    private SetupPages setup;
+    private SetupPages setup;private PrivacyPage privacy;private LibraryPage library;
+    /** SET-025: a change being previewed (null when none), its countdown line, and the main-thread clock that ends it. */
+    private PreviewRevert preview;private TextView previewLine;
+    private final android.os.Handler clock=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable previewTick=new Runnable(){@Override public void run(){if(preview==null)return;long now=android.os.SystemClock.uptimeMillis();
+        if(preview.due(now)){revert(true);return;}if(previewLine!=null)previewLine.setText(preview.words(now));clock.postDelayed(this,1000);}};
+    /** SET-070: this visit's connectivity check (null until it has run), and whether one is running. */
+    private java.util.List<Connectivity.Row> links;private boolean linksChecking;
     private float unit;private int screenWidth;
     @Override public void onCreate(Bundle state){super.onCreate(state);autoFocusButtons=false;HouseholdSettings.ensure(this);prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
         android.util.DisplayMetrics m=getResources().getDisplayMetrics();screenWidth=Math.max(1,m.widthPixels);unit=Math.max(.5f,Math.min(m.widthPixels/1920f,m.heightPixels/1080f));
@@ -63,7 +74,7 @@ public final class SettingsActivity extends Screen {
         if(state!=null)overlay.restore(start,state.getString("task"),state.getBoolean("wide",false),state.getInt("row",0));else if(start>=0)overlay.open(start);
         root.addView(sheet,new FrameLayout.LayoutParams(sheetWidth(),-1,Gravity.END));
         // Attach first, then focus: a view focused before it is in the window never becomes the window's focus.
-        setup=new SetupPages(this);
+        setup=new SetupPages(this);privacy=new PrivacyPage(this);library=new LibraryPage(this);
         setContentView(root);render(false);landing();
         if(state==null)slideIn();
         // The notification's "Stop alerts" lands here, so stopping always asks for the adult PIN (owner exception to SET-053).
@@ -72,17 +83,21 @@ public final class SettingsActivity extends Screen {
         String asked=getIntent().getStringExtra("task");
         if(state==null&&asked!=null&&SetupPages.owns(asked))EditLock.ask(this,()->expandTask(asked));
     }
-    @Override protected void onDestroy(){if(setup!=null)setup.close();super.onDestroy();}
+    @Override protected void onDestroy(){if(setup!=null)setup.close();if(library!=null)library.close();clock.removeCallbacksAndMessages(null);super.onDestroy();}
     /** Phone setup stops answering as soon as Settings leaves the screen; coming back shows a fresh code. */
-    @Override protected void onStop(){if(setup!=null)setup.paused();super.onStop();}
+    @Override protected void onStop(){if(setup!=null)setup.paused();if(preview!=null)revert(false);super.onStop();}
     @Override protected void onRestart(){super.onRestart();String t=overlay.task();if(overlay.page()==SettingsOverlay.Phase.TASK&&t!=null&&t.startsWith("phone-"))refresh();}
     /** For tests and diagnostics: where the overlay is, and the sheet itself. */
     SettingsOverlay overlay(){return overlay;}
     View sheet(){return sheet;}
+    PreviewRevert preview(){return preview;}
+    PrivacyPage privacy(){return privacy;}
+    boolean linksChecked(){return links!=null&&!linksChecking;}
 
     // --- Material, size and motion (module 13 §A tokens, at 1080p and scaled to this screen)
     int px(float at1080){return Math.round(at1080*unit);}
-    private float textPx(float at1080){return at1080*unit*getResources().getConfiguration().fontScale;}
+    /** Sizes follow the TV's own font scale and the household's Text size (SET-073). */
+    private float textPx(float at1080){return at1080*unit*getResources().getConfiguration().fontScale*Accessibility.scale(prefs);}
     private float shadow(){return px(28);}
     private boolean calm(){return prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();}
     private boolean solid(){return prefs.getBoolean("opaque",false)||strong();}
@@ -130,7 +145,8 @@ public final class SettingsActivity extends Screen {
     private void render(boolean motion){
         if(setup!=null)setup.showing(overlay.page()==SettingsOverlay.Phase.TASK?overlay.task():null);
         applyWidth(motion);header.removeAllViews();body.removeAllViews();Arrays.fill(rows,null);column=body;
-        int c=overlay.category();
+        int c=overlay.category();previewLine=null;
+        if(preview!=null&&overlay.page()!=SettingsOverlay.Phase.ROOT)previewCard();
         switch(overlay.page()){
             case ROOT:head(false,"Settings",null);root();break;
             case DETAIL:head(true,CATEGORIES[c],BLURBS[c]);card();detail(c);break;
@@ -172,8 +188,9 @@ public final class SettingsActivity extends Screen {
             if(!Profiles.kids(this)){section("Film posters");
                 chevron(button("Film posters: "+(TmdbKey.saved(this)?"key saved":"not set up"),()->EditLock.ask(this,()->expandTask(PHONE_TMDB))));
                 text("Posters and film details from TMDB, with your own free key. You add it on your phone.",15);section("About the library");}
-            text("Library opens from its own dock tile or by pressing Down on Home. Playback, resume and Kids limits stay on this TV.",16);break;
-        case PROFILES:profiles();break;
+            text("Library opens from its own dock tile or by pressing Down on Home. Playback, resume and Kids limits stay on this TV.",16);
+            library.source();library.playback();restoreRow(LIBRARY);break;
+        case PROFILES:profiles();restoreRow(PROFILES);break;
         case APPS:
             button("All apps",()->startActivity(new Intent(this,AppsActivity.class)));
             text("On Home, hold OK on a tile to move or remove it. In All apps, hold OK on an app to add it to Home. A new TV suggests up to six apps that are already installed; empty places are fine.",16);
@@ -182,26 +199,27 @@ public final class SettingsActivity extends Screen {
             button("Build My TV"+(HubBuilder.IN_PROGRESS.equals(build)?": continue where you left off":HubBuilder.COMPLETED.equals(build)?": done":""),()->EditLock.ask(this,()->BuildMyTvActivity.start(this)));
             text("Choose your music, films and TV apps step by step, then arrange your dock. Nothing is installed without your OK.",15);
             button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));
-            text("Menu on the remote also opens All apps from Home.",15);break;
-        case NOTIFICATIONS:notifications();break;
+            text("Menu on the remote also opens All apps from Home.",15);
+            dockRepair();restoreRow(APPS);break;
+        case NOTIFICATIONS:notifications();quietHours();restoreRow(NOTIFICATIONS);break;
         case SMART_HOME:smartHome();break;
         case LIVE_TV:liveTv();break;
         case CONNECTIONS:
+            connectivity();section("This TV");
             button("Picture, sound, network & Bluetooth",()->Launch.unlocked(this,new Intent(Settings.ACTION_SETTINGS),"Use the TV's own Settings"));
             text("These belong to the TV itself; Unified TV opens them and changes nothing there.",15);
             section("AirPlay");airPlay();
             section("Voice");button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));
             text("Voice uses the TV's own speech provider only when you start it, and may use its cloud service.",15);break;
         case PRIVACY:
-            text("Profiles, watch history, preferences and connections stay on this TV. Credentials are encrypted locally and excluded from backup. Nothing is sent anywhere unless you connect a service.",16);
-            button("Manage private connections",()->show(SMART_HOME));
+            privacy.build();
             button("Integration readiness",()->new AlertDialog.Builder(this).setTitle("Preview limitations").setMessage("VPN tunnel visibility does not verify protected playback. NAS, Ring, reminders, microphone and manufacturer controls need their own acceptance tests. The Android APK cannot run on native Tizen.").setPositiveButton("Close",null).show());break;
         default:about();break;
         }
     }
-    private String taskTitle(){if(SetupPages.owns(overlay.task()))return SetupPages.title(overlay.task());return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":"Advanced";}
-    private String taskSubtitle(){if(SetupPages.owns(overlay.task()))return SetupPages.subtitle(overlay.task());return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":"Owner checks, for Adults";}
-    private void task(){String t=overlay.task();if(SetupPages.owns(t))setup.task(t);else if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else advanced();}
+    private String taskTitle(){if(SetupPages.owns(overlay.task()))return SetupPages.title(overlay.task());return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":EVENTS.equals(overlay.task())?"Event log":"Advanced";}
+    private String taskSubtitle(){if(SetupPages.owns(overlay.task()))return SetupPages.subtitle(overlay.task());return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":EVENTS.equals(overlay.task())?"The last 7 days, on this TV only":"Owner checks, for Adults";}
+    private void task(){String t=overlay.task();if(SetupPages.owns(t))setup.task(t);else if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else if(EVENTS.equals(t))privacy.events();else advanced();}
 
     // --- Navigation inside the sheet (module 13 §B; SET-GLASS-06)
     private void open(int c){if(overlay.open(c)){if(setup!=null)setup.entered(c);render(true);focusAt(0);}}
@@ -292,7 +310,7 @@ public final class SettingsActivity extends Screen {
     private TextView label(String s,float size,int colour){TextView t=new TextView(this);t.setText(s);t.setTextColor(colour);t.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(size));t.setSingleLine(true);t.setEllipsize(android.text.TextUtils.TruncateAt.END);return t;}
     void group(String title){TextView t=label(title,18,SettingsGlass.GROUP);t.setLetterSpacing(.06f);t.setPadding(px(12),px(18),px(12),px(6));t.setFocusable(false);body.addView(t);}
     /** A raised translucent card that the following rows and text go into (a local scrim for readability). */
-    private void card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(px(12),px(8),px(12),px(8));c.setBackground(SettingsGlass.card(px(18),strong()));
+    void card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(px(12),px(8),px(12),px(8));c.setBackground(SettingsGlass.card(px(18),strong()));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=px(4);lp.bottomMargin=px(10);body.addView(c,lp);column=c;}
     void section(String title){group(title);card();}
     private LinearLayout.LayoutParams rowParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,px(4),0,px(4));return lp;}
@@ -310,7 +328,7 @@ public final class SettingsActivity extends Screen {
     /** A row that opens a task or collapsed section inside the same sheet; wider ones expand the sheet to ~75%. */
     /** A trailing chevron on a row that opens a task. */
     Button chevron(Button b){b.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(null,true,false,textPx(19)),null);b.setCompoundDrawablePadding(px(16));return b;}
-    private Button taskRow(String title,String task,boolean wider,String state){Button b=button(title,()->expand(task,wider));b.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(state,true,false,textPx(19)),null);b.setCompoundDrawablePadding(px(16));return b;}
+    Button taskRow(String title,String task,boolean wider,String state){Button b=button(title,()->expand(task,wider));b.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(state,true,false,textPx(19)),null);b.setCompoundDrawablePadding(px(16));return b;}
     /** Secondary (blue-grey, 21 px) for notes, primary (white, 25 px) for a state line, as the old sizes meant. */
     @Override TextView text(String s,int size){
         TextView t=new TextView(this);t.setText(s);boolean primary=size>=18;t.setTextColor(primary?SettingsGlass.TEXT:SettingsGlass.SECONDARY);
@@ -341,7 +359,14 @@ public final class SettingsActivity extends Screen {
         button("Time zone: "+(zone.isEmpty()?"Follow this TV ("+java.time.ZoneId.systemDefault().getId()+")":zone),this::chooseZone);
         text("The clock is "+(HouseholdSettings.twentyFour(this)?"24-hour":"12-hour")+", following this TV's own setting; words and dates follow its language.",15);
         section("Readability");
-        toggle("High contrast","highContrast",on->restyle());toggle("Reduce transparency","opaque",on->restyle());
+        String size=Accessibility.size(prefs.getString(Accessibility.TEXT_SIZE,Accessibility.NORMAL));
+        button("Text size: "+Accessibility.label(size),()->{String[] names=new String[Accessibility.SIZES.length];for(int i=0;i<names.length;i++)names[i]=Accessibility.label(Accessibility.SIZES[i]);
+            new AlertDialog.Builder(this).setTitle("Text size").setSingleChoiceItems(names,Arrays.asList(Accessibility.SIZES).indexOf(size),(d,n)->{d.dismiss();String next=Accessibility.SIZES[n];
+                prefs.edit().putString(Accessibility.TEXT_SIZE,next).apply();previewed(Accessibility.TEXT_SIZE,size,next);restyle();}).setNegativeButton("Cancel",null).show();});
+        text("Settings, setup and the names under Home's tiles. A new size goes back by itself after "+PreviewRevert.SECONDS+" seconds unless you keep it.",15);
+        toggle("High contrast","highContrast",on->{previewed("highContrast",!on,on);restyle();});toggle("Reduce transparency","opaque",on->{previewed("opaque",!on,on);restyle();});
+        toggle("Longer on-screen times",Accessibility.LONGER,false,on->{});
+        text("Doorbell, person and reminder messages, and the doorbell camera, stay twice as long.",15);
         section("Home navigation");
         taskRow("Navigation & Shortcuts",NAVIGATION,true,draftUtilities==null?null:"Preview");
         if(DefaultHome.available(this)){section("Home button");
@@ -353,10 +378,9 @@ public final class SettingsActivity extends Screen {
     }
     /** Reduce motion, transparency, contrast or lightweight changed: the sheet and its rows follow at once (posted, so a
      *  switch is never removed while its own click is still running). */
-    private void restyle(){material();body.post(()->show(overlay.category()));}
+    void restyle(){material();body.post(()->{if(overlay.acceptsInput()&&!overlay.atRoot())show(overlay.category());});}
     private void appearanceAdvanced(){
-        button("Reset appearance",()->new AlertDialog.Builder(this).setTitle("Reset appearance?").setMessage("Motion, contrast, transparency and lightweight rendering go back to their defaults, and app labels to Focused only for "+Profiles.label(Profiles.current(prefs))+". Your dock, Wallpaper and connections are kept.")
-            .setPositiveButton("Reset",(d,w)->{prefs.edit().remove("reduceMotion").remove("stillBackground").remove("highContrast").remove("opaque").remove("lightweight").putString(DockLabels.key(Profiles.current(prefs)),DockLabels.FOCUSED_ONLY).apply();restyle();show(APPEARANCE);}).setNegativeButton("Cancel",null).show());
+        restoreRow(APPEARANCE);
         text("Only Unified TV's own look changes. The TV's picture settings and its own screen protection are never touched.",15);
     }
     /** SET-090–093, a wider task: utilities shown, hidden or moved in a preview; nothing changes on Home until "Apply". */
@@ -411,7 +435,7 @@ public final class SettingsActivity extends Screen {
     }
 
     // --- Notifications & Doorbell
-    private boolean haConfigured(){try{org.json.JSONObject ha=new Vault(this).read("ha");return ha.optBoolean("enabled")&&!ha.optString("token").isEmpty();}catch(Exception e){return false;}}
+    private boolean haConfigured(){Boolean t=haForTests;if(t!=null)return t;try{org.json.JSONObject ha=new Vault(this).read("ha");return ha.optBoolean("enabled")&&!ha.optString("token").isEmpty();}catch(Exception e){return false;}}
     private void notifications(){
         boolean ha=haConfigured();
         AlarmWatch.State alarms=AlarmWatch.state(prefs.getBoolean(AlarmWatch.SHOWN,true),prefs.getBoolean(AlarmWatch.STOPPED,false),ha,prefs.getInt(AlarmWatch.DETECTORS,-1));
@@ -540,12 +564,14 @@ public final class SettingsActivity extends Screen {
     private void toggle(String name,String key){toggle(name,key,on->{});}
     private void toggle(String name,String key,java.util.function.Consumer<Boolean> after){toggle(name,key,false,after);}
     /** Module 13 §D: one clear binary row; the label on the left, its state as a word (On/Off) on the right. */
-    private void toggle(String name,String key,boolean byDefault,java.util.function.Consumer<Boolean> after){
+    CheckBox toggle(String name,String key,boolean byDefault,java.util.function.Consumer<Boolean> after){
         CheckBox c=new CheckBox(this);c.setText(name);c.setButtonDrawable(null);c.setTextColor(SettingsGlass.textColours());c.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(26));c.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);
         c.setMinHeight(px(64));c.setMinimumHeight(px(64));c.setPadding(px(24),px(12),px(24),px(12));c.setBackground(rowBackground());c.setStateListAnimator(null);
         c.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(null,false,true,textPx(19)),null);c.setCompoundDrawablePadding(px(16));
         c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,byDefault));c.setFocusable(true);c.setFocusableInTouchMode(true);
         c.setOnCheckedChangeListener((v,on)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply();after.accept(on);});column.addView(c,rowParams());
+        c.setContentDescription(name+", "+(c.isChecked()?"On":"Off"));c.setOnFocusChangeListener((v,f)->c.setContentDescription(name+", "+(c.isChecked()?"On":"Off")));
+        return c;
     }
     /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
     private void homeSetup(){
@@ -576,4 +602,107 @@ public final class SettingsActivity extends Screen {
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}
     /** An adult is here behind the PIN: if Kids is on, the Kids guard lets system screens opened from here stay a while. */
     private void settingsPass(){if(Profiles.kids(this))getSharedPreferences("unified-tv-preview",0).edit().putLong(KidsGuard.PASS,System.currentTimeMillis()+KidsGuard.PASS_MS).apply();}
+
+    // --- SET-025 preview and revert
+    /** A change that could make Settings unreadable or unusable is a preview: it goes back by itself unless kept. */
+    void previewed(String key,Object before,Object after){
+        if(!PreviewRevert.risky(key,before,after))return;
+        Object original=preview!=null&&preview.key.equals(key)?preview.before:before;
+        if(preview!=null&&!preview.key.equals(key))revert(false);
+        if(java.util.Objects.equals(original,after)){preview=null;clock.removeCallbacks(previewTick);return;}
+        preview=new PreviewRevert(key,original,after,android.os.SystemClock.uptimeMillis());
+        clock.removeCallbacks(previewTick);clock.postDelayed(previewTick,1000);
+    }
+    /** The card at the top of the page while a preview runs: Keep (focused, so OK keeps it) or go back now. */
+    private void previewCard(){
+        card();previewLine=text(preview.words(android.os.SystemClock.uptimeMillis()),19);previewLine.setFocusable(false);
+        Button keep=button("Keep this change",this::keep);button("Go back now",()->revert(true));
+        body.post(()->{if(preview!=null&&keep.isAttachedToWindow())keep.requestFocus();});
+        column=body;
+    }
+    private void keep(){if(preview==null)return;preview=null;clock.removeCallbacks(previewTick);note("Kept.");show(overlay.category());}
+    /** Puts the previewed setting back as it was (a missing value stays missing); redraws when the sheet is showing. */
+    private void revert(boolean redraw){
+        PreviewRevert p=preview;if(p==null)return;preview=null;clock.removeCallbacks(previewTick);
+        SharedPreferences.Editor e=prefs.edit();
+        HouseholdSettings.put(e,p.key,p.before);
+        e.commit();
+        if(redraw){note("Changed back.");material();if(overlay.acceptsInput()&&!overlay.atRoot())show(overlay.category());}
+    }
+
+    // --- SET-004 restore defaults, per section
+    /** The section's own "Restore defaults": the plan's words in the confirmation, behind the adult PIN. */
+    void restoreRow(int section){
+        if(!SettingsReset.offered(section)||Profiles.kids(this))return;
+        section("Restore defaults");
+        button("Restore defaults for "+CATEGORIES[section],()->EditLock.ask(this,()->{SettingsReset.Plan plan=SettingsReset.section(section,prefs.getAll());
+            new AlertDialog.Builder(this).setTitle("Restore defaults for "+CATEGORIES[section]+"?").setMessage(plan.message())
+                .setPositiveButton("Restore defaults",(d,w)->{SharedPreferences.Editor e=prefs.edit();for(String k:plan.keys)e.remove(k);e.commit();
+                    if(preview!=null&&plan.keys.contains(preview.key)){preview=null;clock.removeCallbacks(previewTick);}
+                    EventLog.record(this,EventLog.SETTINGS,CATEGORIES[section]+": defaults restored");note("Defaults restored.");restyle();})
+                .setNegativeButton("Cancel",null).show();}));
+        text("Asks first, and says what changes and what is kept.",15);
+    }
+
+    // --- SET-021 apps on Home that are no longer installed
+    private String room(){return prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");}
+    /** {package: label} of every app with a TV or phone launcher entry (Unified TV itself left out). */
+    private Map<String,String> launchable(){
+        Map<String,String> out=new HashMap<>();android.content.pm.PackageManager pm=getPackageManager();
+        for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
+            try{for(android.content.pm.ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0))
+                if(r.activityInfo!=null&&!r.activityInfo.packageName.equals(getPackageName()))out.put(r.activityInfo.packageName,String.valueOf(r.loadLabel(pm)));}catch(RuntimeException ignored){}
+        return out;
+    }
+    private void dockRepair(){
+        if(Profiles.kids(this))return;
+        Map<String,String> apps=launchable();List<String> dock=HouseholdSettings.dock(this,room());
+        List<String> missing=DockRepair.missing(dock,apps,!LiveTvProtection.livePackage(this).isEmpty());
+        if(missing.isEmpty())return;
+        section("Not installed on this TV");
+        for(String id:missing){String name=DockRepair.name(id,apps);
+            button(name+": not installed",()->EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle(name+" isn't installed").setMessage("Its place on Home is kept until you choose. Nothing is installed or uninstalled.")
+                .setItems(new String[]{"Replace it with another app","Remove it from Home","Keep it for now"},(d,n)->{
+                    List<String> now=HouseholdSettings.dock(this,room());
+                    if(n==0){List<String> c=DockRepair.candidates(room(),now,apps);if(c.isEmpty()){note("Every installed app is already on Home.");return;}
+                        String[] names=new String[c.size()];for(int i=0;i<names.length;i++)names[i]=DockRepair.name(c.get(i),apps);
+                        new AlertDialog.Builder(this).setTitle("Replace "+name+" with").setItems(names,(d2,m)->{prefs.edit().putString("dock",DockPolicy.replace(room(),now,id,c.get(m))).apply();note(names[m]+" takes "+name+"'s place.");show(APPS);}).setNegativeButton("Cancel",null).show();}
+                    else if(n==1){prefs.edit().putString("dock",DockPolicy.remove(now,id)).apply();note(name+" removed from Home.");show(APPS);}
+                }).show()));}
+        text("Home keeps these places until you choose; they open nothing until the app is back.",15);
+    }
+
+    // --- SET-052 quiet hours (per TV; never smoke or carbon monoxide)
+    private void quietHours(){
+        boolean on=QuietHours.on(prefs);
+        if(!haConfigured()&&!on)return;   // person alerts come from Home Assistant: nothing to quieten without it (SET-003)
+        section("Quiet hours");
+        boolean kids=Profiles.kids(this);
+        if(kids){text("Quiet hours: "+QuietHours.summary(prefs),17);return;}
+        toggle("Quiet hours",QuietHours.ON,false,yes->body.post(()->{if(on(NOTIFICATIONS,null))show(NOTIFICATIONS);}));
+        if(on){
+            button("From "+QuietHours.clock(QuietHours.start(prefs)),()->pickTime("Quiet hours start",QuietHours.START));
+            button("Until "+QuietHours.clock(QuietHours.end(prefs)),()->pickTime("Quiet hours end",QuietHours.END));
+        }
+        text("No person alerts on this TV between these times. Doorbell presses and smoke or carbon monoxide alarms always show.",15);
+    }
+    private void pickTime(String title,String key){
+        int[] times=QuietHours.choices();String[] names=new String[times.length];for(int i=0;i<times.length;i++)names[i]=QuietHours.clock(times[i]);
+        new AlertDialog.Builder(this).setTitle(title).setItems(names,(d,n)->{prefs.edit().putInt(key,times[n]).apply();show(NOTIFICATIONS);}).show();
+    }
+
+    // --- SET-070 connectivity summary
+    private void connectivity(){
+        section("Connections");
+        if(links==null&&!linksChecking)checkLinks();
+        List<Connectivity.Row> rows=links!=null?links:Connectivity.unchecked(this);
+        if(links==null)text("Internet and home network: checking…",17).setFocusable(false);
+        for(Connectivity.Row r:rows){text(Connectivity.line(r),17).setFocusable(false);
+            text(Connectivity.detail(r,r.lastOk>0?OwnerChecks.when(this,r.lastOk):null),15);}
+        button(linksChecking?"Checking…":"Check again",()->{if(!linksChecking){links=null;checkLinks();show(CONNECTIONS);}});
+    }
+    private void checkLinks(){
+        linksChecking=true;android.content.Context app=getApplicationContext();
+        new Thread(()->{List<Connectivity.Row> r=Connectivity.check(app);runOnUiThread(()->{linksChecking=false;links=r;if(on(CONNECTIONS,null))refresh();});},"connectivity").start();
+    }
 }
