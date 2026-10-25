@@ -49,6 +49,8 @@ public final class SettingsActivity extends Screen {
         case 4:
             button("Picture, sound, network & Bluetooth",()->{try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception e){note("Use the TV's own Settings");}});
             button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
+            // Spec 6.1: hardware key logging only in owner-authorised debug builds (the review build is one).
+            if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));
             if(DefaultHome.available(this)){
                 text(DefaultHome.isDefault(this)?"The Home button opens Unified TV.":"The Home button opens the original TV interface.",17);
                 if(!DefaultHome.isDefault(this))button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));

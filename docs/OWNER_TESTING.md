@@ -74,6 +74,8 @@ $tv = "<the TV's address>:5555"
 
 ## Trying Unified TV as the Home screen (G1; only after recovery is proven)
 
+The full G1 procedure, with the recovery tool `preview/tools/home_recovery.py`, the remote check screen and Home measurement, is in [G1_TCL_HOME_TESTS.md](G1_TCL_HOME_TESTS.md). The short version follows.
+
 Do the recovery first, so you know the way back works:
 
 ```powershell
