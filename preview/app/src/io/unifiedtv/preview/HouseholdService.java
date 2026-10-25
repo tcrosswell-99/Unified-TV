@@ -141,22 +141,56 @@ public final class HouseholdService extends Service {
         if(policy.emergency())return;
         if(cameraOverlay==null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringEnter");
         dismissViews();if(!Settings.canDrawOverlays(this))return;
-        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(16,16,16,16);card.setBackgroundColor(0xf0101827);
-        cameraState=new TextView(this);cameraState.setTextColor(-1);cameraState.setTextSize(22);cameraState.setText("Connecting to doorbell…");card.addView(cameraState);
-        Button back=new Button(this);back.setText("Dismiss camera");back.setOnClickListener(v->dismiss());card.addView(back);
-        card.setFocusableInTouchMode(true);card.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)dismiss();return true;}return false;});
-        cameraOverlay=card;windows.addView(card,params(Math.min(900,getResources().getDisplayMetrics().widthPixels-60),-2,true));back.requestFocus();
+        // Owner's "Front Door" design (spec 4.10): a large glass-framed live card in the middle of the screen, the camera's
+        // own name, "Live" only once real frames arrive, and the time. Back closes it.
+        int width=Math.round(getResources().getDisplayMetrics().widthPixels*.66f),height=Math.round(width*9f/16f);
+        android.widget.FrameLayout card=new android.widget.FrameLayout(this);card.setPadding(14,14,14,14);
+        android.graphics.drawable.GradientDrawable frame=new android.graphics.drawable.GradientDrawable();frame.setCornerRadius(40);frame.setColor(0xCC1A1F2A);frame.setStroke(2,0x55FFFFFF);card.setBackground(frame);
+        android.widget.FrameLayout screen=new android.widget.FrameLayout(this);screen.setBackgroundColor(0xFF05070B);
+        screen.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,android.graphics.Outline o){o.setRoundRect(0,0,v.getWidth(),v.getHeight(),28);}});screen.setClipToOutline(true);
+        card.addView(screen,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        LinearLayout heading=new LinearLayout(this);heading.setOrientation(LinearLayout.VERTICAL);heading.setPadding(40,32,40,0);
+        TextView title=new TextView(this);title.setText(cameraName());title.setTextColor(-1);title.setTextSize(40);title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);title.setShadowLayer(8,0,2,0x99000000);heading.addView(title);
+        cameraState=pill("Connecting…",0xB3303846);LinearLayout.LayoutParams pillAt=new LinearLayout.LayoutParams(-2,-2);pillAt.topMargin=10;heading.addView(cameraState,pillAt);
+        screen.addView(heading,new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.TOP|Gravity.START));
+        cameraClock=pill("",0xA6000000);android.widget.FrameLayout.LayoutParams clockAt=new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.END);clockAt.setMargins(0,0,28,24);screen.addView(cameraClock,clockAt);
+        TextView hint=new TextView(this);hint.setText("Back to close");hint.setTextColor(0xCCFFFFFF);hint.setTextSize(16);hint.setShadowLayer(6,0,1,0x99000000);
+        android.widget.FrameLayout.LayoutParams hintAt=new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.START);hintAt.setMargins(40,0,0,30);screen.addView(hint,hintAt);
+        cameraScreen=screen;tick.run();
+        card.setFocusable(true);card.setFocusableInTouchMode(true);card.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)dismiss();return true;}return false;});
+        WindowManager.LayoutParams at=params(width+28,height+28,true);at.gravity=Gravity.CENTER;at.x=0;at.y=0;
+        cameraOverlay=card;windows.addView(card,at);card.requestFocus();
         streamId=++command;try{send(socket,new JSONObject().put("id",streamId).put("type","camera/stream").put("entity_id",house.getString("camera")).put("format","hls"));}catch(Exception e){cameraState.setText("Camera unavailable · check the configured live camera");}
         main.postDelayed(timeout,45000);
     }
+    private android.widget.FrameLayout cameraScreen;private TextView cameraClock;
+    /** The camera's own name from household setup, else the doorbell's, else plain "Doorbell". */
+    private String cameraName(){
+        JSONObject names=house==null?null:house.optJSONObject("names");
+        String name=names==null?"":names.optString("camera",names.optString("door",""));
+        return name.trim().isEmpty()?"Doorbell":name.trim().length()>40?name.trim().substring(0,40):name.trim();
+    }
+    private TextView pill(String text,int colour){
+        TextView t=new TextView(this);t.setText(text);t.setTextColor(-1);t.setTextSize(20);t.setPadding(22,8,22,8);
+        android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(40);g.setColor(colour);t.setBackground(g);return t;
+    }
+    private void livePill(String text,boolean live){
+        if(cameraState==null)return;cameraState.setText(live?"● "+text:text);
+        android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(40);g.setColor(live?0xE62E9E4F:0xB3303846);cameraState.setBackground(g);
+    }
+    private final Runnable tick=new Runnable(){@Override public void run(){
+        if(cameraClock==null||cameraOverlay==null)return;
+        cameraClock.setText(new java.text.SimpleDateFormat("d MMM yyyy HH:mm:ss",java.util.Locale.UK).format(new java.util.Date()));
+        main.postDelayed(this,1000);}};
     private void playCamera(String uri){
-        if(cameraOverlay==null)return;
-        LinearLayout card=(LinearLayout)cameraOverlay;PlayerView view=new PlayerView(this);view.setUseController(false);card.addView(view,1,new LinearLayout.LayoutParams(-1,420));
+        if(cameraOverlay==null||cameraScreen==null)return;
+        PlayerView view=new PlayerView(this);view.setUseController(false);view.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);cameraScreen.addView(view,0,new android.widget.FrameLayout.LayoutParams(-1,-1));
         cameraPlayer=new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(()->new PrivateDataSource(config))).build();view.setPlayer(cameraPlayer);cameraPlayer.setVolume(0);
         cameraPlayer.addListener(new Player.Listener(){
-            @Override public void onRenderedFirstFrame(){if(cameraState!=null)cameraState.setText("Doorbell · live stream");}
-            @Override public void onPlaybackStateChanged(int state){if(cameraState!=null&&(state==Player.STATE_BUFFERING||state==Player.STATE_ENDED))cameraState.setText(state==Player.STATE_BUFFERING?"Connecting to doorbell…":"Camera unavailable");}
-            @Override public void onPlayerError(PlaybackException e){if(cameraState!=null)cameraState.setText("Camera unavailable");}
+            // "Live" only once real frames are on screen (spec 4.10: never label a still as live).
+            @Override public void onRenderedFirstFrame(){livePill("Live",true);}
+            @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_BUFFERING||state==Player.STATE_ENDED)livePill(state==Player.STATE_BUFFERING?"Connecting…":"Camera unavailable",false);}
+            @Override public void onPlayerError(PlaybackException e){livePill("Camera unavailable",false);}
         });
         cameraPlayer.setMediaItem(new MediaItem.Builder().setUri(uri).setMimeType(MimeTypes.APPLICATION_M3U8).build());cameraPlayer.prepare();cameraPlayer.play();
     }
@@ -285,7 +319,7 @@ public final class HouseholdService extends Service {
         reminderOverlay=toast;windows.addView(toast,params(Math.min(650,getResources().getDisplayMetrics().widthPixels-60),-2,false));
         main.postDelayed(()->{if(reminderOverlay==toast){windows.removeView(toast);reminderOverlay=null;}},7000);
     }
-    private void dismissViews(){if(cameraPlayer!=null){cameraPlayer.release();cameraPlayer=null;}if(cameraOverlay!=null){windows.removeView(cameraOverlay);cameraOverlay=null;}if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}cameraState=null;}
+    private void dismissViews(){if(cameraPlayer!=null){cameraPlayer.release();cameraPlayer=null;}if(cameraOverlay!=null){windows.removeView(cameraOverlay);cameraOverlay=null;}main.removeCallbacks(tick);cameraScreen=null;cameraClock=null;if(reminderOverlay!=null){windows.removeView(reminderOverlay);reminderOverlay=null;}cameraState=null;}
     private void dismiss(){
         main.removeCallbacks(timeout);
         if(cameraOverlay!=null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringExit");
