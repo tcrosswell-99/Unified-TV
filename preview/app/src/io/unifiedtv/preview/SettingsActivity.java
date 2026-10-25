@@ -593,10 +593,12 @@ public final class SettingsActivity extends Screen {
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
     @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();}
     private void homeChecked(){
-        homeAsked=false;boolean yes=DefaultHome.isDefault(this);
-        // Not chosen: leave the TV exactly as it was, with no stray Home entry.
-        if(!yes&&DefaultHome.offered(this))DefaultHome.withdraw(this);
-        note(yes?"Done. The Home button now opens Unified TV.":"Nothing changed. The Home button still opens the original TV interface.");if(overlay.category()==APPEARANCE)show(APPEARANCE);
+        if(!homeAsked)return;homeAsked=false;
+        DefaultHome.confirm(this,yes->{
+            // Not chosen: leave the TV exactly as it was, with no stray Home entry.
+            if(!yes&&DefaultHome.offered(this))DefaultHome.withdraw(this);
+            note(yes?"Done. The Home button now opens Unified TV.":"Nothing changed. The Home button still opens the original TV interface.");if(overlay.category()==APPEARANCE)show(APPEARANCE);
+        });
     }
     private void original(){
         boolean ours=DefaultHome.isDefault(this);

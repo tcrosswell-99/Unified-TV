@@ -19,8 +19,26 @@ final class DefaultHome {
     }
     static Intent homeIntent(){return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);}
     static boolean offered(Context c){return c.getPackageManager().getComponentEnabledSetting(entry(c))==PackageManager.COMPONENT_ENABLED_STATE_ENABLED;}
+    /**
+     * Android's own record first: on Android 10+ the Home role is the choice the owner made in the system dialog. The
+     * resolved Home intent can lag behind it for a moment after the choice (seen on the TCL, 25 October 2026).
+     */
     static boolean isDefault(Context c){
+        if(Build.VERSION.SDK_INT>=29)try{android.app.role.RoleManager roles=c.getSystemService(android.app.role.RoleManager.class);if(roles!=null&&roles.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)&&roles.isRoleHeld(android.app.role.RoleManager.ROLE_HOME))return true;}catch(RuntimeException ignored){}
         try{ResolveInfo r=c.getPackageManager().resolveActivity(homeIntent(),PackageManager.MATCH_DEFAULT_ONLY);return r!=null&&r.activityInfo!=null&&c.getPackageName().equals(r.activityInfo.packageName);}catch(RuntimeException e){return false;}
+    }
+    /** How long to keep asking Android after the owner's choice before concluding nothing changed. */
+    static final long[] CONFIRM_MS={0,400,1000,2000};
+    /**
+     * After the system dialog: report what Android now records, asking again for a couple of seconds, because the choice
+     * can take a moment to apply. Withdrawing the Home entry too early used to undo the owner's choice and send the TV
+     * to its original Home.
+     */
+    static void confirm(Activity a,java.util.function.Consumer<Boolean> done){confirm(a,done,0);}
+    private static void confirm(Activity a,java.util.function.Consumer<Boolean> done,int attempt){
+        if(a.isFinishing()||a.isDestroyed())return;
+        if(isDefault(a)||attempt>=CONFIRM_MS.length-1){done.accept(isDefault(a));return;}
+        a.getWindow().getDecorView().postDelayed(()->confirm(a,done,attempt+1),CONFIRM_MS[attempt+1]-CONFIRM_MS[attempt]);
     }
     /** Make the entry available, then let Android ask the owner. Unified TV never assigns the default itself. */
     static void offer(Activity a){
