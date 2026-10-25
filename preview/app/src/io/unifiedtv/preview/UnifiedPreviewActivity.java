@@ -150,20 +150,22 @@ public final class UnifiedPreviewActivity extends Activity {
         private String message = "";
         private long messageUntil = 0;
         private long inputEvent;
-        private String fixture="";
+        /** Spec 7: the fixture read from the household's calendar; the card itself is worked out each minute. */
+        private FixturePolicy.Fixture fixture;
+        private FixturePolicy.Card matchday() { return FixturePolicy.card(fixture, java.time.Instant.now()); }
         private long fixtureFetched;
         private final java.util.concurrent.ExecutorService fixtureWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
         private void fixture(){
             long now=System.currentTimeMillis();if(now-fixtureFetched<900000)return;fixtureFetched=now;
             fixtureWorker.execute(()->{
-                String label="";try{
+                FixturePolicy.Fixture found=null;try{
                     org.json.JSONObject house=new Vault(activity).read("household"),ha=new Vault(activity).read("ha");String calendar=house.optString("calendar");
                     if(calendar.matches("calendar\\.[a-z0-9_]+")){
                         org.json.JSONObject attrs=LocalApi.get(ha,"/api/states/"+LocalApi.segment(calendar)).getJSONObject("attributes");
-                        label=FixturePolicy.label(attrs.optString("start_time"),attrs.optString("end_time"),java.time.Instant.now());
+                        found=FixturePolicy.fixture(attrs.optString("message"),attrs.optString("start_time"),attrs.optString("end_time"));
                     }
-                }catch(Exception ignored){}
-                final String result=label;handler.post(()->{fixture=result;invalidate();});
+                }catch(Exception ignored){}   // unreachable or stale: no card rather than a wrong one (spec 7)
+                final FixturePolicy.Fixture result=found;handler.post(()->{fixture=result;invalidate();});
             });
         }
         private final Runnable hold = () -> {
@@ -480,7 +482,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void controls() {
             java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Apps", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
-            if(!fixture.isEmpty())actions.add("Matchday Live TV - protection required");
+            if(matchday()!=null)actions.add("Matchday: Live TV");
             final String airPin=AirPlayReceiver.installed(activity);
             if(airPin!=null)actions.add("AirPlay from iPhone");
             new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
@@ -491,7 +493,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
                 if(which==4) activity.startActivity(new Intent(activity,VoiceActivity.class));
                 String picked=actions.get(which);
-                if(picked.startsWith("Matchday")) VpnGate.show(activity);
+                // The same Live TV route and protection check as the dock (spec 7, 11).
+                if(picked.startsWith("Matchday")){String live=LiveTvProtection.livePackage(activity);String why=live==null?null:Launch.open(activity,live,"Live TV");if(live==null)VpnGate.show(activity);else if(why!=null&&!why.isEmpty())info(why);}
                 if(picked.equals("AirPlay from iPhone")){String error=Launch.open(activity,airPin,"AirPin LITE");if(error!=null&&!error.isEmpty())info(error);}
             }).show();
         }
@@ -529,9 +532,8 @@ public final class UnifiedPreviewActivity extends Activity {
             boolean oled = oledRoom();
             if (oled) { int[] shift = DayMood.shift(System.currentTimeMillis()); c.translate(shift[0], shift[1]); }
             drawHeader(c);
-            if(!fixture.isEmpty()) {
-                text(c,fixture,96,235,32,WHITE,false,Paint.Align.LEFT);
-            }
+            FixturePolicy.Card match = matchday();
+            if (match != null) drawMatchday(c, match);
             float reveal = reveal(now);
             if (reveal > 0) {
                 // The dock steps back and up, staying on the same plane, while the titles rise into view.
@@ -654,6 +656,15 @@ public final class UnifiedPreviewActivity extends Activity {
             text(c, vpn, vpnLeft, 114, 22, WHITE, false, Paint.Align.LEFT);
             microphone(c, 1696, 104);
             gear(c, 1773, 104);
+        }
+        /** Spec 7: a small glass card under the clock: the match, then "Kick-off 19:45" or a red-dot "Live". Never a score. */
+        private void drawMatchday(Canvas c, FixturePolicy.Card m) {
+            type.setTextSize(28); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            float w = Math.max(300, Math.min(720, type.measureText(m.match) + 64));
+            glass(c, 84, 178, 84 + w, 288, 24, 0x6A2B303B, 0x44FFFFFF);
+            text(c, m.match, 116, 224, 28, WHITE, true, Paint.Align.LEFT);
+            if (m.live) { paint.setShader(null); paint.setColor(0xFFE5484D); c.drawCircle(124, 257, 7, paint); text(c, "Live", 140, 266, 24, WHITE, false, Paint.Align.LEFT); }
+            else text(c, m.when, 116, 266, 24, MUTED, false, Paint.Align.LEFT);
         }
         private final Paint icon = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path glyph = new Path();
