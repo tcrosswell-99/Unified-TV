@@ -47,7 +47,12 @@ android {
         deviceCheck { initWith debug; signingConfig signingConfigs.debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
     }
     lint { abortOnError true; disable 'MissingTranslation' }
-    testOptions { unitTests.includeAndroidResources = true }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        // A test that never returns (an endless animation under Robolectric, a lost socket) fails here instead of
+        // holding CI for hours.
+        unitTests.all { timeout = java.time.Duration.ofMinutes(10) }
+    }
 }
 dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.5.1'

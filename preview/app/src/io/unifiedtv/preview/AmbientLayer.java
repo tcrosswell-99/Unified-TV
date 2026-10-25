@@ -1,6 +1,5 @@
 package io.unifiedtv.preview;
 
-import android.animation.TimeAnimator;
 import android.content.Context;
 import android.graphics.*;
 import android.view.View;
@@ -13,27 +12,28 @@ import java.util.*;
  * views (a flat base, a few copies of one pre-rendered light sprite tinted by a colour filter, and the pre-rendered
  * vignette). Focus changes fade groups' opacity over 400 ms from the moment focus moves; drift only changes the light
  * views' translation and scale. Neither ever redraws a picture: the system's compositor moves and blends the layers, so
- * the Home screen in front of it doesn't redraw for the light at all.
+ * the Home screen in front of it doesn't redraw for the light at all. The drift is stepped by a delayed message about 30
+ * times a second (not an endless animator), so it stops cleanly and never keeps the main thread permanently busy.
  */
 final class AmbientLayer extends FrameLayout {
     static final long FADE_MS = 400;
     /** Groups kept ready (app palettes seen recently); older ones are dropped. */
     private static final int KEEP = 4;
     private final LinkedHashMap<String, FrameLayout> groups = new LinkedHashMap<>(8, .75f, true);
-    private final TimeAnimator clock = new TimeAnimator();
+    private static final long STEP_MS = 33;
+    private boolean running;
+    private final Runnable step = new Runnable() { @Override public void run() {
+        if (!running) return;
+        place(android.os.SystemClock.uptimeMillis() / 1000.0);
+        postDelayed(this, STEP_MS);
+    } };
     private String current = "";
     private boolean drift = true;
-    private long lastFrame;
 
     AmbientLayer(Context c) {
         super(c);
         setBackgroundColor(Color.BLACK);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        clock.setTimeListener((animation, total, delta) -> {
-            long now = android.os.SystemClock.uptimeMillis();
-            if (now - lastFrame < 30) return;   // about 30 updates a second: the drift is far slower than that
-            lastFrame = now; place(now / 1000.0);
-        });
     }
 
     /** Shows this app's light, fading over whatever is visible now; the latest call always wins. */
@@ -55,9 +55,9 @@ final class AmbientLayer extends FrameLayout {
     }
 
     /** Drift on or off; off leaves the lights at rest (Keep the background still, Reduce motion). */
-    void drift(boolean on) { drift = on; place(android.os.SystemClock.uptimeMillis() / 1000.0); if (!on) clock.cancel(); else resume(); }
-    void resume() { if (drift && !clock.isStarted() && getVisibility() == VISIBLE) clock.start(); }
-    void pause() { clock.cancel(); }
+    void drift(boolean on) { drift = on; place(android.os.SystemClock.uptimeMillis() / 1000.0); if (!on) pause(); else resume(); }
+    void resume() { if (drift && !running && getVisibility() == VISIBLE) { running = true; postDelayed(step, STEP_MS); } }
+    void pause() { running = false; removeCallbacks(step); }
 
     private void hideOthers(View keep) {
         for (FrameLayout g : groups.values()) if (g != keep) { g.animate().cancel(); g.setAlpha(0f); }
@@ -113,5 +113,5 @@ final class AmbientLayer extends FrameLayout {
     }
 
     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) { super.onSizeChanged(w, h, oldw, oldh); post(() -> place(android.os.SystemClock.uptimeMillis() / 1000.0)); }
-    @Override protected void onDetachedFromWindow() { clock.cancel(); super.onDetachedFromWindow(); }
+    @Override protected void onDetachedFromWindow() { pause(); super.onDetachedFromWindow(); }
 }
