@@ -10,6 +10,10 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **Films & TV with posters (Android):** poster rows (Continue Watching, Recently added, Films, TV, and Kids for Adults), All grids, seasons and search on the TV. Posters, backgrounds and summaries come from TMDB using the household's own free key, sending only the cleaned title and year. The highlighted title's artwork becomes the background, and the first scan shows its progress. Folder setup is a sidebar: mark a folder For Kids, unselect while choosing, or remove it after saving; nothing on the NAS changes. **Not tested** on a television.
+- **Set up on your phone (Android, OD-09):** a QR code on the TV opens a temporary page on the phone for Home Assistant sign-in and for the API-Football and TMDB keys. The page is on the home network only, with a one-time link and a 10-minute limit. Smart Home, football (team picked from a list) and household setup were rebuilt in plain words inside the Settings sidebar. Uses Nayuki's QR Code generator (MIT). **Not tested** on a television.
+- **Sidebar rule (OD-11):** settings and setup screens open as the glass sidebar over Home: Build My TV, library folders, My Photos folders, app actions, Performance, Remote check and Gallery settings so far.
+
 - **Settings as a Liquid Glass sheet (Android, spec v3.4.7 module 13):** Settings slides in from the right over a still Home at 50% width (75% for wide tasks), with frost, tint and rim layers, readable 1080p tokens and On/Off in words. Reduced motion gives a short crossfade, and Reduce transparency or High contrast make the sheet nearly solid. An interrupt-safe state machine (`SettingsOverlay`) means rapid keys or Back while opening never trap focus. Not built yet: a live Home preview behind the sheet. **Not tested** on a television.
 - **Dock size 6 or 8 (Android):** Settings > Appearance > Dock size, per profile. Shrinking asks which tiles leave; they stay installed and in All apps. Earlier docks with more than six tiles become 8 so nothing disappears. **Not tested** on a television.
 - **Build My TV (Android):** Settings > Apps & Shortcuts, PIN-protected, and offered once on a fresh Adults install. Step-by-step music, films and TV choices, store handoff only for verified package ids and only with an OK, a rescan on return, then arranging the dock. Resumable. Kids never see the store; Live TV stays locked. SmartTube gets its own glyph, distinct from YouTube. **Not tested** on a television.
@@ -46,6 +50,15 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **From the owner's TCL test (25 October 2026):**
+  - The Home background now drifts visibly and explains when the TV's animations are off.
+  - Back from Ask your TV returns to Home, and AirPin and NordVPN open inside Unified TV where Android allows, so Back comes back.
+  - The AirPlay tile re-checks after AirPin starts.
+  - The VPN shield opens NordVPN's main screen.
+  - SmartTube appears as YouTube, and the Music and Live TV symbols are redrawn.
+  - Choosing Unified TV as Home is no longer undone by an early check.
+
+  **Not tested** on a television.
 - **Media server search on Android TVs:** every media server looked "unreadable" ("A media server answered, but didn't let the TV see its library"), because Android's XML parser rejects the hardening options the app set before reading a server's description. The app now refuses any DOCTYPE or entity itself and applies only the options the parser supports. Found from the owner's TCL video; the Synology device list showed the TV allowed. **Not tested** on a television yet.
 - **Smoke/CO alarms, Android and Frame** (from an independent review of the alarm code against the spec; unit-tested only):
   - An alarm that cleared and re-sounded while the TV was disconnected now brings the full screen back, unacknowledged. A Home Assistant restart resets its times, so an acknowledged alarm still sounding may ask to be acknowledged again: deliberately on the safe side.
