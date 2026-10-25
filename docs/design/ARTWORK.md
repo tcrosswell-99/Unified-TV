@@ -5,7 +5,7 @@ The owner decided on 25 October 2026 (OD-03, OD-04):
 - The default Wallpaper source is **curated artwork** that is free and **explicitly licensed for this use**.
 - It is bundled in the app; displaying a wallpaper never depends on downloading anything.
 - The depth clock uses **prepared foreground masks** for selected artwork only. The TCL never segments images itself; without a suitable mask the standard clock is shown.
-- Synology photos are a separate, later task, whose access method (DLNA folders or the Synology Photos API) must be designed first.
+- Synology photos are a separate, later task; the access design is [MY_PHOTOS.md](MY_PHOTOS.md) (DLNA folders first, Synology Photos albums later), awaiting the owner's approval.
 
 Every image shipped as artwork has a row here **before** it is committed. No row, no image.
 
