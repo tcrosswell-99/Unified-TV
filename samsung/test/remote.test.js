@@ -71,6 +71,15 @@ test('Home focus: Left/Right stop at the ends, Up reaches the utilities, Down th
   f = Focus.move(f, 'up', 6); assert.strictEqual(f.dock, 5);
 });
 
+test('Home\'s top row: Left from voice reaches the profile name (Adults or Kids), and stops there', () => {
+  let f = Focus.move(Focus.initial(6, 2), 'up', 6);
+  assert.deepStrictEqual(Focus.target(f), { kind: 'util', id: 'settings' }, 'Up still lands on Settings');
+  f = Focus.move(Focus.move(f, 'left', 6), 'left', 6); assert.deepStrictEqual(Focus.target(f), { kind: 'util', id: 'profile' });
+  f = Focus.move(f, 'left', 6); assert.deepStrictEqual(Focus.target(f), { kind: 'util', id: 'profile' }, 'no wrap');
+  f = Focus.move(f, 'down', 6); assert.deepStrictEqual(Focus.target(f), { kind: 'dock', index: 2 }, 'and Down returns to the same tile');
+  assert.deepStrictEqual(Focus.UTILITIES, ['profile', 'voice', 'settings']);
+});
+
 test('focus never launches anything and the title, palette and halo follow one focus', () => {
   const dock = [{ id: 'netflix', name: 'Netflix' }, { id: 'bbc', name: 'BBC' }];
   let f = Focus.initial(2, 1);

@@ -34,6 +34,8 @@ body.solid .glass { background: rgba(22, 26, 34, 0.94); }
   color: rgba(255, 255, 255, 0.86); transition: transform 160ms ease-out, background-color 160ms ease-out; }
 .util.focused { background: rgba(255, 255, 255, 0.94); color: #0b0e14; transform: scale(1.08); }
 body.contrast .util.focused { box-shadow: 0 0 0 4px #fff; }
+/* The profile name ("Adults" or "Kids"): the quick switch, left of voice. */
+.util.profile { width: auto; padding: 0 22px; border-radius: 29px; font-size: 24px; }
 #notice { position: absolute; right: 96px; top: 146px; max-width: 760px; padding: 14px 24px; font-size: 25px; line-height: 1.35;
   border-radius: 20px; color: #f3ead8; }
 
@@ -126,6 +128,8 @@ body.contrast .row.focused { box-shadow: 0 0 0 4px #fff inset; }
 #doorbell h2 { margin: 0 0 10px; font-size: 36px; font-weight: 500; }
 #doorbell p { margin: 0 0 8px; font-size: 25px; line-height: 1.4; color: rgba(255, 255, 255, 0.85); }
 #toast { position: absolute; right: 96px; top: 160px; max-width: 650px; padding: 20px 28px; font-size: 26px; line-height: 1.4; z-index: 44; }
+/* RING-02: a confirmed person, a small toast naming the doorbell for 5 s. No focus, no sound, never a camera. */
+#person { position: absolute; right: 96px; top: 160px; max-width: 650px; padding: 18px 28px; font-size: 26px; line-height: 1.4; z-index: 46; }
 
 /* Smoke and carbon monoxide: above everything, high contrast, words as well as colour, never dismissed by time. */
 #alarm { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 100; background: #43090c; color: #fff;

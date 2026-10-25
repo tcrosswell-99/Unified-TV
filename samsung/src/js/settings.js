@@ -6,7 +6,9 @@
  * read as defaults but never overwritten, so going back a version doesn't destroy it; every value is checked on the way
  * in. Secrets never live here: anything that looks like a token, password or key is stripped. The Home Assistant token
  * and the chosen media folders go to the TV's Key Manager instead (secrets.js), or are not kept at all.
- * Every key is per-TV ("device" scope): profiles are not built yet.
+ * Every key is per-TV ("device" scope), including "profiles": which profile is in use (Adults or Kids), the apps an adult
+ * approved for Kids, "Show person alerts in Kids" and the PIN lock-out count. The PIN itself and the Kids folders are
+ * secrets (secrets.js). Places to resume are kept per profile by resume.js, not here.
  */
 (function (root, factory) {
   'use strict';
@@ -30,14 +32,20 @@
       highContrast: false,
       reducedTransparency: false,
       wallpaper: { source: Wallpaper.ARTWORK, clock: Wallpaper.AUTO, idle: Wallpaper.DEFAULT_IDLE, slide: Wallpaper.DEFAULT_SLIDE, hour12: false, date: false, dim: 0 },
-      alerts: { alarms: true, reminders: false, door: '', person: '' },
+      alerts: { alarms: true, reminders: false, door: '', person: '', doorName: '' },
+      profiles: { current: 'adult', kidsApps: '', kidsPersonAlerts: true, pinFailures: 0, pinWait: 0 },
       ha: { enabled: false, host: '', port: 8123, https: true, httpConsentHost: '' },
       ui: { dockIndex: 0 }
     };
   }
-  /** Which keys are per-TV and which would be per-profile. Profiles don't exist yet, so everything is per-TV. */
+  /**
+   * Which keys are per-TV and which are per-profile. Everything here is per-TV: the household's Home, look and
+   * connections are shared, and the profile layer itself (profiles) belongs to the TV. Per-profile data (local resume
+   * places) lives in resume.js.
+   */
   const SCOPE = { dock: 'device', appChoices: 'device', motion: 'device', highContrast: 'device', reducedTransparency: 'device',
-    wallpaper: 'device', alerts: 'device', ha: 'device', ui: 'device' };
+    wallpaper: 'device', alerts: 'device', profiles: 'device', ha: 'device', ui: 'device' };
+  const KIDS_APP = /^(?:[a-z][a-z0-9]{0,31}|app:[A-Za-z0-9][A-Za-z0-9._-]{0,63})$/;
 
   /** Future schema changes go here: MIGRATIONS[n] turns version n into version n + 1. */
   const MIGRATIONS = {};
@@ -80,7 +88,21 @@
       hour12: bool(w.hour12, false), date: bool(w.date, false), dim: oneOf(w.dim, [0, 20, 40], 0)
     };
     const a = o.alerts && typeof o.alerts === 'object' ? o.alerts : {};
-    out.alerts = { alarms: bool(a.alarms, true), reminders: bool(a.reminders, false), door: entity(a.door), person: entity(a.person) };
+    out.alerts = { alarms: bool(a.alarms, true), reminders: bool(a.reminders, false), door: entity(a.door), person: entity(a.person),
+      doorName: text(a.doorName, 40, '').replace(/[\u0000-\u001f]/g, '').trim() };
+    const p = o.profiles && typeof o.profiles === 'object' ? o.profiles : {};
+    const approved = [];
+    if (typeof p.kidsApps === 'string') {
+      p.kidsApps.split(',').forEach(function (raw) {
+        const id = raw.trim();
+        if (KIDS_APP.test(id) && Apps.validOnFrame(id) && approved.indexOf(id) === -1) approved.push(id);
+      });
+    }
+    const failures = Number(p.pinFailures), wait = Number(p.pinWait);
+    out.profiles = {
+      current: p.current === 'child' ? 'child' : 'adult', kidsApps: approved.join(','), kidsPersonAlerts: bool(p.kidsPersonAlerts, true),
+      pinFailures: failures >= 0 && failures <= 1000 ? Math.floor(failures) : 0, pinWait: wait > 0 && wait < 1e15 ? Math.floor(wait) : 0
+    };
     const h = o.ha && typeof o.ha === 'object' ? o.ha : {};
     const port = Number(h.port);
     out.ha = {

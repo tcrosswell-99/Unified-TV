@@ -6,6 +6,9 @@
  * Smoke and carbon monoxide alarms come first and are equal, then Ring, then detector warnings, then reminders.
  * Ring never covers an active alarm; it waits until every alarm has cleared. Duplicates are bounded, a reminder during
  * Ring waits briefly, stale reminders are dropped, and reminders during an emergency are dropped.
+ * Ring rules RING-01..04: ordinary motion is ignored; a confirmed person gives one discreet 5-second toast per sensor per
+ * minute (never during an emergency, never queued, never a camera); a doorbell press gives the doorbell card, kept for
+ * later during an emergency.
  * On the Frame this only runs while Unified TV is open and in front: Tizen may suspend a hidden app, so nothing here
  * claims to reach a viewer who is in another app, in Art Mode or has the TV off (spec 10.8, PRODUCT_SPEC 24.3).
  * This is a supplementary display, never a certified alarm.
@@ -61,6 +64,10 @@
   }
   function rising(entity, door, person, oldState, next) {
     if (!entity || !(entity === door || entity === person)) return false;
+    return edge(entity, oldState, next);
+  }
+  /** A new press or detection: off to on, or for an event entity any new event time (not a return from unavailable). */
+  function edge(entity, oldState, next) {
     // Newer Ring, Nest and UniFi integrations report a press as an event entity whose state is the time of the last
     // press: any new time is a new press. Coming back from unavailable (a restart) is not.
     if (entity.indexOf('event.') === 0) {
@@ -68,6 +75,43 @@
     }
     return oldState === 'off' && next === 'on';
   }
+
+  // Ring rules RING-01..04 (owner, 25 October 2026): a doorbell press opens the doorbell card; a confirmed person gets a
+  // discreet toast only; ordinary motion does nothing at all. Mirrors AlertPolicy.ringKind/personConfirmed/acceptPerson.
+  const RING_NONE = 0, RING_PRESS = 1, RING_PERSON = 2;
+  const PERSON_REPEAT = 60000, PERSON_TOAST_MS = 5000;
+  const PERSON_WORDS = ['person', 'human', 'people', 'pedestrian'];
+  function attrText(a, k) { const v = a[k]; return typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v); }
+  /** As org.json's optBoolean: true, or the text "true" in any case. */
+  function attrTrue(a, k) { const v = a[k]; return v === true || (typeof v === 'string' && v.toLowerCase() === 'true'); }
+  /** What one state change means for the doorbell: a press, a confirmed person, or nothing. */
+  function ringKind(entity, door, person, oldState, next, attributes) {
+    if (typeof entity !== 'string' || !entity) return RING_NONE;
+    if (entity === door) return edge(entity, oldState, next) ? RING_PRESS : RING_NONE;
+    if (entity === person) return edge(entity, oldState, next) && personConfirmed(entity, attributes) ? RING_PERSON : RING_NONE;
+    return RING_NONE;
+  }
+  /**
+   * RING-01/02: only a confirmed person counts. Confirmation is what the integration itself says: an event type or
+   * detection type of person/human (Ring Smart Alerts, UniFi, Nest), or ring-mqtt's personDetected. A sensor without that
+   * evidence counts only if it is a dedicated person sensor; anything that names itself motion is ordinary motion.
+   */
+  function personConfirmed(entity, a) {
+    const attrs = a && typeof a === 'object' ? a : null;
+    if (attrs) {
+      const type = attrText(attrs, 'event_type').toLowerCase();
+      const detected = (Object.prototype.hasOwnProperty.call(attrs, 'detection_type') ? attrText(attrs, 'detection_type') : attrText(attrs, 'detectionType')).toLowerCase();
+      if (PERSON_WORDS.indexOf(type) !== -1 || PERSON_WORDS.indexOf(detected) !== -1 || attrTrue(attrs, 'personDetected') || attrTrue(attrs, 'person_detected')) return true;
+    }
+    if (entity.indexOf('event.') === 0) return false;   // an event entity must say "person" itself
+    const words = (entity + ' ' + (attrs ? attrText(attrs, 'friendly_name') : '')).toLowerCase();
+    return words.indexOf('motion') === -1;
+  }
+  /**
+   * Owner, 25 October 2026: "Show person alerts in Kids" (on unless an adult turns it off). Off means no person toast
+   * while Kids is watching. Only the person toast: doorbell presses and smoke/CO are the same in every profile.
+   */
+  function personToastAllowed(kids, showInKids) { return !kids || !!showInKids; }
   /** HA's last_changed (ISO 8601, often with microseconds) to epoch ms; 0 when unreadable. */
   function time(iso) {
     if (typeof iso !== 'string' || !iso) return 0;
@@ -100,7 +144,15 @@
   class Policy {
     constructor() {
       this.seen = new Map(); this.ringUntil = 0; this.deferred = ''; this.deferredFired = 0;
-      this.detectors = new Map(); this.connected_ = true; this.queuedRing = 0;
+      this.detectors = new Map(); this.connected_ = true; this.queuedRing = 0; this.people = new Map();
+    }
+    /** RING-02: repeated person events from one entity within a minute are one visit, so one toast. */
+    acceptPerson(entity, now) {
+      const previous = this.people.get(entity);
+      if (previous !== undefined && now - previous < PERSON_REPEAT) return false;
+      this.people.delete(entity); this.people.set(entity, now);
+      while (this.people.size > 32) this.people.delete(this.people.keys().next().value);
+      return true;
     }
     acceptRing(id, now) {
       const previous = this.seen.get(id);
@@ -203,7 +255,8 @@
   return {
     SKEW: SKEW, RELEVANT: RELEVANT, ALARM: ALARM, NORMAL: NORMAL, OFFLINE: OFFLINE, TEST: TEST, FAULT: FAULT,
     NONE: NONE, CHANGED: CHANGED, NEW_ALARM: NEW_ALARM, RING_STILL_RELEVANT: RING_STILL_RELEVANT,
-    Detector: Detector, Policy: Policy, alarmKind: alarmKind, reading: reading, rising: rising, time: time, name: name,
-    detectorsIn: detectorsIn
+    RING_NONE: RING_NONE, RING_PRESS: RING_PRESS, RING_PERSON: RING_PERSON, PERSON_REPEAT: PERSON_REPEAT, PERSON_TOAST_MS: PERSON_TOAST_MS,
+    Detector: Detector, Policy: Policy, alarmKind: alarmKind, reading: reading, rising: rising, ringKind: ringKind,
+    personConfirmed: personConfirmed, personToastAllowed: personToastAllowed, time: time, name: name, detectorsIn: detectorsIn
   };
 }));

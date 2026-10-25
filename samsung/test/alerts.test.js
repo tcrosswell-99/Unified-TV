@@ -173,3 +173,56 @@ test('switching alarms off forgets real detectors and keeps tests', () => {
   assert.strictEqual(p.forgetDetectors(), A.CHANGED); assert.deepStrictEqual(p.alarms().map((d) => d.name), ['Test']);
   assert.strictEqual(p.forgetDetectors(), A.NONE);
 });
+
+// Ring rules RING-01..04 (owner, 25 October 2026): mirrors the ring01..ring04 cases of AlertPolicyTest.
+test('RING-01: ordinary motion never counts', () => {
+  const door = 'binary_sensor.front_door_ding', person = 'binary_sensor.front_door_motion';
+  assert.strictEqual(A.ringKind(person, door, person, 'off', 'on', { friendly_name: 'Front Door Motion' }), A.RING_NONE);
+  assert.strictEqual(A.ringKind('binary_sensor.drive_motion', door, 'binary_sensor.front_door_person', 'off', 'on', null), A.RING_NONE, 'motion that isn\'t the chosen person sensor');
+  assert.strictEqual(A.ringKind('event.front_door_motion', door, 'event.front_door_motion', '2026-10-25T10:00:00Z', '2026-10-25T10:05:00Z', { event_type: 'motion' }), A.RING_NONE, 'a Ring motion event is not a person');
+});
+test('RING-02: only a confirmed person counts', () => {
+  const door = 'binary_sensor.front_door_ding';
+  assert.strictEqual(A.ringKind('binary_sensor.front_door_motion', door, 'binary_sensor.front_door_motion', 'off', 'on', { personDetected: true }), A.RING_PERSON, 'ring-mqtt motion sensor that saw a person');
+  assert.strictEqual(A.ringKind('binary_sensor.g4_person_detected', door, 'binary_sensor.g4_person_detected', 'off', 'on', { friendly_name: 'G4 Person detected' }), A.RING_PERSON, 'a dedicated person sensor');
+  assert.strictEqual(A.ringKind('event.front_door_motion', door, 'event.front_door_motion', '2026-10-25T10:00:00Z', '2026-10-25T10:05:00Z', { event_type: 'human' }), A.RING_PERSON, 'an event entity that says person');
+  assert.strictEqual(A.ringKind('binary_sensor.g4_person_detected', door, 'binary_sensor.g4_person_detected', 'on', 'on', null), A.RING_NONE, 'staying on is not a new person');
+});
+test('RING-02: what counts as confirmation (Frame extras)', () => {
+  assert.ok(A.personConfirmed('event.porch', { detection_type: 'Person' }), 'detection type, any case');
+  assert.ok(A.personConfirmed('event.porch', { detectionType: 'pedestrian' }));
+  assert.ok(A.personConfirmed('binary_sensor.porch_motion', { person_detected: 'true' }), 'the text "true" counts, as org.json reads it');
+  assert.ok(!A.personConfirmed('binary_sensor.porch_motion', { personDetected: false }));
+  assert.ok(!A.personConfirmed('event.porch', null), 'an event entity must say person itself');
+  assert.ok(!A.personConfirmed('binary_sensor.porch', { friendly_name: 'Porch Motion' }), 'a sensor that calls itself motion is motion');
+  assert.ok(A.personConfirmed('binary_sensor.porch', { detection_type: 'person', friendly_name: 'Porch Motion' }), 'unless the integration says person');
+  assert.strictEqual(A.ringKind('', '', '', 'off', 'on', null), A.RING_NONE);
+  assert.strictEqual(A.ringKind(null, 'a', 'b', 'off', 'on', null), A.RING_NONE);
+});
+test('RING-02: repeated person events give one toast', () => {
+  const p = P();
+  assert.ok(p.acceptPerson('binary_sensor.p', 1000)); assert.ok(!p.acceptPerson('binary_sensor.p', 30000)); assert.ok(!p.acceptPerson('binary_sensor.p', 60999));
+  assert.ok(p.acceptPerson('binary_sensor.p', 61000)); assert.ok(p.acceptPerson('binary_sensor.q', 30000), 'another camera is its own visit');
+  assert.strictEqual(A.PERSON_TOAST_MS, 5000);
+});
+test('RING-02: the person memory is bounded', () => {
+  const p = P();
+  for (let i = 0; i < 100; i++) p.acceptPerson('binary_sensor.p' + i, 1000);
+  assert.ok(p.people.size <= 32);
+});
+test('RING-03: a press is a press and never a person', () => {
+  const door = 'binary_sensor.front_door_ding';
+  assert.strictEqual(A.ringKind(door, door, 'binary_sensor.front_door_person', 'off', 'on', null), A.RING_PRESS);
+  assert.strictEqual(A.ringKind('event.front_door_ding', 'event.front_door_ding', '', '2026-10-25T10:00:00Z', '2026-10-25T10:05:00Z', { event_type: 'ding' }), A.RING_PRESS);
+  assert.strictEqual(A.ringKind('event.front_door_ding', 'event.front_door_ding', '', 'unavailable', '2026-10-25T10:05:00Z', null), A.RING_NONE, 'a restart is not a press');
+});
+test('RING-04: a press during an emergency is kept for later', () => {
+  const p = P();
+  p.update(HALL, 'smoke', 'Hall', 'on', 0, false); assert.ok(p.acceptRing('door:1', 1000)); p.queueRing(1000);
+  assert.strictEqual(p.ringAfterAlarm(5000), 0, 'never while the alarm is active'); assert.strictEqual(p.queuedRingAt(), 1000);
+  p.update(HALL, 'smoke', 'Hall', 'off', 6000, false); assert.strictEqual(p.ringAfterAlarm(7000), 1);
+});
+test('person toasts in Kids follow the setting, and Adults always see them', () => {
+  assert.ok(A.personToastAllowed(false, false)); assert.ok(A.personToastAllowed(false, true));
+  assert.ok(A.personToastAllowed(true, true), 'on by default'); assert.ok(!A.personToastAllowed(true, false));
+});

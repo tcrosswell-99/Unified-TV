@@ -1,7 +1,7 @@
 /*
  * Unified TV for Samsung Frame: the Home focus graph (spec 3.1, 6.3, 28.2), as pure rules.
  *
- * Home has three rows: the small utility group at the top right (voice, Settings), the dock, and the quiet
+ * Home has three rows: the small utility group at the top right (the profile name, voice, Settings), the dock, and the quiet
  * "Films & TV" chevron below it. Left and Right move along a row and stop at its ends (never wrap, never trap);
  * Up and Down move between rows and come back to the same tile. Focus changes never launch anything: OK is the only
  * activation (spec 7.4).
@@ -14,12 +14,14 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const UTILITIES = ['voice', 'settings'];
+  /** The top row. As on Android, Up reaches it and Left reaches the profile name ("Adults" or "Kids"): OK there switches. */
+  const UTILITIES = ['profile', 'voice', 'settings'];
+  const SETTINGS = UTILITIES.indexOf('settings');
 
   function initial(dockCount, savedIndex) {
     const count = Math.max(0, dockCount | 0);
     const index = count === 0 ? 0 : Math.max(0, Math.min(count - 1, savedIndex | 0));
-    return { row: 'dock', dock: index, util: 1 };
+    return { row: 'dock', dock: index, util: SETTINGS };
   }
   function clamp(n, count) { return count <= 0 ? 0 : Math.max(0, Math.min(count - 1, n)); }
 

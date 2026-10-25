@@ -193,3 +193,43 @@ test('with alarms switched off, reconnecting forgets detectors from before', () 
   assert.ok(!policy.emergency());
   assert.ok(h.updates.some((u) => u[0] === 'alarms'), 'the screen is redrawn without them');
 });
+
+// Ring rules RING-01..04 through the client (owner, 25 October 2026).
+function ringEvent(entity, oldState, newState, attributes, timeFired) {
+  return { type: 'event', event: { event_type: 'state_changed', time_fired: timeFired || '2026-10-25T19:42:04+00:00', data: {
+    entity_id: entity, old_state: { state: oldState, attributes: attributes || {} },
+    new_state: { state: newState, last_changed: '2026-10-25T19:42:04+00:00', attributes: attributes || {} } } } };
+}
+const PERSON = 'binary_sensor.front_door_person';
+const kinds = (h, k) => h.updates.filter((u) => u[0] === k).length;
+
+test('RING-01: motion from the person sensor without a person does nothing at all', () => {
+  const h = client({ person: 'binary_sensor.front_door_motion' }); const ws = connected(h);
+  ws.receive(ringEvent('binary_sensor.front_door_motion', 'off', 'on', { friendly_name: 'Front Door Motion' }));
+  ws.receive(ringEvent('binary_sensor.drive_motion', 'off', 'on', { friendly_name: 'Drive Motion' }));
+  assert.strictEqual(kinds(h, 'person'), 0); assert.strictEqual(kinds(h, 'ring'), 0);
+});
+test('RING-02: a confirmed person is one toast per sensor per minute, and never the doorbell card', () => {
+  const h = client({ person: PERSON }); const ws = connected(h);
+  ws.receive(ringEvent(PERSON, 'off', 'on', { friendly_name: 'Front Door Person' }));
+  assert.strictEqual(kinds(h, 'person'), 1); assert.strictEqual(kinds(h, 'ring'), 0, 'a person never opens the doorbell card');
+  assert.deepStrictEqual(h.updates.filter((u) => u[0] === 'person')[0][1], { entity: PERSON });
+  ws.receive(ringEvent(PERSON, 'on', 'off', {})); ws.receive(ringEvent(PERSON, 'off', 'on', {}));
+  assert.strictEqual(kinds(h, 'person'), 1, 'again within a minute: no second toast');
+  h.setNow(Date.parse('2026-10-25T19:43:06Z'));
+  ws.receive(ringEvent(PERSON, 'on', 'off', {}, '2026-10-25T19:43:05+00:00')); ws.receive(ringEvent(PERSON, 'off', 'on', {}, '2026-10-25T19:43:05+00:00'));
+  assert.strictEqual(kinds(h, 'person'), 2, 'a minute later is a new visit');
+});
+test('RING-04: during an emergency a person shows nothing and is not queued; a press is queued', () => {
+  const h = client({ person: PERSON }); const ws = connected(h);
+  ws.receive(stateEvent('binary_sensor.kitchen_smoke', 'off', 'on', 'smoke'));
+  ws.receive(ringEvent(PERSON, 'off', 'on', {}));
+  assert.strictEqual(kinds(h, 'person'), 0); assert.strictEqual(h.policy.queuedRingAt(), 0, 'a person is never queued');
+  ws.receive(ringEvent('binary_sensor.front_door_ding', 'off', 'on', {}));
+  assert.strictEqual(kinds(h, 'ring'), 0); assert.ok(h.policy.queuedRingAt() > 0, 'the press waits for the alarm to end');
+});
+test('a stale person event is ignored like any doorbell event', () => {
+  const h = client({ person: PERSON }); const ws = connected(h);
+  ws.receive(ringEvent(PERSON, 'off', 'on', {}, '2026-10-25T19:00:00+00:00'));
+  assert.strictEqual(kinds(h, 'person'), 0);
+});

@@ -100,6 +100,10 @@ test('the page loads every module before app.js, and the build generates the pal
   }
   assert.ok(scripts.indexOf('js/alerts.js') < scripts.indexOf('js/ha.js'), 'ha.js needs alerts.js first');
   assert.ok(scripts.indexOf('js/apps.js') < scripts.indexOf('js/settings.js') && scripts.indexOf('js/wallpaper.js') < scripts.indexOf('js/settings.js'));
+  for (const s of ['js/pin.js', 'js/resume.js']) assert.ok(scripts.indexOf('js/hash.js') !== -1 && scripts.indexOf('js/hash.js') < scripts.indexOf(s), s + ' needs hash.js first');
+  for (const s of ['js/profiles.js', 'js/catalogue.js', 'js/kids.js']) assert.ok(scripts.indexOf(s) !== -1 && scripts.indexOf(s) < scripts.indexOf('js/app.js'), s);
+  assert.match(html, /id="util-profile"/, 'the profile quick switch is in Home\'s top row');
+  assert.match(html, /id="person"/, 'the person toast has its own place, apart from other messages');
   assert.match(read(path.join(SAMSUNG, 'tools', 'package.py')), /palettes\.data\.js[\s\S]*wallpaper\.data\.js/);
 });
 
@@ -114,10 +118,14 @@ test('the modules load in a browser-like global without Node\'s require', () => 
   const sandbox = { self: {}, Date, Math, JSON, Map, Array, Object, String, Number, RegExp, Error, parseInt, parseFloat, isNaN, Infinity, URL };
   sandbox.self = sandbox;
   vm.createContext(sandbox);
-  for (const f of ['mesh', 'focus', 'keys', 'nav', 'clock', 'apps', 'livetv', 'alerts', 'ha', 'wallpaper', 'settings', 'secrets', 'player', 'dlna', 'capabilities']) {
+  for (const f of ['mesh', 'focus', 'keys', 'nav', 'clock', 'apps', 'livetv', 'alerts', 'ha', 'wallpaper', 'settings', 'secrets', 'player', 'dlna', 'capabilities',
+    'hash', 'pin', 'profiles', 'catalogue', 'kids', 'resume']) {
     vm.runInContext(read(path.join(SAMSUNG, 'src', 'js', f + '.js')), sandbox, { filename: f + '.js' });
   }
-  for (const k of ['Mesh', 'Focus', 'Keys', 'Nav', 'Clock', 'Apps', 'LiveTv', 'Alerts', 'Ha', 'Wallpaper', 'Settings', 'Secrets', 'Player', 'Dlna', 'Capabilities']) assert.ok(sandbox.UTV[k], k);
+  for (const k of ['Mesh', 'Focus', 'Keys', 'Nav', 'Clock', 'Apps', 'LiveTv', 'Alerts', 'Ha', 'Wallpaper', 'Settings', 'Secrets', 'Player', 'Dlna', 'Capabilities',
+    'Hash', 'Pin', 'Profiles', 'Catalogue', 'Kids', 'Resume']) assert.ok(sandbox.UTV[k], k);
+  assert.strictEqual(sandbox.UTV.Resume.key('x').length, 32, 'resume.js found hash.js through the page\'s globals');
+  assert.strictEqual(sandbox.UTV.Settings.defaults().profiles.current, 'adult');
   assert.strictEqual(sandbox.UTV.Settings.defaults().motion, 'default');
   assert.ok(sandbox.UTV.Capabilities.list().every((c) => c.value === 'unknown'), 'nothing is claimed as verified on the Frame');
 });

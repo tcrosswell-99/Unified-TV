@@ -58,7 +58,8 @@
   /**
    * opts: { url, token, WebSocket, policy, now(), setTimer(fn, ms), clearTimer(id), onUpdate(kind, detail),
    *         alarms (bool), reminders (bool), door, person (entity ids, optional), room ('frame') }.
-   * onUpdate kinds: 'status' (text), 'alarms' ({fresh}), 'ring' ({entity}), 'reminder' ({text}).
+   * onUpdate kinds: 'status' (text), 'alarms' ({fresh}), 'ring' ({entity}: a doorbell press), 'person' ({entity}: a
+   * confirmed person, toast only), 'reminder' ({text}).
    */
   class Client {
     constructor(opts) {
@@ -154,11 +155,17 @@
         const before = data.old_state, after = data.new_state;
         if (!before || !after) return;
         const entity = String(data.entity_id || '');
-        if (Alerts.rising(entity, this.o.door || '', this.o.person || '', before.state, after.state)) {
+        const kind = Alerts.ringKind(entity, this.o.door || '', this.o.person || '', before.state, after.state, after.attributes);
+        if (kind === Alerts.RING_PRESS) {
+          // RING-03/04: a press gives the doorbell card; during an emergency it is kept for later, the latest only.
           if (this.policy.acceptRing(entity + ':' + after.last_changed, now)) {
             if (this.policy.emergency()) { this.policy.queueRing(now); this.o.onUpdate('alarms', { fresh: false }); }
             else this.o.onUpdate('ring', { entity: entity });
           }
+        } else if (kind === Alerts.RING_PERSON) {
+          // RING-02/04: a confirmed person is one toast per sensor per minute. During an emergency nothing is shown and
+          // nothing is queued (a toast would cover the alarm). Ordinary motion never gets here (RING-01).
+          if (!this.policy.emergency() && this.policy.acceptPerson(entity, now)) this.o.onUpdate('person', { entity: entity });
         }
       } else if (type === 'unified_tv_reminder' && this.o.reminders) {
         const target = typeof data.room === 'string' ? data.room : '';

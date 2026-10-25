@@ -17,7 +17,10 @@
   'use strict';
 
   const PREFIX = 'unifiedtv-';
-  const NAMES = ['ha-token', 'nas'];
+  /** ha-token: Home Assistant; nas: the media server and its folders; nas-kids: the Kids folders; pin: the adult PIN's salted hash. */
+  const NAMES = ['ha-token', 'nas', 'nas-kids', 'pin'];
+  /** "Forget all connections" forgets these and keeps the adult PIN. */
+  const CONNECTIONS = ['ha-token', 'nas', 'nas-kids'];
 
   /**
    * mode: 'keymanager' (the TV's Key Manager), 'simulation' (a desktop browser: memory only, labelled), or
@@ -73,7 +76,8 @@
     /** Forget: removes the value from memory and from Key Manager. */
     forget(name) { const alias = this.alias(name); delete this.memory[alias]; this.removeStored(alias); }
     forgetAll() { const self = this; NAMES.forEach(function (n) { self.forget(n); }); }
+    forgetConnections() { const self = this; CONNECTIONS.forEach(function (n) { self.forget(n); }); }
   }
 
-  return { Vault: Vault, NAMES: NAMES };
+  return { Vault: Vault, NAMES: NAMES, CONNECTIONS: CONNECTIONS };
 }));

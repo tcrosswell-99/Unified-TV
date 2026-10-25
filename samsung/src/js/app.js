@@ -1,6 +1,6 @@
 /*
  * Unified TV for Samsung Frame: the page. Wires the pure modules (mesh, focus, keys, nav, apps, alerts, wallpaper,
- * settings, secrets, player, dlna) to the DOM and the Tizen APIs, all feature-detected.
+ * settings, secrets, player, dlna, pin, profiles, kids, resume) to the DOM and the Tizen APIs, all feature-detected.
  *
  * Status: implemented_unverified. None of this has run on the owner's Frame yet. Every platform call is guarded so the
  * page also opens in a desktop browser for layout work, where it says it is a browser simulation.
@@ -38,13 +38,24 @@
   let moving = null;
   let fallbackStill = false;
   const diagnostics = [];
-  let pressTimer = null, idleTimer = null, doorbellTimer = null, toastTimer = null, clockTimer = null, slideTimer = null;
+  let pressTimer = null, idleTimer = null, doorbellTimer = null, toastTimer = null, clockTimer = null, slideTimer = null, personTimer = null;
   let doorbellAt = 0;
   let wp = { active: false, list: [], index: 0, count: 0 };
   let alarmIndex = 0, alarmEntity = null;   // focus follows the detector, not its position in the list
   const simulation = !env.tizen;
 
   function save() { store.save(S); }
+
+  // ---------------------------------------------------------------- Adults and Kids (owner, 25 October 2026)
+  /** The profile in use: the last one used, never asked on start. */
+  function kids() { return U.Profiles.kids(S.profiles.current); }
+  function cryptoEnv() { return { crypto: window.crypto || window.msCrypto || null }; }
+  /** A PIN exists only when Key Manager keeps it: with no Key Manager there is no PIN, so Kids can't be switched on (fail closed). */
+  function pinSet() { return vault.remembers() && !!U.Pin.parse(vault.get('pin')); }
+  function pinLock() { return { failures: S.profiles.pinFailures, until: S.profiles.pinWait }; }
+  function approvedApps() { return U.Kids.apps(S.profiles.kidsApps); }
+  /** The one launch check (KIDS-02): every app Unified TV opens goes through openTile, and openTile asks this first. */
+  function launchAllowed(id) { return U.Kids.appAllowed(kids(), approvedApps(), id); }
   function loadJson(path) {
     try {
       const x = new XMLHttpRequest();
@@ -149,7 +160,9 @@
     return e ? e.name : id;
   }
   function buildDock() {
-    dock = U.Apps.dockOrder(S.dock).map(function (id) { return { id: id, name: displayName(id), entry: U.Apps.entry(id) }; });
+    // Kids sees only the apps an adult approved. Hiding is a courtesy, not the wall: openTile checks every launch.
+    dock = U.Apps.dockOrder(S.dock).filter(function (id) { return launchAllowed(id); })
+      .map(function (id) { return { id: id, name: displayName(id), entry: U.Apps.entry(id) }; });
     focus = { row: focus.row, dock: Math.max(0, Math.min(Math.max(0, dock.length - 1), focus.dock)), util: focus.util };
     renderDock(true);
   }
@@ -183,7 +196,7 @@
         const symbol = e ? e.symbol : '+';
         face.appendChild(el('div', 'symbol' + (symbol.length > 2 ? ' small' : ''), symbol));
         t.appendChild(face);
-        t.appendChild(el('div', 'label', id ? displayName(id) : 'Add apps'));
+        t.appendChild(el('div', 'label', id ? displayName(id) : kids() ? 'No apps yet' : 'Add apps'));
         if (id === 'live') t.classList.add('locked');
         dockEl.appendChild(t); tiles.push(t);
       }
@@ -196,8 +209,10 @@
   }
   function renderFocus() {
     renderDock(false);
-    $('util-voice').classList.toggle('focused', focus.row === 'util' && focus.util === 0);
-    $('util-settings').classList.toggle('focused', focus.row === 'util' && focus.util === 1);
+    $('util-profile').textContent = U.Profiles.label(S.profiles.current);
+    ['profile', 'voice', 'settings'].forEach(function (id) {
+      $('util-' + id).classList.toggle('focused', focus.row === 'util' && U.Focus.UTILITIES[focus.util] === id);
+    });
     $('more').classList.toggle('focused', focus.row === 'more');
     // The title, halo and light change together (spec 32.6).
     const scene = U.Focus.scene(focus, dock);
@@ -327,7 +342,8 @@
       if (moving) { moveKey(a); return; }
       if (a === 'left' || a === 'right' || a === 'up' || a === 'down') { focus = U.Focus.move(focus, a, dock.length); renderFocus(); return; }
       if (a === 'ok') activate();
-      else if (a === 'long') { if (focus.row === 'dock' && dock.length) tileMenu(); else activate(); }
+      // In Kids the dock can't be edited: moving or removing a filtered dock would lose the household's tiles.
+      else if (a === 'long') { if (focus.row === 'dock' && dock.length && !kids()) tileMenu(); else activate(); }
       // Back at Home does nothing: Unified TV never closes itself from an ordinary Back press (PRODUCT_SPEC 30.3).
     },
     resume: function () { showHome(true); renderFocus(); }
@@ -338,13 +354,15 @@
   }
   function activate() {
     const t = U.Focus.target(focus);
+    if (t.kind === 'util' && t.id === 'profile') { profileSheet(); return; }
     if (t.kind === 'util' && t.id === 'voice') { infoSheet('Voice', 'Voice isn\'t available on this TV yet. Everything works with the remote.'); return; }
     if (t.kind === 'util' && t.id === 'settings') { openSettings(); return; }
     if (t.kind === 'more') { openLibrary(); return; }
-    if (!dock.length) { openApps(); return; }
+    if (!dock.length) { if (kids()) showMessage('Ask an adult to choose apps for Kids.'); else openApps(); return; }
     openTile(dock[t.index].id);
   }
   function openTile(id) {
+    if (!launchAllowed(id)) { showMessage((U.Apps.entry(id) ? displayName(id) : 'That app') + ' isn\'t allowed in Kids. Ask an adult.'); return; }
     if (U.LiveTv.guards(id)) { const d = U.LiveTv.decide('tile'); infoSheet(d.title, d.message); return; }
     if (U.Apps.availability(id) === 'unavailable') { showMessage(U.Apps.failure(id, 'unavailable')); return; }
     const r = U.Apps.resolve(id, installed, S.appChoices);
@@ -402,6 +420,7 @@
   }
 
   function openApps() {
+    if (kids()) { showMessage('Ask an adult to add apps.'); return; }
     const ctl = openPage('Add an app', 'Adding an app only puts it on Home. Removing it later never uninstalls it.', function () {
       const order = dock.map(function (d) { return d.id; });
       const rows = [{ kind: 'heading', label: 'Unified TV apps' }];
@@ -481,10 +500,7 @@
       r.push(row('Media server address and folders', 'In TV & performance, Advanced', function () { openCategory(4); }));
       return r;
     } },
-    { name: 'Profiles', rows: function () {
-      return [info('Profiles aren\'t set up on this TV yet. Everything here is the same for everyone.'),
-        info('A child profile would need its own restricted media account on the NAS. That isn\'t built for the Frame yet, and Unified TV can\'t change accounts inside Netflix, Disney+ or other apps.')];
-    } },
+    { name: 'Profiles', rows: function () { return profileRows(); } },
     { name: 'Notifications', rows: function () {
       return [info('This TV only shows alerts while Unified TV is open and on screen. It can\'t show them over other apps, in Art Mode or when the TV is off. It adds to your smoke and carbon monoxide alarms; it never replaces them.'),
         heading('Smoke and carbon monoxide'),
@@ -497,7 +513,11 @@
         row('Person detected', S.alerts.person || 'Not set', function () {
           inputSheet('Person detection entity', 'The Home Assistant entity for person detection (not general motion).', { value: S.alerts.person, placeholder: 'binary_sensor.front_door_person', save: function (v) { S.alerts.person = /^(binary_sensor|event)\.[a-z0-9_]{1,80}$/.test(v) ? v : ''; save(); restartHa(); } }, renderSettings);
         }),
-        info('The doorbell card has no live camera on the Frame yet. A smoke or carbon monoxide alarm always comes first.'),
+        row('Doorbell name', S.alerts.doorName || 'Not set', function () {
+          inputSheet('Doorbell name', 'Shown on the doorbell card and in "Person at …", for example Front Door. Up to 40 characters.', { value: S.alerts.doorName, placeholder: 'Front Door', save: function (v) { S.alerts.doorName = v.replace(/[\u0000-\u001f]/g, '').substring(0, 40).trim(); save(); } }, renderSettings);
+        }),
+        info('A doorbell press shows the doorbell card. The Frame has no live camera yet, so the card says so and shows when the doorbell was pressed. Back closes it.'),
+        info('Only a person the doorbell itself confirms shows a small 5-second toast, at most once a minute. Ordinary motion is ignored. A smoke or carbon monoxide alarm always comes first: during an alarm a press is kept for later and a person toast isn\'t shown.'),
         heading('Reminders'),
         toggle('Alexa reminders', function () { return S.alerts.reminders; }, function (v) { S.alerts.reminders = v; restartHa(); })];
     } },
@@ -539,7 +559,7 @@
       r.push(row('Media server address', n && n.url ? (n.name || 'Set') : 'Not set', function () { editNasAddress(); }));
       r.push(info(U.Dlna.FIND_YOUR_NAS));
       r.push(row('Choose your film and TV folders', n && n.roots ? n.roots.length + ' of 3 chosen' : 'None chosen', function () { if (!n || !n.controlUrl) { editNasAddress(); return; } pickFolders(); }));
-      r.push(row('Forget the media server', '', function () { confirmSheet('Forget the media server?', 'This removes its address and your chosen folders from this TV.', 'Forget', function () { vault.forget('nas'); renderSettings(); }); }));
+      r.push(row('Forget the media server', '', function () { confirmSheet('Forget the media server?', 'This removes its address, your chosen folders and the Kids folders from this TV.', 'Forget', function () { vault.forget('nas'); vault.forget('nas-kids'); renderSettings(); }); }));
       r.push(row('Open original TV interface', '', function () { originalInterface(); }, { small: true }));
       return r;
     } },
@@ -547,12 +567,127 @@
       return [info('Secrets: ' + vault.label()),
         info('Other settings, such as the Home Assistant address and the look of Home, are kept in this TV\'s app storage.'),
         info('Unified TV sends nothing anywhere except to the Home Assistant and media server addresses you enter. No usage data is collected.'),
-        row('Forget all connections', '', function () { confirmSheet('Forget all connections?', 'This removes Home Assistant and the media server from this TV.', 'Forget all', function () { vault.forgetAll(); S.ha = U.Settings.defaults().ha; save(); restartHa(); renderSettings(); }); }),
-        row('Reset all settings', '', function () { confirmSheet('Reset all settings?', 'Home, Wallpaper and connection choices go back to how they were at first. Installed apps are not touched.', 'Reset', function () {
+        row('Forget all connections', '', function () { confirmSheet('Forget all connections?', 'This removes Home Assistant, the media server and the Kids folders from this TV. The adult PIN stays.', 'Forget all', function () { vault.forgetConnections(); S.ha = U.Settings.defaults().ha; save(); restartHa(); renderSettings(); }); }),
+        row('Reset all settings', '', function () { confirmSheet('Reset all settings?', 'Home, Wallpaper, connection choices, the adult PIN and the Kids choices go back to how they were at first, and the TV returns to Adults. Installed apps are not touched.', 'Reset', function () {
           vault.forgetAll(); S = U.Settings.defaults(); save(); restartHa(); buildDock(); applyAppearance(); renderSettings();
         }); })];
     } }
   ];
+
+  /** Kids sees only the way back to Adults (with the PIN). Everything else in Settings is for adults. */
+  const KIDS_CATEGORIES = [
+    { name: 'Profiles', rows: function () {
+      return [info('Kids is on. Ask an adult to change settings.'),
+        row('Switch to Adults', 'Needs the adult PIN', function () { switchProfile(U.Profiles.ADULT); })];
+    } }
+  ];
+  function categories() { return kids() ? KIDS_CATEGORIES : CATEGORIES; }
+
+  // ---------------------------------------------------------------- Profiles: Adults and Kids (owner, 25 October 2026)
+  function kidsRecord() { const raw = vault.get('nas-kids'); try { const v = raw ? JSON.parse(raw) : null; return v && typeof v === 'object' ? v : null; } catch (e) { return null; } }
+  /** Kids folders for the media server in use; none when the server changed or none were chosen. */
+  function kidsFolders() { const r = kidsRecord(); return U.Kids.ready(r, nas()) ? U.Kids.folders(r) : []; }
+  function profileRows() {
+    const n = nas();
+    const folders = kidsFolders();
+    const approved = approvedApps();
+    const r = [heading('Who\'s watching'),
+      row('Profile', U.Profiles.label(S.profiles.current), function () { profileSheet(); }),
+      info('The TV opens in the profile used last; it never asks on start. Switch from here or from the profile name at the top of Home. Switching to Adults always asks for the adult PIN; switching to Kids doesn\'t.'),
+      heading('Adult PIN'),
+      row(pinSet() ? 'Change the adult PIN' : 'Set an adult PIN', pinSet() ? 'Set' : 'Not set', function () { setPin(); }),
+      info(vault.remembers() ? 'The PIN is kept as a salted hash in this TV\'s Key Manager, never as the digits. Kids can only be switched on once a PIN is set. Five wrong tries lock it for 30 seconds.'
+        : 'This TV\'s secure storage (Key Manager) isn\'t available, so a PIN can\'t be kept and Kids can\'t be switched on.'),
+      heading('Kids: films and TV'),
+      info(!n || !n.controlUrl ? 'No media server is set, so Kids has no films or TV.' : folders.length ? 'Kids folders: ' + folders.map(function (f) { return f.title; }).join(', ') + '.' : 'No Kids folders yet. Kids sees "' + U.Kids.ASK_ADULT + '" instead of the library.'),
+      row('Choose Kids folders', folders.length + ' chosen', function () { if (!n || !n.controlUrl) { openCategory(4); return; } pickFolders(true); }),
+      row('Stop using Kids folders', '', function () { confirmSheet('Stop using Kids folders?', 'Kids will see "' + U.Kids.ASK_ADULT + '" instead of the library.', 'Stop using them', function () { vault.forget('nas-kids'); renderSettings(); }); }),
+      info('In Kids, browsing, resume and playback stay inside these folders, and the media server is asked again before every Kids title plays. Where the server sends a rating, Kids gets only UK U, Uc and PG, US G and PG, and TV-Y, TV-Y7, TV-G and TV-PG; anything else rated is left out. A title with no rating is shown only because it is inside a Kids folder.'),
+      info('DLNA has no accounts, so this limits Unified TV only: other apps on your network can still see every shared folder.'),
+      heading('Kids: apps'),
+      info('In Kids, Unified TV opens only the apps allowed here. Netflix, Disney+ and others have their own kids profiles: choose those inside each app.')];
+    U.Apps.dockOrder(S.dock).forEach(function (id) {
+      if (U.Apps.availability(id) !== 'available') return;   // Live TV stays locked for everyone
+      const on = approved.indexOf(id) !== -1;
+      r.push(row(displayName(id), on ? 'Allowed in Kids' : 'Not allowed', function () { S.profiles.kidsApps = U.Kids.toggle(S.profiles.kidsApps, id); save(); buildDock(); }));
+    });
+    r.push(info('What this can\'t do on the Frame: apps opened another way, from Samsung\'s own Home (Smart Hub), the remote\'s app buttons or the TV\'s voice assistant, don\'t go through Unified TV. A Samsung web app can\'t see or close other apps, so there is no Kids app guard on this TV. Samsung\'s own app lock or parental settings, where your TV offers them, work separately.'));
+    r.push(heading('Kids: notifications'));
+    r.push(toggle('Show person alerts in Kids', function () { return S.profiles.kidsPersonAlerts; }, function (v) { S.profiles.kidsPersonAlerts = v; }));
+    r.push(info('Doorbell presses and smoke and carbon monoxide alarms show in every profile.'));
+    r.push(heading('Resume'));
+    r.push(info('Unified TV remembers where each film was left in its own player, on this TV only, separately for Adults and Kids. Nothing is sent to the media server.'));
+    return r;
+  }
+  function profileSheet() {
+    const now = U.Profiles.stored(S.profiles.current);
+    openSheet({ title: 'Who\'s watching?', rows: [U.Profiles.ADULT, U.Profiles.CHILD].map(function (p) {
+      return { label: U.Profiles.label(p), value: p === now ? 'Now' : p === U.Profiles.ADULT ? 'Needs the adult PIN' : '', run: function () { closeTop(); switchProfile(p); } };
+    }).concat([{ label: 'Cancel', run: function () { closeTop(); } }]) });
+  }
+  /** PROFILE-02: Adults always needs the PIN (with lock-out); Kids needs none, but only once a PIN exists. */
+  function switchProfile(to) {
+    const rule = U.Profiles.rule(S.profiles.current, to, pinSet());
+    if (rule === U.Profiles.NEEDS_PIN) askPin('Switch to Adults', 'Enter the adult PIN.', function () { applyProfile(to); });
+    else if (rule === U.Profiles.ALLOWED) applyProfile(to);
+    else if (rule === U.Profiles.PIN_FIRST) {
+      infoSheet('Kids', vault.remembers() ? 'Set an adult PIN first (Settings, Profiles), so that only an adult can leave Kids.'
+        : 'This TV\'s secure storage (Key Manager) isn\'t available, so an adult PIN can\'t be kept and Kids can\'t be switched on.');
+    }
+  }
+  function applyProfile(to) {
+    S.profiles.current = U.Profiles.stored(to); save();
+    backToHome();
+    buildDock(); renderFocus();
+    showMessage(U.Profiles.label(to) + ' is on.', 4000);
+  }
+  /** Closes every layer above Home, each in the normal way, so nothing of the other profile stays on screen. */
+  function backToHome() {
+    while (!nav.atRoot()) { const t = nav.top(); if (t.ctl && t.ctl.close) t.ctl.close(); nav.back(); }
+    settingsCtl = null; $('sheet').hidden = true; $('page').hidden = true; showHome(true);
+  }
+  /** Asks for the adult PIN, with the lock-out. success() runs only after a match. */
+  function askPin(title, text, success) {
+    const record = vault.get('pin');
+    const wait = U.Pin.locked(pinLock(), Date.now());
+    if (wait > 0) { showMessage('Please wait ' + Math.ceil(wait / 1000) + ' seconds before trying the PIN again.'); return; }
+    inputSheet(title, text, { secret: true, value: '', placeholder: 'Adult PIN', save: function (v) {
+      if (!v) return;
+      showMessage('Checking…', 15000);
+      U.Pin.verify(v, record, cryptoEnv(), function (ok) {
+        $('toast').hidden = true;
+        const lock = ok ? U.Pin.succeeded() : U.Pin.failed(pinLock(), Date.now());
+        S.profiles.pinFailures = lock.failures; S.profiles.pinWait = lock.until; save();
+        if (ok) success();
+        else showMessage(lock.until ? 'PIN not recognised. Please wait 30 seconds before trying again.' : 'PIN not recognised.');
+      });
+    } }, renderSettings);
+  }
+  /** Sets or changes the adult PIN: only with Key Manager, 4 to 12 digits, typed twice; changing it needs the old one. */
+  function setPin() {
+    if (!vault.remembers()) { infoSheet('Adult PIN', 'This TV\'s secure storage (Key Manager) isn\'t available, so a PIN can\'t be kept safely. Kids can\'t be switched on without one.'); return; }
+    function store(pin) {
+      showMessage('Saving…', 15000);
+      U.Pin.make(pin, cryptoEnv(), function (err, record) {
+        if (err) { showMessage(err === 'no-random' ? 'This TV can\'t make a safe PIN record, so the PIN wasn\'t set.' : 'The PIN wasn\'t set. Try again.'); return; }
+        vault.put('pin', record, function (kept) {
+          if (!kept) { vault.forget('pin'); showMessage('Key Manager didn\'t keep the PIN, so it wasn\'t set and Kids can\'t be switched on.'); }
+          else { S.profiles.pinFailures = 0; S.profiles.pinWait = 0; save(); showMessage('Adult PIN saved.'); }
+          renderSettings();
+        });
+      });
+    }
+    function ask() {
+      inputSheet('New adult PIN', '4 to 12 digits. It is needed every time someone switches to Adults.', { secret: true, value: '', placeholder: 'New PIN', save: function (first) {
+        if (!U.Pin.valid(first)) { showMessage('Use 4 to 12 digits.'); return; }
+        inputSheet('Type the new PIN again', '', { secret: true, value: '', placeholder: 'New PIN again', save: function (second) {
+          if (second !== first) { showMessage('The two PINs didn\'t match. Nothing was changed.'); return; }
+          store(first);
+        } }, renderSettings);
+      } }, renderSettings);
+    }
+    if (pinSet()) askPin('Change the adult PIN', 'Enter the current adult PIN first.', ask); else ask();
+  }
 
   let settingsCtl = null;
   function openSettings() {
@@ -567,16 +702,18 @@
       const cats = el('div', 'cats glass'); const catRows = el('div', 'rows'); cats.appendChild(catRows);
       const panel = el('div', 'panel glass'); const rows = el('div', 'rows'); panel.appendChild(rows);
       cols.appendChild(cats); cols.appendChild(panel); page.appendChild(cols);
-      renderRows(catRows, CATEGORIES.map(function (c, i) { return { label: c.name, selected: i === ctl.cat }; }), ctl.cat, ctl.zone === 'cats');
-      ctl.rows = CATEGORIES[ctl.cat].rows();
+      const list = categories();
+      if (ctl.cat >= list.length) { ctl.cat = 0; ctl.index = -1; }
+      renderRows(catRows, list.map(function (c, i) { return { label: c.name, selected: i === ctl.cat }; }), ctl.cat, ctl.zone === 'cats');
+      ctl.rows = list[ctl.cat].rows();
       if (ctl.index < 0 || !focusable(ctl.rows[ctl.index])) ctl.index = firstFocusable(ctl.rows);
       renderRows(rows, ctl.rows, ctl.index, ctl.zone === 'rows');
       $('home').hidden = true; page.hidden = false;
     };
     ctl.key = function (a) {
       if (ctl.zone === 'cats') {
-        if (a === 'up' || a === 'down') { ctl.cat = U.Focus.list(ctl.cat, a, CATEGORIES.length); ctl.index = -1; ctl.render(); }
-        else if (a === 'right' || a === 'ok') { if (firstFocusable(CATEGORIES[ctl.cat].rows()) !== -1) { ctl.zone = 'rows'; ctl.index = -1; ctl.render(); } }
+        if (a === 'up' || a === 'down') { ctl.cat = U.Focus.list(ctl.cat, a, categories().length); ctl.index = -1; ctl.render(); }
+        else if (a === 'right' || a === 'ok') { if (firstFocusable(categories()[ctl.cat].rows()) !== -1) { ctl.zone = 'rows'; ctl.index = -1; ctl.render(); } }
         else if (a === 'back') closeTop();
       } else {
         if (a === 'up' || a === 'down') { ctl.index = stepFocus(ctl.rows, ctl.index, a); ctl.render(); }
@@ -588,7 +725,7 @@
     ctl.render();
   }
   function renderSettings() { if (settingsCtl && nav.top().ctl === settingsCtl) settingsCtl.render(); }
-  function openCategory(i) { if (!settingsCtl) return; settingsCtl.cat = i; settingsCtl.zone = 'rows'; settingsCtl.index = -1; settingsCtl.render(); }
+  function openCategory(i) { if (!settingsCtl || kids()) return; settingsCtl.cat = i; settingsCtl.zone = 'rows'; settingsCtl.index = -1; settingsCtl.render(); }
 
   function chooseApp(id) {
     const e = U.Apps.entry(id);
@@ -620,6 +757,7 @@
     openSheet({ title: 'Test the alarm screen', text: 'These are TEST events inside Unified TV only. No detector or Home Assistant is involved, and a test never counts as a real alarm check.',
       rows: [sim('smoke', 'on', 'TEST smoke alarm'), sim('carbon_monoxide', 'on', 'TEST carbon monoxide alarm'), sim('smoke', 'unavailable', 'TEST detector offline'),
         { label: 'TEST doorbell', run: function () { closeTop(); const now = Date.now(); if (policy.acceptRing('test:' + now, now)) { if (policy.emergency()) { policy.queueRing(now); renderAlarms(false); } else showDoorbell(); } } },
+        { label: 'Test: a person at the door (toast only)', run: function () { closeTop(); const now = Date.now(); if (policy.acceptPerson('test:' + now, now)) showPerson(); } },
         { label: 'End the test', run: function () { closeTop(); policy.endSimulation(); renderAlarms(false); } },
         { label: 'Cancel', run: function () { closeTop(); } }] });
   }
@@ -648,21 +786,33 @@
       });
     } }, renderSettings);
   }
-  function pickFolders() {
+  /**
+   * Chooses folders on the media server. The household's (up to three, unchanged) or, with kidsMode, the Kids folders
+   * (up to six, Adults only), kept apart in Key Manager with the server they belong to.
+   */
+  function pickFolders(kidsMode) {
     const n = nas();
+    if (kidsMode && kids()) return;
     const trail = [{ id: '0', title: n.name || 'Media server' }];
     let entries = { containers: [], items: [] };
     let loading = false;
-    const ctl = openPage('Choose your film and TV folders', 'Choose up to three folders. Only these are shown in Films & TV, and only their videos.', function () {
+    const most = kidsMode ? U.Kids.MAX_ROOTS : 3;
+    function current() { return kidsMode ? kidsFolders() : U.Dlna.collections(n.roots); }
+    function keep(list) {
+      if (kidsMode) vault.put('nas-kids', JSON.stringify({ controlUrl: n.controlUrl, roots: list }), function (kept) { if (!kept) showMessage('Secure storage isn\'t available, so the Kids folders are kept only until Unified TV closes.'); });
+      else { n.roots = list; saveNas(n); }
+    }
+    const ctl = openPage(kidsMode ? 'Choose Kids folders' : 'Choose your film and TV folders', kidsMode ? 'Choose up to six folders for Kids. In Kids, only these are shown, and only titles allowed for Kids.'
+      : 'Choose up to three folders. Only these are shown in Films & TV, and only their videos.', function () {
       const here = trail[trail.length - 1];
-      const roots = U.Dlna.collections(n.roots);
+      const roots = current();
       const chosen = roots.some(function (r) { return r.id === here.id; });
       const rows = [info('Chosen: ' + (roots.length ? roots.map(function (r) { return r.title; }).join(', ') : 'none') + '.')];
-      if (here.id !== '0') rows.push({ label: chosen ? 'Stop using “' + here.title + '”' : 'Use “' + here.title + '”', value: chosen ? 'Chosen' : roots.length >= 3 ? 'Three already chosen' : '', run: function () {
-        if (chosen) n.roots = roots.filter(function (r) { return r.id !== here.id; });
-        else if (roots.length < 3) n.roots = roots.concat([{ id: here.id, title: here.title }]);
-        else { showMessage('Three folders are already chosen. Stop using one first.'); return; }
-        saveNas(n); ctl.render();
+      if (here.id !== '0') rows.push({ label: chosen ? 'Stop using “' + here.title + '”' : 'Use “' + here.title + '”', value: chosen ? 'Chosen' : roots.length >= most ? (kidsMode ? 'Six already chosen' : 'Three already chosen') : '', run: function () {
+        if (chosen) keep(roots.filter(function (r) { return r.id !== here.id; }));
+        else if (roots.length < most) keep(roots.concat([{ id: here.id, title: here.title }]));
+        else { showMessage((kidsMode ? 'Six' : 'Three') + ' folders are already chosen. Stop using one first.'); return; }
+        ctl.render();
       } });
       if (loading) rows.push(info('Loading…'));
       entries.containers.forEach(function (c) { rows.push({ label: c.title, value: 'Open', run: function () { trail.push(c); load(); } }); });
@@ -686,17 +836,24 @@
     const n = nas();
     const trail = [];
     let entries = null, loading = false;
-    const ctl = openPage('Films & TV', 'Titles come straight from your NAS. DLNA has no posters, search or synchronised progress, so none are shown.', function () {
-      if (!n || !n.controlUrl) return [info(U.Dlna.FIND_YOUR_NAS), { label: 'Enter the media server address', run: function () { closeTop(); openSettings(); openCategory(4); } }];
-      const roots = U.Dlna.collections(n.roots);
+    // KIDS-01: in Kids the library is the Kids folders only, rating-checked here and again with the server at play time.
+    const child = kids();
+    const ctl = openPage('Films & TV', child ? 'Kids films and TV, from the folders an adult chose.' : 'Titles come straight from your NAS. DLNA has no posters, search or synchronised progress, so none are shown.', function () {
+      if (child) {
+        if (!n || !n.controlUrl || !kidsFolders().length) return [info(U.Kids.ASK_ADULT)];
+      } else {
+        if (!n || !n.controlUrl) return [info(U.Dlna.FIND_YOUR_NAS), { label: 'Enter the media server address', run: function () { closeTop(); openSettings(); openCategory(4); } }];
+      }
+      const roots = child ? kidsFolders() : U.Dlna.collections(n.roots);
       if (!roots.length) return [info('No folders are chosen yet.'), { label: 'Choose your film and TV folders', run: function () { pickFolders(); } }];
       if (!trail.length) return roots.map(function (r) { return { label: r.title, value: 'Open', run: function () { trail.push(r); load(); } }; });
       const rows = [];
       if (loading) rows.push(info('Loading…'));
       if (entries) {
-        entries.containers.forEach(function (c) { rows.push({ label: c.title, value: 'Open', run: function () { trail.push(c); load(); } }); });
-        entries.items.forEach(function (it) { rows.push({ label: it.title, value: it.duration ? it.duration.replace(/\.\d+$/, '') : '', run: function () { play(it); } }); });
-        if (!entries.containers.length && !entries.items.length) rows.push(info('Nothing to watch in this folder.'));
+        const shown = child ? kidsOnly(entries, roots) : entries;
+        shown.containers.forEach(function (c) { rows.push({ label: c.title, value: 'Open', run: function () { trail.push(c); load(); } }); });
+        shown.items.forEach(function (it) { rows.push({ label: it.title, value: it.duration ? it.duration.replace(/\.\d+$/, '') : '', run: function () { if (child) kidsPlay(it, trail[0].id); else startPlay(it); } }); });
+        if (!shown.containers.length && !shown.items.length) rows.push(info('Nothing to watch in this folder.'));
       }
       return rows;
     }, 'library');
@@ -711,8 +868,35 @@
         loading = false; entries = err ? { containers: [], items: [] } : all;
         if (err) showMessage(U.Dlna.message(err));
         if (nav.top().ctl === ctl) ctl.render();
-      });
+      }, undefined, child);
     }
+    /** Kids browsing: folders without a refused rating, and titles the Kids policy allows inside this Kids folder. */
+    function kidsOnly(all, roots) {
+      const ids = roots.map(function (r) { return r.id; });
+      return {
+        containers: all.containers.filter(function (c) { return U.Kids.ratings(c.ratings) !== U.Kids.REFUSED; }),
+        items: all.items.filter(function (it) { return U.Kids.allows(U.Catalogue.fromDlna(it, n.controlUrl, trail[0].id), ids); })
+      };
+    }
+  }
+  /**
+   * KIDS-01 at play time: still Kids, still a Kids folder for this server, the title's rating allowed, and the media
+   * server's own parent chain reaches a Kids folder with no refused rating on the way. Anything else is refused.
+   */
+  function kidsPlay(it, rootId) {
+    const n = nas();
+    const ids = kidsFolders().map(function (f) { return f.id; });
+    if (!kids()) { startPlay(it); return; }
+    if (!n || !n.controlUrl || !U.Kids.allows(U.Catalogue.fromDlna(it, n.controlUrl, rootId), ids)) { showMessage(U.Kids.NOT_FOR_KIDS); return; }
+    const from = nav.top().ctl;
+    showMessage('Checking…', 15000);
+    U.Kids.playable(it.id, ids, function (id, cb) {
+      dlna.metadata(n.controlUrl, id, function (err, o) { cb(err, o ? U.Catalogue.fromDlna(o, n.controlUrl, '') : null); });
+    }, function (ok) {
+      $('toast').hidden = true;
+      if (!ok) { showMessage(U.Kids.NOT_FOR_KIDS); return; }
+      if (kids() && nav.top().ctl === from) startPlay(it);
+    });
   }
 
   // ---------------------------------------------------------------- player (AVPlay)
@@ -733,10 +917,34 @@
     if (state === 'playing') barTimer = window.setTimeout(function () { bar.classList.add('quiet'); }, 4000);
     if (state === 'ended' && nav.top().name === 'player') closeTop();
   }
-  function play(item) {
+  /** CW-01: where the title was left in this profile, on this TV only. Offered, never forced; 0 when there is none. */
+  let playing = null;   // { key, profile } of the title in the player, for recording its place
+  function startPlay(item) {
+    const key = U.Resume.key(item.url);
+    const at = U.Resume.load(safeStorage(), S.profiles.current).position(key, Date.now());
+    if (!at) { play(item, 0); return; }
+    openSheet({ title: item.title, rows: [
+      { label: 'Resume from ' + time(at) + ' (on this TV)', run: function () { closeTop(); play(item, at); } },
+      { label: 'Start from the beginning', run: function () { closeTop(); play(item, 0); } },
+      { label: 'Cancel', run: function () { closeTop(); } }
+    ] });
+  }
+  /** Keeps the place in the profile that started the title. Nothing is recorded for a title that never showed a picture. */
+  function recordPlace() {
+    if (!playing) return;
+    const ended = player.state === 'ended';
+    if (!ended && player.firstFrameMs === null) return;
+    const duration = player.duration > 0 ? player.duration : 0;
+    const position = ended ? Math.max(player.position, duration) : player.position;
+    const places = U.Resume.load(safeStorage(), playing.profile);
+    places.record(playing.key, position, duration, Date.now());
+    U.Resume.save(safeStorage(), playing.profile, places);
+  }
+  function play(item, startMs) {
     const layer = nav.push('player');
     const ctl = {};
     layer.ctl = ctl;
+    playing = { key: U.Resume.key(item.url), profile: U.Profiles.stored(S.profiles.current) };
     ctl.key = function (a) {
       if (a === 'ok' || a === 'playpause') player.toggle();
       else if (a === 'play') player.play();
@@ -747,6 +955,7 @@
       else renderPlayer(player.state, {});
     };
     ctl.close = function () {
+      recordPlace(); playing = null;
       player.stop();
       document.body.classList.remove('playing');
       $('player').hidden = true; $('scene').hidden = false; $('page').hidden = false;
@@ -754,7 +963,7 @@
     $('player-title').textContent = item.title;
     $('scene').hidden = true; $('page').hidden = true; $('home').hidden = true; $('player').hidden = false;
     document.body.classList.add('playing');
-    player.open(item.url, 0);
+    player.open(item.url, startMs > 0 ? startMs : 0);
   }
 
   // ---------------------------------------------------------------- Wallpaper (Unified TV's own; never Art Mode)
@@ -841,6 +1050,7 @@
     if (kind === 'status') { haStatus = d.text; renderNotice(); renderSettings(); if (!$('alarm').hidden) renderAlarms(false); }
     else if (kind === 'alarms') renderAlarms(d.fresh);
     else if (kind === 'ring') showDoorbell();
+    else if (kind === 'person') showPerson();
     else if (kind === 'reminder') showMessage(d.text, 8000);
   }
   /** Mirrors Android's render(): the full screen while any alarm is unacknowledged, then a banner while any is active. */
@@ -848,7 +1058,7 @@
     const emergency = policy.emergency(), screen = policy.screen();
     if (screen) {
       if (fresh || $('alarm').hidden) {
-        dismissDoorbell(true); $('toast').hidden = true; exitWallpaper();
+        dismissDoorbell(true); $('toast').hidden = true; hidePerson(); exitWallpaper();
         if (player.state === 'playing' || player.state === 'buffering') player.pause();
         alarmIndex = -1; alarmEntity = null;
       }
@@ -923,19 +1133,41 @@
     n.style.whiteSpace = 'pre-line';
     n.hidden = !lines.length;
   }
+  /** The doorbell's own name from Notifications settings, or none. */
+  function doorName() { return String(S.alerts.doorName || '').trim().substring(0, 40); }
+  /**
+   * RING-03: a doorbell press shows the card without taking focus, so whatever had focus keeps it and Back (which only
+   * closes the card) leaves the viewer exactly where they were. The Frame has no live camera yet and the card says so;
+   * it never shows a still as live. It closes by itself after 45 seconds.
+   */
   function showDoorbell(at) {
     if (policy.emergency()) return;
     doorbellAt = at || Date.now();
+    hidePerson();
     const card = $('doorbell');
     card.innerHTML = '';
-    card.appendChild(el('h2', '', 'Doorbell'));
-    card.appendChild(el('p', '', 'Someone is at the door · ' + hhmm(doorbellAt)));
-    card.appendChild(el('p', '', 'The live camera isn\'t available in the Frame app yet.'));
-    card.appendChild(el('p', '', 'Press Back to close.'));
+    card.appendChild(el('h2', '', doorName() || 'Doorbell'));
+    card.appendChild(el('p', '', 'The doorbell was pressed at ' + hhmm(doorbellAt) + '.'));
+    card.appendChild(el('p', '', 'Live view isn\'t available on this TV yet.'));
+    card.appendChild(el('p', '', 'Back to close'));
     card.hidden = false;
     window.clearTimeout(doorbellTimer);
     doorbellTimer = window.setTimeout(function () { dismissDoorbell(); }, U.Alerts.RING_STILL_RELEVANT);
   }
+  /**
+   * RING-02: a confirmed person, a small toast naming the doorbell for 5 seconds. Never a camera, never focus, never
+   * during an emergency or over the doorbell card, and in Kids only while "Show person alerts in Kids" is on.
+   */
+  function showPerson() {
+    if (policy.emergency() || !$('alarm').hidden || !$('doorbell').hidden) return;
+    if (!U.Alerts.personToastAllowed(kids(), S.profiles.kidsPersonAlerts)) return;
+    const t = $('person');
+    t.textContent = doorName() ? 'Person at ' + doorName() : 'Person at the door';
+    t.hidden = false;
+    window.clearTimeout(personTimer);
+    personTimer = window.setTimeout(hidePerson, U.Alerts.PERSON_TOAST_MS);
+  }
+  function hidePerson() { window.clearTimeout(personTimer); $('person').hidden = true; }
   function dismissDoorbell(quiet) {
     window.clearTimeout(doorbellTimer);
     if ($('doorbell').hidden) return;
@@ -996,6 +1228,7 @@
       saveUi();
       document.body.classList.add('paused');
       window.clearTimeout(idleTimer);
+      recordPlace();
       player.hide();
       if (ha) { ha.stop(); haStatus = U.Ha.STATUS.OFFLINE; }
     } else {
