@@ -40,7 +40,14 @@ public final class SettingsActivity extends Screen {
         if(state==null&&getIntent().getBooleanExtra("stopAlerts",false))stopAlerts();
     }
     @Override protected void onDestroy(){if(teamWorker!=null)teamWorker.interrupt();super.onDestroy();}
-    private void enter(){for(int i=0;i<details.getChildCount();i++){View v=details.getChildAt(i);if(v.isFocusable()){v.requestFocus();return;}}}
+    /** Right from the rail: the first focusable control in the panel, however deeply it sits in a row or group. */
+    private void enter(){View first=firstFocusable(details);if(first!=null)first.requestFocus();}
+    private static View firstFocusable(View v){
+        if(v.getVisibility()!=View.VISIBLE)return null;
+        if(!(v instanceof ViewGroup))return v.isFocusable()?v:null;
+        ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View f=firstFocusable(g.getChildAt(i));if(f!=null)return f;}
+        return null;
+    }
     @Override Button button(String title,Runnable action){Button b=super.button(title,action);b.setTextSize(17);b.setOnKeyListener((v,key,e)->{if(key==KeyEvent.KEYCODE_DPAD_LEFT){if(e.getAction()==KeyEvent.ACTION_DOWN&&category>=0)navigation[category].requestFocus();return true;}return false;});return b;}
     private void heading(String title,String description){details.removeAllViews();column=details;text(title,25);text(description,17);}
     private void section(String title){TextView t=text(title,20);t.setPadding(8,dp(14),8,4);}

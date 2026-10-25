@@ -69,6 +69,7 @@ public class SettingsJourneyTest {
             assertNotNull(text(root,AlarmWatch.NOT_CONFIGURED_TEXT));assertNull(text(root,"Doorbell presses and smoke or carbon monoxide alarms always show"));
             find(root,"Stop household alerts").performClick();assertFalse("nothing stops before confirmation",prefs().getBoolean(AlarmWatch.STOPPED,false));
             ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();   // a dialog button's click is delivered through the main looper
             assertTrue(prefs().getBoolean(AlarmWatch.STOPPED,false));assertNotNull(text(root,AlarmWatch.OFF_NOTICE));
         }
     }
