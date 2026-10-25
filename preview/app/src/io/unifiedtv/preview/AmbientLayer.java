@@ -28,6 +28,8 @@ final class AmbientLayer extends FrameLayout {
         postDelayed(this, STEP_MS);
     } };
     private String current = "";
+    /** The group on show (kept here so place() never looks it up while iterating the access-ordered map). */
+    private FrameLayout on;
     private boolean drift = true;
 
     AmbientLayer(Context c) {
@@ -40,7 +42,7 @@ final class AmbientLayer extends FrameLayout {
     void show(String id, boolean animate) {
         if (id.equals(current)) return;
         current = id;
-        FrameLayout target = group(id);
+        FrameLayout target = group(id); on = target;
         target.bringToFront();
         target.animate().cancel();
         if (!animate) {
@@ -54,10 +56,30 @@ final class AmbientLayer extends FrameLayout {
         place(android.os.SystemClock.uptimeMillis() / 1000.0);
     }
 
-    /** Drift on or off; off leaves the lights at rest (Keep the background still, Reduce motion). */
+    /** Drift on or off; off leaves the lights at rest (Keep the background still, Reduce motion, the TV's own setting). */
     void drift(boolean on) { drift = on; place(android.os.SystemClock.uptimeMillis() / 1000.0); if (!on) pause(); else resume(); }
-    void resume() { if (drift && !running && getVisibility() == VISIBLE) { running = true; postDelayed(step, STEP_MS); } }
+    /** Starts the step loop if drift is on and the layer can be seen; safe to call any number of times. */
+    void resume() { if (drift && !running && getVisibility() == VISIBLE) { running = true; removeCallbacks(step); postDelayed(step, STEP_MS); } }
     void pause() { running = false; removeCallbacks(step); }
+    /** Whether the light is drifting right now (the step loop is running). */
+    boolean drifting() { return running; }
+
+    /** Said, in plain words, wherever the household looks for why Home's background isn't moving. */
+    static final String TV_ANIMATIONS_OFF = "This TV has its animations switched off, so the Home background stays still. To see it move gently, switch animations back on in the TV's own settings.";
+    /**
+     * Why the light is still, or null when it drifts. Drift is on by default; it stops only for the household's own choices
+     * (Keep the Home background still, Reduce motion, Lightweight rendering) or the TV's own animation setting, which
+     * Unified TV respects rather than overrides (spec 32 / PRODUCT_SPEC: honour the system's reduced-motion preference).
+     */
+    static String stillReason(boolean still, boolean calm, boolean light, boolean tvAnimations) {
+        if (calm) return "Reduce motion is on, so the Home background stays still.";
+        if (light) return "Lightweight rendering is on, so Home shows a still picture of each app's light.";
+        if (still) return "Keep the Home background still is on.";
+        if (!tvAnimations) return TV_ANIMATIONS_OFF;
+        return null;
+    }
+    /** The TV's own animation setting: false when the system has animations switched off (duration scale 0). */
+    static boolean tvAnimations() { return android.animation.ValueAnimator.areAnimatorsEnabled(); }
 
     private void hideOthers(View keep) {
         for (FrameLayout g : groups.values()) if (g != keep) { g.animate().cancel(); g.setAlpha(0f); }
@@ -98,7 +120,7 @@ final class AmbientLayer extends FrameLayout {
         int w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
         for (FrameLayout g : groups.values()) {
-            if (g.getAlpha() <= 0f && g != groups.get(current)) continue;
+            if (g.getAlpha() <= 0f && g != on) continue;
             for (int i = 0; i < g.getChildCount(); i++) {
                 View v = g.getChildAt(i);
                 if (!(v.getTag() instanceof AmbientMesh.Light)) continue;
@@ -113,5 +135,8 @@ final class AmbientLayer extends FrameLayout {
     }
 
     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) { super.onSizeChanged(w, h, oldw, oldh); post(() -> place(android.os.SystemClock.uptimeMillis() / 1000.0)); }
+    // The loop follows the window as well as Home's own pause and resume, so it always restarts once Home is seen again.
+    @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); resume(); }
+    @Override protected void onWindowVisibilityChanged(int visibility) { super.onWindowVisibilityChanged(visibility); if (visibility == VISIBLE) resume(); else pause(); }
     @Override protected void onDetachedFromWindow() { pause(); super.onDetachedFromWindow(); }
 }

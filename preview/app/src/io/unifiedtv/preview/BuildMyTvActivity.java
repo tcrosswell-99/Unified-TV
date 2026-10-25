@@ -28,7 +28,8 @@ import java.util.*;
  * only on Save. Kids (SET-BUILD-07): Kids choices are their own; only adult-allowed apps can be chosen, and the app store
  * is never offered. Live TV stays fail-closed whatever is chosen here: installed is not protected.
  */
-public final class BuildMyTvActivity extends Screen {
+/* OD-11: a setup screen, so the glass sidebar over a still Home (SheetScreen). */
+public final class BuildMyTvActivity extends SheetScreen {
     /** The public way in, for Settings and Home. */
     public static void start(Activity a){try{a.startActivity(new Intent(a,BuildMyTvActivity.class));}catch(RuntimeException e){Toast.makeText(a,"Build My TV couldn't open",Toast.LENGTH_LONG).show();}}
 
@@ -40,7 +41,7 @@ public final class BuildMyTvActivity extends Screen {
     private List<String> arrangement;private final List<String> left=new ArrayList<>();private int picked=-1;
     private String focus="",at=HubBuilder.OVERVIEW;
 
-    @Override public void onCreate(Bundle b){super.onCreate(b);
+    @Override public void onCreate(Bundle b){super.onCreate(b);wide(true);   // cards and the dock preview: a wide task
         prefs=getSharedPreferences("unified-tv-preview",0);profile=Profiles.current(prefs);kids=Profiles.kids(prefs);
         room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");
         approved=KidsPolicy.apps(prefs.getString(KidsPolicy.APPS_PREF,""));state=HubBuilder.load(prefs,profile);scan();

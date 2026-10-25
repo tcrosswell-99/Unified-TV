@@ -44,13 +44,16 @@ final class VpnGate {
         return routed?"NordVPN is on for this TV. Live TV stays locked until its protection has been checked on this TV."
             :"NordVPN is connected but isn't covering this app (it may be set to leave some apps out). Live TV stays locked.";
     }
+    /**
+     * Opens NordVPN at its own main screen (its normal TV entry, never a settings screen it was left on), as a short visit
+     * so Back comes back to Unified TV where Android allows (Launch.visit). Kids: NordVPN is another app, so it opens only
+     * if an adult approved it (Launch's one Kids check, inside visit). The shield's state still follows Android's own
+     * report through watch(), whatever happens in NordVPN.
+     */
     static void connect(Activity a){
-        // Kids: NordVPN is another app, so it opens only if an adult approved it (Launch's one Kids check).
-        String no=Launch.kidsRefusal(a,"com.nordvpn.android","NordVPN");if(no!=null){Toast.makeText(a,no,Toast.LENGTH_LONG).show();return;}
-        android.content.pm.PackageManager pm=a.getPackageManager();Intent launch=pm.getLeanbackLaunchIntentForPackage("com.nordvpn.android");
-        if(launch==null)launch=pm.getLaunchIntentForPackage("com.nordvpn.android");
-        if(launch!=null){try{a.startActivity(launch);return;}catch(RuntimeException ignored){}}
-        Toast.makeText(a,"NordVPN is not available on this TV",Toast.LENGTH_LONG).show();
+        String why=a.getPackageManager().getLeanbackLaunchIntentForPackage(LiveTvProtection.NORDVPN)==null&&a.getPackageManager().getLaunchIntentForPackage(LiveTvProtection.NORDVPN)==null
+            ?"NordVPN is not available on this TV":Launch.visit(a,LiveTvProtection.NORDVPN,"NordVPN");
+        if(why!=null&&!why.isEmpty())Toast.makeText(a,why,Toast.LENGTH_LONG).show();
     }
     static void show(Activity a){show(a,null);}
     /** The Live TV sheet; a reason from the protection decision replaces the connection explanation. */

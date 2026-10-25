@@ -38,4 +38,11 @@ public class HomeUtilitiesTest {
         assertEquals(0,libraryLanding(new long[]{0,0},"continue"));
         assertEquals("no titles (no NAS, offline, empty Kids): the Library card",0,libraryLanding(new long[0],"continue"));
     }
+    // Owner, TCL, 25 October 2026: after opening AirPin, the label says it is checking rather than repeating a stale answer.
+    @Test public void airPlayLabelSaysCheckingWhileItLooksAgain(){
+        assertEquals("AirPlay ready",label(AIRPLAY,"",true,true));
+        assertEquals("AirPlay: checking AirPin…",label(AIRPLAY,"",false,true));
+        assertEquals("AirPlay: AirPin isn't offering AirPlay right now",label(AIRPLAY,"",false,false));
+        assertEquals(label(AIRPLAY,"",false),label(AIRPLAY,"",false,false));
+    }
 }

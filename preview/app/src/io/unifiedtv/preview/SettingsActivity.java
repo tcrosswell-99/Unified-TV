@@ -32,6 +32,10 @@ public final class SettingsActivity extends Screen {
     private static final String[] GROUPS={"Personalise","Connected services","System"};private static final int[] GROUP_START={0,4,8};
     /** Tasks inside a category: a wider sheet for complex ones, the same width for a collapsed Advanced section. */
     static final String NAVIGATION="navigation",APPEARANCE_ADVANCED="appearance-advanced",ADVANCED="advanced";
+    /** Setup tasks (SetupPages): phone setup per service ("phone-" + PhoneService id), Home Assistant's Advanced, the team
+     *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-11). */
+    static final String PHONE_HA="phone-"+PhoneService.HA,PHONE_FOOTBALL="phone-"+PhoneService.FOOTBALL,PHONE_TMDB="phone-"+PhoneService.TMDB,
+        HA_ADVANCED="ha-advanced",TEAM="team",HOUSEHOLD="household";
     private static final Set<Integer> NAVIGATION_KEYS=new HashSet<>(Arrays.asList(KeyEvent.KEYCODE_DPAD_UP,KeyEvent.KEYCODE_DPAD_DOWN,KeyEvent.KEYCODE_DPAD_LEFT,KeyEvent.KEYCODE_DPAD_RIGHT,KeyEvent.KEYCODE_DPAD_CENTER,
         KeyEvent.KEYCODE_ENTER,KeyEvent.KEYCODE_NUMPAD_ENTER,KeyEvent.KEYCODE_BACK,KeyEvent.KEYCODE_ESCAPE,KeyEvent.KEYCODE_MENU,KeyEvent.KEYCODE_TAB,KeyEvent.KEYCODE_BUTTON_A,KeyEvent.KEYCODE_BUTTON_B,KeyEvent.KEYCODE_BUTTON_SELECT));
 
@@ -42,7 +46,7 @@ public final class SettingsActivity extends Screen {
     private SharedPreferences prefs;
     /** SET-093: a navigation change is previewed here and applied only on confirmation; null when there is none. */
     private List<String> draftUtilities;
-    private Thread teamWorker;
+    private SetupPages setup;
     private float unit;private int screenWidth;
     @Override public void onCreate(Bundle state){super.onCreate(state);autoFocusButtons=false;HouseholdSettings.ensure(this);prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
         android.util.DisplayMetrics m=getResources().getDisplayMetrics();screenWidth=Math.max(1,m.widthPixels);unit=Math.max(.5f,Math.min(m.widthPixels/1920f,m.heightPixels/1080f));
@@ -59,18 +63,25 @@ public final class SettingsActivity extends Screen {
         if(state!=null)overlay.restore(start,state.getString("task"),state.getBoolean("wide",false),state.getInt("row",0));else if(start>=0)overlay.open(start);
         root.addView(sheet,new FrameLayout.LayoutParams(sheetWidth(),-1,Gravity.END));
         // Attach first, then focus: a view focused before it is in the window never becomes the window's focus.
+        setup=new SetupPages(this);
         setContentView(root);render(false);landing();
         if(state==null)slideIn();
         // The notification's "Stop alerts" lands here, so stopping always asks for the adult PIN (owner exception to SET-053).
         if(state==null&&getIntent().getBooleanExtra("stopAlerts",false))stopAlerts();
+        // Another screen asked for a setup task (Build My TV, an older setup entry): adults only, behind the PIN.
+        String asked=getIntent().getStringExtra("task");
+        if(state==null&&asked!=null&&SetupPages.owns(asked))EditLock.ask(this,()->expandTask(asked));
     }
-    @Override protected void onDestroy(){if(teamWorker!=null)teamWorker.interrupt();super.onDestroy();}
+    @Override protected void onDestroy(){if(setup!=null)setup.close();super.onDestroy();}
+    /** Phone setup stops answering as soon as Settings leaves the screen; coming back shows a fresh code. */
+    @Override protected void onStop(){if(setup!=null)setup.paused();super.onStop();}
+    @Override protected void onRestart(){super.onRestart();String t=overlay.task();if(overlay.page()==SettingsOverlay.Phase.TASK&&t!=null&&t.startsWith("phone-"))refresh();}
     /** For tests and diagnostics: where the overlay is, and the sheet itself. */
     SettingsOverlay overlay(){return overlay;}
     View sheet(){return sheet;}
 
     // --- Material, size and motion (module 13 §A tokens, at 1080p and scaled to this screen)
-    private int px(float at1080){return Math.round(at1080*unit);}
+    int px(float at1080){return Math.round(at1080*unit);}
     private float textPx(float at1080){return at1080*unit*getResources().getConfiguration().fontScale;}
     private float shadow(){return px(28);}
     private boolean calm(){return prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();}
@@ -117,6 +128,7 @@ public final class SettingsActivity extends Screen {
     // --- Pages
     /** Builds the header and body for where the overlay is; motion glides the new content in. */
     private void render(boolean motion){
+        if(setup!=null)setup.showing(overlay.page()==SettingsOverlay.Phase.TASK?overlay.task():null);
         applyWidth(motion);header.removeAllViews();body.removeAllViews();Arrays.fill(rows,null);column=body;
         int c=overlay.category();
         switch(overlay.page()){
@@ -157,6 +169,9 @@ public final class SettingsActivity extends Screen {
                 if(!Profiles.kids(this))button("Set up Your Films & TV",()->startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("setup",true)));}
             else button("Your Films & TV",()->startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("setup",true)));
             button("Media server accounts",()->new AlertDialog.Builder(this).setTitle("Media account").setItems(new String[]{"Adults","Kids"},(d,n)->connection(n==0?"media-adult":"media-child")).show());
+            if(!Profiles.kids(this)){section("Film posters");
+                chevron(button("Film posters: "+(TmdbKey.saved(this)?"key saved":"not set up"),()->EditLock.ask(this,()->expandTask(PHONE_TMDB))));
+                text("Posters and film details from TMDB, with your own free key. You add it on your phone.",15);section("About the library");}
             text("Library opens from its own dock tile or by pressing Down on Home. Playback, resume and Kids limits stay on this TV.",16);break;
         case PROFILES:profiles();break;
         case APPS:
@@ -184,15 +199,34 @@ public final class SettingsActivity extends Screen {
         default:about();break;
         }
     }
-    private String taskTitle(){return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":"Advanced";}
-    private String taskSubtitle(){return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":"Owner checks, for Adults";}
-    private void task(){String t=overlay.task();if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else advanced();}
+    private String taskTitle(){if(SetupPages.owns(overlay.task()))return SetupPages.title(overlay.task());return NAVIGATION.equals(overlay.task())?"Navigation & Shortcuts":APPEARANCE_ADVANCED.equals(overlay.task())?"Advanced appearance":"Advanced";}
+    private String taskSubtitle(){if(SetupPages.owns(overlay.task()))return SetupPages.subtitle(overlay.task());return NAVIGATION.equals(overlay.task())?"Utilities, and where Down lands":APPEARANCE_ADVANCED.equals(overlay.task())?"Restore the defaults":"Owner checks, for Adults";}
+    private void task(){String t=overlay.task();if(SetupPages.owns(t))setup.task(t);else if(NAVIGATION.equals(t))navigation();else if(APPEARANCE_ADVANCED.equals(t))appearanceAdvanced();else advanced();}
 
     // --- Navigation inside the sheet (module 13 §B; SET-GLASS-06)
-    private void open(int c){if(overlay.open(c)){render(true);focusAt(0);}}
+    private void open(int c){if(overlay.open(c)){if(setup!=null)setup.entered(c);render(true);focusAt(0);}}
     private void expand(String task,boolean wider){if(overlay.expand(task,wider,focusIndex())){render(true);focusAt(0);}}
+    /** Opens a setup task from wherever the sheet is: under its own category (keeping the current one when it fits), in
+     *  the same half-width sheet. Back returns to that category's detail. */
+    void expandTask(String task){
+        if(!overlay.acceptsInput())return;
+        int c=SetupPages.category(task,overlay.atRoot()?-1:overlay.category()),row=focusIndex();
+        if(overlay.page()==SettingsOverlay.Phase.TASK)overlay.back();
+        if(overlay.atRoot()||overlay.category()!=c){overlay.open(c);row=0;}
+        if(overlay.expand(task,false,row)){render(true);focusAt(0);}
+    }
+    /** Whether the sheet is on this category's detail (category ≥ 0, task null) or on this task (task non-null). */
+    boolean on(int category,String task){
+        if(!overlay.acceptsInput())return false;
+        if(task!=null)return overlay.page()==SettingsOverlay.Phase.TASK&&task.equals(overlay.task());
+        return overlay.page()==SettingsOverlay.Phase.DETAIL&&overlay.category()==category;
+    }
+    /** Redraws the page in place after a change, keeping focus and scroll. */
+    void refresh(){if(overlay.acceptsInput()&&!overlay.atRoot())show(overlay.category());}
+    /** A new sub-page inside a task (a league, a search): drawn from the top. */
+    void redraw(){if(!overlay.acceptsInput())return;render(true);focusAt(0);}
     /** A refresh after a change re-renders the current page in place; another category opens it in the sheet. */
-    private void show(int c){
+    void show(int c){
         if(!overlay.acceptsInput())return;
         if(c!=overlay.category()||overlay.atRoot()){open(c);return;}
         int at=focusIndex(),y=scroll.getScrollY();render(false);scroll.scrollTo(0,y);focusAt(Math.max(0,at));
@@ -200,6 +234,7 @@ public final class SettingsActivity extends Screen {
     /** Back: task → detail (the row that opened it) → root (the category's row) → closed. */
     void back(){
         if(!overlay.acceptsInput())return;
+        if(overlay.page()==SettingsOverlay.Phase.TASK&&setup!=null&&setup.back(overlay.task()))return;
         overlay.back();
         if(!overlay.acceptsInput()){leave();return;}
         render(true);
@@ -255,11 +290,11 @@ public final class SettingsActivity extends Screen {
         return v;
     }
     private TextView label(String s,float size,int colour){TextView t=new TextView(this);t.setText(s);t.setTextColor(colour);t.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(size));t.setSingleLine(true);t.setEllipsize(android.text.TextUtils.TruncateAt.END);return t;}
-    private void group(String title){TextView t=label(title,18,SettingsGlass.GROUP);t.setLetterSpacing(.06f);t.setPadding(px(12),px(18),px(12),px(6));t.setFocusable(false);body.addView(t);}
+    void group(String title){TextView t=label(title,18,SettingsGlass.GROUP);t.setLetterSpacing(.06f);t.setPadding(px(12),px(18),px(12),px(6));t.setFocusable(false);body.addView(t);}
     /** A raised translucent card that the following rows and text go into (a local scrim for readability). */
     private void card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(px(12),px(8),px(12),px(8));c.setBackground(SettingsGlass.card(px(18),strong()));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=px(4);lp.bottomMargin=px(10);body.addView(c,lp);column=c;}
-    private void section(String title){group(title);card();}
+    void section(String title){group(title);card();}
     private LinearLayout.LayoutParams rowParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,px(4),0,px(4));return lp;}
     private Drawable rowBackground(){return SettingsGlass.row(px(14),Math.max(2,px(3)),strong(),calm()?0:SettingsOverlay.FOCUS_MS);}
     /** A focusable row, 64 px at 1080p, label on the left; it does nothing once the overlay is closing. */
@@ -273,6 +308,8 @@ public final class SettingsActivity extends Screen {
     }
     @Override Button button(String title,Runnable action){Button b=row(title,action);column.addView(b,rowParams());return b;}
     /** A row that opens a task or collapsed section inside the same sheet; wider ones expand the sheet to ~75%. */
+    /** A trailing chevron on a row that opens a task. */
+    Button chevron(Button b){b.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(null,true,false,textPx(19)),null);b.setCompoundDrawablePadding(px(16));return b;}
     private Button taskRow(String title,String task,boolean wider,String state){Button b=button(title,()->expand(task,wider));b.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(state,true,false,textPx(19)),null);b.setCompoundDrawablePadding(px(16));return b;}
     /** Secondary (blue-grey, 21 px) for notes, primary (white, 25 px) for a state line, as the old sizes meant. */
     @Override TextView text(String s,int size){
@@ -377,8 +414,8 @@ public final class SettingsActivity extends Screen {
         TextView status=text(alarms==AlarmWatch.State.OFF?AlarmWatch.OFF_NOTICE:alarms==AlarmWatch.State.NOT_CONFIGURED?AlarmWatch.NOT_CONFIGURED_TEXT:"Smoke and carbon monoxide alarms: shown on this TV",19);
         status.setFocusable(false);text(AlarmWatch.words(alarms),15);
         if(!ha){text("Doorbell and alarm alerts come from Home Assistant, which isn't set up on this TV.",16);
-            button("Set up Home Assistant",()->EditLock.ask(this,()->connection("ha")));}
-        button("Doorbell, reminders & room setup",()->EditLock.ask(this,()->startActivity(new Intent(this,HouseholdActivity.class))));
+            chevron(button("Set up Home Assistant on your phone",()->EditLock.ask(this,()->expandTask(PHONE_HA))));}
+        else chevron(button("Doorbell, alarms & this TV",()->EditLock.ask(this,()->expandTask(HOUSEHOLD))));
         if(ha){
             section("Doorbell camera");
             String close=DoorbellCamera.close(prefs.getString(DoorbellCamera.CLOSE,""));
@@ -406,86 +443,8 @@ public final class SettingsActivity extends Screen {
             .setNegativeButton("Keep alerts on",null).show());
     }
 
-    // --- Smart Home
-    private void smartHome(){
-        boolean ha=haConfigured();
-        if(ha)button("Home Assistant",()->EditLock.ask(this,()->connection("ha")));
-        else{text("Home Assistant isn't set up. It brings doorbell, alarm and room features to this TV.",16);button("Set up Home Assistant",()->EditLock.ask(this,()->connection("ha")));}
-        section("Your team");
-        boolean api=FixtureFeed.apiConfigured(this);Fixtures.Team team=FixtureFeed.team(this);
-        if(!api){text("Football fixtures need a service. API-Football works with your own free key from api-football.com; it is kept encrypted on this TV and never shown again.",15);
-            if(!Profiles.kids(this))button("Add a service: Football fixtures (API-Football)",()->EditLock.ask(this,this::addKey));}
-        else{ApiFootball.Budget b=FixtureFeed.budget(this);text("Football fixtures: API-Football. Requests today: "+b.used+" of "+ApiFootball.DAILY_LIMIT+".",15);}
-        button("Your team: "+(team==null?"none":team.displayName),()->EditLock.ask(this,this::chooseTeam));
-        if(team!=null){
-            button("Badge: "+team.shortName+" on "+Fixtures.colourName(team.primary)+" and "+Fixtures.colourName(team.secondary),()->badgeColours(team));
-            if(!team.id.startsWith("api:"))button("Other names in the calendar: "+(team.aliases.isEmpty()?"none":String.join(", ",team.aliases)),()->aliases(team));
-            button("No team",()->{FixtureFeed.saveTeam(this,null);show(SMART_HOME);});
-        }
-        text("The matchday card appears on Home only on matchday: the match, the kick-off time or \"Live\". Scores are never shown. The badge is drawn by Unified TV from your team's short name and colours; no club crest is used. Without API-Football, a fixtures calendar chosen in household setup is used.",15);
-        if(api&&!Profiles.kids(this))button("Remove API-Football",()->EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle("Remove API-Football?").setMessage("The key and the fixtures kept on this TV are deleted.").setPositiveButton("Remove",(d,w)->{FixtureFeed.forgetKey(this);show(SMART_HOME);}).setNegativeButton("Cancel",null).show()));
-    }
-    private void addKey(){
-        EditText field=new EditText(this);field.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);field.setHint("Your API-Football key");field.setSaveEnabled(false);
-        field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-        new AlertDialog.Builder(this).setTitle("Football fixtures (API-Football)").setMessage("Enter the key from your API-Football account. It is used only to read fixtures, at most 100 requests a day.").setView(field)
-            .setPositiveButton("Save",(d,w)->{String key=field.getText().toString().trim();field.setText("");
-                if(!key.matches("[A-Za-z0-9]{16,64}")){note("That doesn't look like an API-Football key. Nothing was saved.");return;}
-                try{FixtureFeed.saveKey(this,key);note("Saved. Now choose your team.");}catch(Exception e){note("Couldn't save on this TV. Nothing was changed.");}show(SMART_HOME);})
-            .setNegativeButton("Cancel",null).show();
-    }
-    /** API-Football: country, league, then team, from the list read from the API (kept a week). Otherwise a name for the calendar's team. */
-    private void chooseTeam(){
-        if(!FixtureFeed.apiConfigured(this)){
-            EditText field=new EditText(this);field.setSingleLine(true);field.setHint("Your team's name, as you'd like it shown");Fixtures.Team t=FixtureFeed.team(this);if(t!=null)field.setText(t.displayName);
-            new AlertDialog.Builder(this).setTitle("Your team").setMessage("Used with the fixtures calendar chosen in household setup.").setView(field).setPositiveButton("Save",(d,w)->{String name=field.getText().toString().trim();
-                FixtureFeed.saveTeam(this,name.isEmpty()?null:new Fixtures.Team("calendar",name,"",t==null?Fixtures.COLOURS[0]:t.primary,t==null?Fixtures.COLOURS[1]:t.secondary,Fixtures.Sport.FOOTBALL,t==null?null:t.aliases));show(SMART_HOME);}).setNegativeButton("Cancel",null).show();
-            return;
-        }
-        org.json.JSONObject cat=FixtureFeed.catalogue(this);
-        if(cat.optLong("fetchedAt")>0){pickCountry(cat);if(ApiFootball.catalogueDue(cat.optLong("fetchedAt"),System.currentTimeMillis()))buildTeams(null);return;}
-        AlertDialog wait=new AlertDialog.Builder(this).setTitle("Reading the team list").setMessage("Fetching leagues and teams for England, Scotland, Wales and Northern Ireland. This takes a few minutes the first time and is kept for a week.").setNegativeButton("Close",null).show();
-        buildTeams(wait);
-    }
-    private void buildTeams(AlertDialog wait){
-        if(teamWorker!=null&&teamWorker.isAlive())return;
-        android.content.Context app=getApplicationContext();
-        teamWorker=new Thread(()->FixtureFeed.build(app,(cat,problem)->runOnUiThread(()->{
-            if(wait==null||!wait.isShowing())return;
-            int[] p=ApiFootball.progress(cat);
-            if(problem!=null)wait.setMessage(problem+(p[0]>0?"\n\nTeams from "+p[0]+" of "+p[1]+" leagues are ready to choose from.":""));
-            else if(cat.optLong("fetchedAt")>0){wait.dismiss();pickCountry(cat);}
-            else wait.setMessage("Read "+p[0]+" of "+p[1]+" leagues…");
-            if(problem!=null&&p[0]>0)wait.setButton(AlertDialog.BUTTON_POSITIVE,"Choose from these",(d,w)->pickCountry(cat));
-        })),"team-list");
-        teamWorker.setDaemon(true);teamWorker.start();
-    }
-    private void pickCountry(org.json.JSONObject cat){
-        String[] countries=ApiFootball.COUNTRIES;String[] names=new String[countries.length];for(int i=0;i<names.length;i++)names[i]=countries[i].replace('-',' ');
-        new AlertDialog.Builder(this).setTitle("Your team's country").setItems(names,(d,n)->pickLeague(cat,countries[n])).show();
-    }
-    private void pickLeague(org.json.JSONObject cat,String country){
-        org.json.JSONArray all=cat.optJSONArray("leagues");List<org.json.JSONObject> leagues=new ArrayList<>();
-        if(all!=null)for(int i=0;i<all.length();i++){org.json.JSONObject l=all.optJSONObject(i);if(l!=null&&country.equalsIgnoreCase(l.optString("country").replace(' ','-'))&&l.optJSONArray("teams")!=null&&l.optJSONArray("teams").length()>0)leagues.add(l);}
-        if(leagues.isEmpty()){note("No teams read for "+country.replace('-',' ')+" yet.");return;}
-        String[] names=new String[leagues.size()];for(int i=0;i<names.length;i++)names[i]=leagues.get(i).optString("name");
-        new AlertDialog.Builder(this).setTitle("League").setItems(names,(d,n)->pickTeam(leagues.get(n))).show();
-    }
-    private void pickTeam(org.json.JSONObject league){
-        org.json.JSONArray teams=league.optJSONArray("teams");String[] names=new String[teams.length()];for(int i=0;i<names.length;i++)names[i]=teams.optJSONObject(i).optString("name");
-        new AlertDialog.Builder(this).setTitle(league.optString("name")).setItems(names,(d,n)->{org.json.JSONObject t=teams.optJSONObject(n);Fixtures.Team old=FixtureFeed.team(this);
-            FixtureFeed.saveTeam(this,new Fixtures.Team("api:"+t.optInt("id"),t.optString("name"),t.optString("code"),old==null?Fixtures.COLOURS[0]:old.primary,old==null?Fixtures.COLOURS[1]:old.secondary,Fixtures.Sport.FOOTBALL,null));
-            note("Saved. Choose the badge colours next.");show(SMART_HOME);}).show();
-    }
-    private void badgeColours(Fixtures.Team t){
-        new AlertDialog.Builder(this).setTitle("Badge: main colour").setItems(Fixtures.COLOUR_NAMES,(d,a)->new AlertDialog.Builder(this).setTitle("Badge: second colour").setItems(Fixtures.COLOUR_NAMES,(d2,b)->{
-            FixtureFeed.saveTeam(this,new Fixtures.Team(t.id,t.displayName,t.shortName,Fixtures.COLOURS[a],Fixtures.COLOURS[b],t.sport,t.aliases));show(SMART_HOME);}).show()).show();
-    }
-    private void aliases(Fixtures.Team t){
-        EditText field=new EditText(this);field.setSingleLine(true);field.setText(String.join(", ",t.aliases));field.setHint("Other names, separated by commas");
-        new AlertDialog.Builder(this).setTitle("Other names in the calendar").setView(field).setPositiveButton("Save",(d,w)->{List<String> a=new ArrayList<>();for(String x:field.getText().toString().split(","))if(!x.trim().isEmpty())a.add(x.trim());
-            FixtureFeed.saveTeam(this,new Fixtures.Team(t.id,t.displayName,t.shortName,t.primary,t.secondary,t.sport,a));show(SMART_HOME);}).setNegativeButton("Cancel",null).show();
-    }
+    // --- Smart Home (SetupPages: Home Assistant status first, set up on the phone; football; Advanced in the sheet)
+    private void smartHome(){setup.smartHome();}
 
     // --- Live TV & Network Protection (SET-063: automatic verification only)
     private void liveTv(){

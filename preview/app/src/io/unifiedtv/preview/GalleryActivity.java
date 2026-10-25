@@ -12,7 +12,8 @@ import java.io.InputStream;
 import java.util.concurrent.*;
 
 /** Foreground-only gallery: no permanent clock, dock or status badges. */
-public final class GalleryActivity extends Screen {
+/* OD-11: a setup screen, so the glass sidebar over a still Home (SheetScreen). */
+public final class GalleryActivity extends SheetScreen {
     private final Handler timer=new Handler(Looper.getMainLooper());
     private final ExecutorService images=Executors.newSingleThreadExecutor();
     private JSONArray selected=new JSONArray();private ImageView image;private int index;private boolean active;private int generation;private int interval=45;private boolean paused;

@@ -23,49 +23,52 @@ final class AmbientMesh {
     }
 
     private static final Map<String, Palette> PALETTES = new HashMap<>();
+    // Drift amplitudes sit at the upper end of the agreed 2 to 5 % (owner, TCL, 25 October 2026: "nothing moves"): these
+    // lights are large and very soft, so a shift of 2 to 3 % of the screen over half a minute was below what the eye
+    // notices from the sofa. samsung/src/palettes.json carries the same numbers (samsung/test/palettes.test.js).
     static {
         // Crimson from the lower left, a softer band rising to the upper right; charcoal elsewhere.
         PALETTES.put("smartutube", new Palette(0xFF15171C, 0xFFE0303C,
-                new Light(.16f, .80f, .42f, 0xD8D42230, 31, 0f, .03f, .02f),
-                new Light(.38f, .56f, .30f, 0x8CA01C2A, 37, 1.7f, .025f, .03f),
-                new Light(.70f, .22f, .34f, 0x96B0202E, 27, 3.1f, .035f, .02f)));
+                new Light(.16f, .80f, .42f, 0xD8D42230, 31, 0f, .05f, .03f),
+                new Light(.38f, .56f, .30f, 0x8CA01C2A, 37, 1.7f, .04f, .05f),
+                new Light(.70f, .22f, .34f, 0x96B0202E, 27, 3.1f, .05f, .03f)));
         // Deliberately the darkest: a low red glow in the centre and a heavy vignette.
         PALETTES.put("netflix", new Palette(0xFF050203, 0xFFE50914,
-                new Light(.42f, .44f, .40f, 0xC0800A10, 34, 0f, .02f, .02f),
-                new Light(.66f, .30f, .28f, 0x7A60080E, 26, 2.2f, .03f, .025f)));
+                new Light(.42f, .44f, .40f, 0xC0800A10, 34, 0f, .03f, .03f),
+                new Light(.66f, .30f, .28f, 0x7A60080E, 26, 2.2f, .05f, .04f)));
         // Navy and indigo, with a cyan bloom rising from behind the dock.
         PALETTES.put("disney", new Palette(0xFF080E2C, 0xFF2D6BE0,
-                new Light(.32f, .34f, .40f, 0xC02A3FB8, 33, 0f, .03f, .02f),
-                new Light(.66f, .28f, .38f, 0xB03A6AD8, 29, 2.4f, .025f, .03f),
-                new Light(.50f, .48f, .30f, 0x7A5A40C8, 38, 4.0f, .02f, .02f),
-                new Light(.36f, .70f, .22f, 0x9C50D0F0, 23, 1.1f, .02f, .01f)));
+                new Light(.32f, .34f, .40f, 0xC02A3FB8, 33, 0f, .05f, .03f),
+                new Light(.66f, .28f, .38f, 0xB03A6AD8, 29, 2.4f, .04f, .05f),
+                new Light(.50f, .48f, .30f, 0x7A5A40C8, 38, 4.0f, .03f, .03f),
+                new Light(.36f, .70f, .22f, 0x9C50D0F0, 23, 1.1f, .03f, .02f)));
         // Magenta and deep pink, kept dark enough for white type.
         PALETTES.put("bbc", new Palette(0xFF1A0A14, 0xFFD6336F,
-                new Light(.46f, .18f, .42f, 0xC0B83672, 32, 0f, .03f, .02f),
-                new Light(.30f, .60f, .32f, 0xB4A8103F, 27, 2.0f, .025f, .03f),
-                new Light(.76f, .40f, .32f, 0xA0C04478, 36, 3.6f, .03f, .02f)));
+                new Light(.46f, .18f, .42f, 0xC0B83672, 32, 0f, .05f, .03f),
+                new Light(.30f, .60f, .32f, 0xB4A8103F, 27, 2.0f, .04f, .05f),
+                new Light(.76f, .40f, .32f, 0xA0C04478, 36, 3.6f, .05f, .03f)));
         // Restrained violet pools with calm space for the protection sheet.
         PALETTES.put("live", new Palette(0xFF100E26, 0xFF8A5CF0,
-                new Light(.45f, .46f, .40f, 0xA05A1AA0, 35, 0f, .025f, .02f),
-                new Light(.80f, .66f, .32f, 0x905828C0, 28, 2.6f, .03f, .025f),
-                new Light(.20f, .30f, .28f, 0x66302080, 39, 4.4f, .02f, .02f)));
+                new Light(.45f, .46f, .40f, 0xA05A1AA0, 35, 0f, .04f, .03f),
+                new Light(.80f, .66f, .32f, 0x905828C0, 28, 2.6f, .05f, .04f),
+                new Light(.20f, .30f, .28f, 0x66302080, 39, 4.4f, .03f, .03f)));
         // The warmest: peach, coral and pink flowing together, with dark edges kept.
         PALETTES.put("music", new Palette(0xFF181216, 0xFFF0507A,
-                new Light(.24f, .44f, .32f, 0xB0E07E62, 30, 0f, .035f, .03f),
-                new Light(.76f, .34f, .32f, 0xA8E58C68, 26, 1.9f, .03f, .035f),
-                new Light(.50f, .62f, .36f, 0xB4E04A72, 34, 3.3f, .03f, .02f),
-                new Light(.56f, .86f, .26f, 0x96F05062, 22, 5.0f, .025f, .015f)));
+                new Light(.24f, .44f, .32f, 0xB0E07E62, 30, 0f, .05f, .05f),
+                new Light(.76f, .34f, .32f, 0xA8E58C68, 26, 1.9f, .05f, .05f),
+                new Light(.50f, .62f, .36f, 0xB4E04A72, 34, 3.3f, .05f, .03f),
+                new Light(.56f, .86f, .26f, 0x96F05062, 22, 5.0f, .04f, .025f)));
         PALETTES.put("xbox", new Palette(0xFF07120A, 0xFF2CA243,
-                new Light(.36f, .40f, .40f, 0xA0167C2C, 33, 0f, .03f, .02f),
-                new Light(.72f, .62f, .30f, 0x80309A48, 27, 2.5f, .025f, .03f)));
+                new Light(.36f, .40f, .40f, 0xA0167C2C, 33, 0f, .05f, .03f),
+                new Light(.72f, .62f, .30f, 0x80309A48, 27, 2.5f, .04f, .05f)));
         PALETTES.put("tvplus", new Palette(0xFF07101E, 0xFF3D7FE0,
-                new Light(.40f, .40f, .40f, 0xA0244E9C, 32, 0f, .03f, .02f),
-                new Light(.72f, .60f, .30f, 0x80306CC0, 28, 2.2f, .025f, .03f)));
+                new Light(.40f, .40f, .40f, 0xA0244E9C, 32, 0f, .05f, .03f),
+                new Light(.72f, .60f, .30f, 0x80306CC0, 28, 2.2f, .04f, .05f)));
     }
     /** Any other app: a quiet slate light that keeps every label readable (spec 32.2 neutral fallback). */
     private static final Palette NEUTRAL = new Palette(0xFF0C121B, 0xFF7C93AE,
-            new Light(.40f, .38f, .40f, 0x8C3E536C, 34, 0f, .025f, .02f),
-            new Light(.74f, .64f, .30f, 0x704A5E78, 28, 2.4f, .03f, .025f));
+            new Light(.40f, .38f, .40f, 0x8C3E536C, 34, 0f, .04f, .03f),
+            new Light(.74f, .64f, .30f, 0x704A5E78, 28, 2.4f, .05f, .04f));
 
     static Palette palette(String id) { Palette p = PALETTES.get(id); return p == null ? NEUTRAL : p; }
     static boolean known(String id) { return PALETTES.containsKey(id); }

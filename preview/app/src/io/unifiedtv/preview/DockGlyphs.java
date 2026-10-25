@@ -7,9 +7,12 @@ import android.graphics.drawable.Drawable;
  * white, at the six-place tile's design size (about 100 px across, centred on cx, cy). No brand artwork is copied. Home
  * draws them on its glass tiles; Build My TV shows the same glyph beside each service through drawable().
  *
- * SmartTube (UX-ICON-07, SET-BUILD-05): a rounded play triangle with three motion lines trailing it, open on a bare tile.
- * It borrows only the play-button idea; it is not the official YouTube mark (no red rounded rectangle) and it is not the
- * glyph YouTube itself gets here (a screen on a stand with a play triangle), so the two stay apart at viewing distance.
+ * YouTube (and SmartTube, which the household uses as its YouTube: owner, 25 October 2026): a screen on a stand with a
+ * play triangle. It borrows only the play-button idea; it is not the official YouTube mark (no red rounded rectangle).
+ *
+ * Drawn for 10-foot viewing (owner, 25 October 2026: Music looked "janky", Live TV "not perfect"): one stroke weight
+ * (5 to 6 design px, round ends), whole shapes rather than thin details, symmetric where the idea allows, and every glyph
+ * optically centred in the same box, so none looks heavier or off-centre on the glass at viewing distance.
  *
  * An app without a glyph of its own shows its installed icon small and in greyscale, so it never reads as a full-colour
  * square; with no icon at all, a plain ring, never letters.
@@ -30,14 +33,10 @@ final class DockGlyphs {
             case "shelf":   // Library: three posters on a shelf
                 for(int k=-1;k<=1;k++){rect.set(cx+k*30-12,cy-34+Math.abs(k)*6,cx+k*30+12,cy+28);c.drawRoundRect(rect,4,4,icon);}
                 c.drawLine(cx-52,cy+40,cx+52,cy+40,icon);break;
-            case "play":   // a screen on a stand with a play triangle (YouTube, YouTube Kids)
-                rect.set(cx-44,cy-32,cx+44,cy+28);c.drawRoundRect(rect,12,12,icon);c.drawLine(cx-18,cy+40,cx+18,cy+40,icon);
-                paint(icon,240,true);path.reset();path.moveTo(cx-10,cy-16);path.lineTo(cx+16,cy-2);path.lineTo(cx-10,cy+12);path.close();c.drawPath(path,icon);break;
-            case "smarttube":   // SmartTube: a rounded play triangle with three motion lines, no frame
-                paint(icon,240,true);icon.setStyle(Paint.Style.FILL_AND_STROKE);icon.setStrokeWidth(9);
-                path.reset();path.moveTo(cx-10,cy-25);path.lineTo(cx+32,cy);path.lineTo(cx-10,cy+25);path.close();c.drawPath(path,icon);
-                paint(icon,240,false);icon.setStrokeWidth(7);
-                c.drawLine(cx-46,cy-15,cx-28,cy-15,icon);c.drawLine(cx-54,cy,cx-28,cy,icon);c.drawLine(cx-46,cy+15,cx-28,cy+15,icon);break;
+            case "play":   // YouTube (and SmartTube): a screen on a stand with a softly rounded play triangle
+                icon.setStrokeWidth(6);rect.set(cx-44,cy-33,cx+44,cy+27);c.drawRoundRect(rect,14,14,icon);c.drawLine(cx-17,cy+41,cx+17,cy+41,icon);
+                paint(icon,240,true);icon.setStyle(Paint.Style.FILL_AND_STROKE);icon.setStrokeWidth(5);
+                path.reset();path.moveTo(cx-9,cy-16);path.lineTo(cx+15,cy-3);path.lineTo(cx-9,cy+10);path.close();c.drawPath(path,icon);break;
             case "n":   // a plain geometric N
                 icon.setStrokeWidth(13);icon.setStrokeCap(Paint.Cap.SQUARE);path.reset();path.moveTo(cx-20,cy+38);path.lineTo(cx-20,cy-38);path.lineTo(cx+20,cy+38);path.lineTo(cx+20,cy-38);c.drawPath(path,icon);break;
             case "arcplus":   // an arc over a plus
@@ -45,13 +44,17 @@ final class DockGlyphs {
                 c.drawLine(cx,cy-4,cx,cy+32,icon);c.drawLine(cx-18,cy+14,cx+18,cy+14,icon);break;
             case "blocks":   // three square blocks
                 paint(icon,240,true);for(int k=-1;k<=1;k++){rect.set(cx+k*32-13,cy-13,cx+k*32+13,cy+13);c.drawRoundRect(rect,3,3,icon);}break;
-            case "broadcast":   // a mast with waves
-                paint(icon,240,true);c.drawCircle(cx,cy-6,8,icon);paint(icon,240,false);icon.setStrokeWidth(5);
-                rect.set(cx-26,cy-32,cx+26,cy+20);c.drawArc(rect,200,140,false,icon);rect.set(cx-42,cy-48,cx+42,cy+36);c.drawArc(rect,205,130,false,icon);
-                c.drawLine(cx,cy+2,cx-16,cy+40,icon);c.drawLine(cx,cy+2,cx+16,cy+40,icon);break;
-            case "note":   // a beamed pair of notes
-                paint(icon,240,true);c.drawCircle(cx-20,cy+26,11,icon);c.drawCircle(cx+22,cy+18,11,icon);
-                paint(icon,240,false);icon.setStrokeWidth(6);c.drawLine(cx-10,cy+26,cx-10,cy-30,icon);c.drawLine(cx+32,cy+18,cx+32,cy-38,icon);c.drawLine(cx-10,cy-30,cx+32,cy-38,icon);break;
+            case "broadcast":   // Live TV: a broadcast mast (an A-frame with one crossbar) sending waves out on both sides
+                paint(icon,240,true);c.drawCircle(cx,cy-18,7.5f,icon);
+                paint(icon,240,false);icon.setStrokeWidth(6);
+                c.drawLine(cx-3,cy-8,cx-18,cy+41,icon);c.drawLine(cx+3,cy-8,cx+18,cy+41,icon);c.drawLine(cx-10,cy+19,cx+10,cy+19,icon);
+                for(int k=0;k<2;k++){float r=k==0?21:37;rect.set(cx-r,cy-18-r,cx+r,cy-18+r);c.drawArc(rect,140,80,false,icon);c.drawArc(rect,-40,80,false,icon);}break;
+            case "note":   // Music: two beamed notes, with tilted oval heads, stems on their right and one solid, rising beam
+                paint(icon,240,true);   // stems, then the beam, then the heads: each shape's tiny shadow falls naturally
+                rect.set(cx-14,cy-28,cx-8,cy+29);c.drawRect(rect,icon);rect.set(cx+30,cy-38,cx+36,cy+21);c.drawRect(rect,icon);
+                path.reset();path.moveTo(cx-14,cy-30);path.lineTo(cx+36,cy-40);path.lineTo(cx+36,cy-28);path.lineTo(cx-14,cy-18);path.close();c.drawPath(path,icon);
+                for(int k=0;k<2;k++){float hx=k==0?cx-23:cx+21,hy=k==0?cy+30:cy+22;c.save();c.rotate(-20,hx,hy);rect.set(hx-13.5f,hy-10,hx+13.5f,hy+10);c.drawOval(rect,icon);c.restore();}
+                break;
             case "singlenote":   // one note with a flag
                 paint(icon,240,true);c.drawCircle(cx-10,cy+24,13,icon);
                 paint(icon,240,false);icon.setStrokeWidth(6);c.drawLine(cx+3,cy+24,cx+3,cy-36,icon);

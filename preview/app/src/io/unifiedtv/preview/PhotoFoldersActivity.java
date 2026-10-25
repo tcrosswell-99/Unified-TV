@@ -13,9 +13,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Settings → Appearance → Wallpaper → My Photos (docs/design/MY_PHOTOS.md, Phase 1): the owner picks one or more picture
  * folders on the NAS, found the way the film folders are (the film library's server first, else a search), with no
  * typing. The choice is saved encrypted in the Vault ("photos"), like the film folders; the Wallpaper only ever walks
- * inside it. Adults only: Child never reaches this screen or the pictures (WP-11).
+ * inside it. Adults only: Child never reaches this screen or the pictures (WP-11). Shown as the glass sheet over a still
+ * Home (OD-11), like Settings.
  */
-public final class PhotoFoldersActivity extends Screen {
+public final class PhotoFoldersActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private JSONObject record=new JSONObject();private int generation;private Future<?> task;private boolean changed;
@@ -70,8 +71,10 @@ public final class PhotoFoldersActivity extends Screen {
         DlnaScope.Frame frame=trail.current();if(frame==null){summary();return;}
         String id=frame.id;int offset=frame.offset;int ticket=nextTicket();
         page("Choose picture folders");if(!id.equals("0")&&!frame.name.isEmpty())text(frame.name,22);TextView state=text("Loading…",19);
-        if(!id.equals("0"))button(DlnaScope.root(roots(),id)!=null?"This folder is chosen":"Show this folder on the Wallpaper",()->{
-            try{if(DlnaScope.root(roots(),id)==null){JSONArray roots=roots();roots.put(new JSONObject().put("id",id).put("name",frame.name.isEmpty()?"Photos":frame.name));record.put("roots",roots);save();note("Folder chosen");}show();}catch(Exception e){note("Unable to choose that folder");}});
+        // A chosen folder is unchosen the same way (owner, 25 October 2026): its row says so.
+        if(!id.equals("0"))button(DlnaScope.root(roots(),id)!=null?"Selected — press OK to remove":"Show this folder on the Wallpaper",()->{
+            try{if(DlnaScope.root(roots(),id)==null){JSONArray roots=roots();roots.put(new JSONObject().put("id",id).put("name",frame.name.isEmpty()?"Photos":frame.name));record.put("roots",roots);save();note("Folder chosen");}
+                else{remove(id);note("This folder is no longer shown on the Wallpaper. Nothing was deleted from the media server.");}show();}catch(Exception e){note("Unable to choose that folder");}});
         button("Finished choosing",this::summary);
         button("Back",this::back);
         AtomicBoolean done=new AtomicBoolean();JSONObject from=record;

@@ -36,13 +36,26 @@ final class DockLabels {
     }
 
     /**
+     * Owner decision, 25 October 2026 (supersedes UX-ICON-07's separate SmartTube mark): the household uses SmartTube as its
+     * YouTube, so SmartTube's tile is named "YouTube" and draws the YouTube symbol. Detection is unchanged (DockPolicy's
+     * SmartTube package ids); only what the household sees changes. Unified TV's own tile names live here (name()).
+     */
+    static final String YOUTUBE="YouTube";
+    /** Unified TV's own name for one of its tiles, as the household sees it; null for an ordinary installed app. */
+    static String name(String id){
+        switch(DockPolicy.canonical(id==null?"":id)){
+            case "smartutube":return YOUTUBE;
+            default:return null;
+        }
+    }
+    /**
      * The original glyph each tile draws (DockGlyphs), by tile id or package; "mono" for an app without one of its own.
-     * SmartTube and YouTube never share a glyph (UX-ICON-07): SmartTube's is its own motion-play mark, YouTube's a screen.
-     * Music services each get their own, so two on Home stay apart (SET-BUILD-10).
+     * SmartTube and YouTube share the YouTube symbol (owner, 25 October 2026; see YOUTUBE above). Music services each get
+     * their own, so two on Home stay apart (SET-BUILD-10).
      */
     static String glyph(String id){
         switch(DockPolicy.canonical(id)){
-            case "smartutube":return "smarttube";
+            case "smartutube":
             case "com.google.android.youtube.tv":case "com.google.android.youtube.tvkids":return "play";
             case "netflix":return "n";
             case "disney":return "arcplus";
@@ -60,5 +73,5 @@ final class DockLabels {
             default:return "mono";
         }
     }
-    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","smarttube","n","arcplus","blocks","broadcast","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
+    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","n","arcplus","blocks","broadcast","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
 }

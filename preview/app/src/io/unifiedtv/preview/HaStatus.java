@@ -32,6 +32,25 @@ final class HaStatus {
         return OFFLINE;
     }
 
+    /**
+     * Settings > Smart Home's one plain line (owner, 25 October 2026). {@code saved}: a connection with a token is kept;
+     * {@code checked}: the result of this visit's check (null while checking); {@code found}: whether Home Assistant was
+     * seen on the home network (null while looking). Never "connected" without a check that Home Assistant accepted.
+     */
+    static String line(boolean saved,String checked,Boolean found){
+        if(saved&&!NOT_CONFIGURED.equals(checked)){
+            if(checked==null)return "Home Assistant: checking…";
+            switch(checked){
+                case AUTHORISED:return "Home Assistant: connected";
+                case AUTH_REQUIRED:return "Home Assistant: needs you to sign in again";
+                case REACHABLE:return "Home Assistant: answering, but not sharing its devices";
+                default:return "Home Assistant: can't be reached right now";
+            }
+        }
+        if(found==null)return "Home Assistant: looking on your home network…";
+        return found?"Home Assistant: found on your network — not set up":"Home Assistant: not found";
+    }
+
     /** One plain sentence for the household under the status word. */
     static String explain(String status){
         switch(status){

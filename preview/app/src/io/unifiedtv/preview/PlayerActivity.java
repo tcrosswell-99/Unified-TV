@@ -20,7 +20,7 @@ import java.util.concurrent.*;
 public final class PlayerActivity extends Screen {
     static final String RESUME_PREFS="unified-tv-resume";
     private ExoPlayer player; private PlayerView view; private JSONObject config; private String id; private boolean started;
-    private int generation;private boolean dlna;private String resumeKey;
+    private int generation;private boolean dlna;private String resumeKey,legacyKey;
     /** Where to start: -1 until decided, then the server's place (account), this TV's place (NAS) or where it was before leaving. */
     private volatile long position=-1;private boolean playWhenReady=true;
     private PlaybackDiagnostics diagnostics;
@@ -68,8 +68,12 @@ public final class PlayerActivity extends Screen {
         if(kids)kidsCheck(saved,stream);
         int port=uri.getPort()<0?("https".equals(uri.getScheme())?443:80):uri.getPort();
         JSONObject source=new JSONObject().put("enabled",true).put("httpConsent",true).put("dlna",true).put("base",Endpoint.base(uri.getHost(),""+port,"https".equals(uri.getScheme())));config=source;
-        resumeKey=ResumeStore.key(stream);
-        long here=position<0?resumeStore().position(resumeKey,System.currentTimeMillis()):0;
+        // Places are kept by the title's own server id when the library gave one (it survives the NAS changing address);
+        // a place saved earlier under the stream address is still found, and moves to the new key on the next save.
+        String stable=getIntent().getStringExtra("stableId");legacyKey=ResumeStore.key(stream);
+        resumeKey=stable!=null&&!stable.isEmpty()?ResumeStore.key(stable):legacyKey;
+        ResumeStore places=resumeStore();long now=System.currentTimeMillis();
+        long here=position<0?Math.max(places.position(resumeKey,now),resumeKey.equals(legacyKey)?0:places.position(legacyKey,now)):0;
         runOnUiThread(()->{if(position<0&&here>0)askResume(ticket,here,stream,source);else play(ticket,stream,source);});
     }
     /**
@@ -186,7 +190,8 @@ public final class PlayerActivity extends Screen {
         if(player==null)return;
         long at=player.getCurrentPosition(),duration=player.getDuration();if(at>0||position<0)position=Math.max(0,at);
         if(player.getPlaybackState()==Player.STATE_ENDED)position=0;
-        if(dlna&&resumeKey!=null){ResumeStore store=resumeStore();store.record(resumeKey,player.getPlaybackState()==Player.STATE_ENDED?Math.max(at,duration):at,duration>0?duration:0,System.currentTimeMillis());ResumeStore.save(this,store);}
+        if(dlna&&resumeKey!=null){ResumeStore store=resumeStore();store.record(resumeKey,player.getPlaybackState()==Player.STATE_ENDED?Math.max(at,duration):at,duration>0?duration:0,System.currentTimeMillis());
+            if(legacyKey!=null&&!legacyKey.equals(resumeKey))store.remove(legacyKey);ResumeStore.save(this,store);}
     }
     @Override protected void onResume(){super.onResume();if(player!=null&&playWhenReady)player.play();}
     /** Standby and anything covering the player pause it; onResume or a restart continues only if it was playing. */

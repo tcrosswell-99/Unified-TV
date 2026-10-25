@@ -49,6 +49,10 @@ final class FixtureFeed {
     static boolean take(Context c,boolean catalogue){
         synchronized(LOCK){ApiFootball.Budget b=budget(c);if(!b.allows(catalogue))return false;prefs(c).edit().putString(BUDGET,b.spend().write()).commit();return true;}
     }
+    /** API-Football's own count for today (from a key check): the local count never goes below it. */
+    static void noteUsed(Context c,int used){
+        synchronized(LOCK){ApiFootball.Budget b=budget(c);if(used>b.used)prefs(c).edit().putString(BUDGET,new ApiFootball.Budget(b.day,Math.min(ApiFootball.DAILY_LIMIT,used)).write()).commit();}
+    }
     private static void exhausted(Context c){synchronized(LOCK){prefs(c).edit().putString(BUDGET,budget(c).exhausted().write()).commit();}}
 
     // --- fixtures

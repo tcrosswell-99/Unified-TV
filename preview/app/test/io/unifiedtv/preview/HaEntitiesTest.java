@@ -133,7 +133,7 @@ public class HaEntitiesTest {
         String[][] expected={{"xbox","script.xbox_on_hdmi_3"},{"tvplus","script.samsung_tv_plus"},{"art","script.frame_art_mode"},
             {"ringEnter","script.frame_ring_entry"},{"ringExit","script.frame_ring_return"}};
         for(String[] e:expected){HaEntities.Choices c=HaEntities.choices(e[0],all,"",false);assertEquals(e[0],List.of(e[1]),ids(c.strong));assertEquals(e[1],c.auto().id);
-            assertTrue("'morning' is not 'ring'",ids(c.other).contains("script.good_morning"));assertEquals("Other scripts",c.otherHeading);}
+            assertTrue("'morning' is not 'ring'",ids(c.other).contains("script.good_morning"));assertEquals("Other Home Assistant actions",c.otherHeading);}
     }
 
     @Test public void anEntryAndReturnScriptInOneIsNotAClearAnswer()throws Exception{

@@ -44,7 +44,7 @@ import java.util.Set;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.checkedAt=0;AirPlayReceiver.refresh(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
+    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
     @Override protected void onStop(){VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
     /** Idle on Home: the Wallpaper (spec 33; artwork by default), or with Wallpaper off, the owner's gallery if one is set. */
@@ -59,6 +59,7 @@ public final class UnifiedPreviewActivity extends Activity {
         if (minutes > 0) idleHandler.postDelayed(gallery, minutes * 60_000L); }
     @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
         LiveTvGuard.stop(this);
+        Launch.returned(this);   // a visit (AirPin, NordVPN) that closed at once inside our task opens on its own instead
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
         guarded();
     }
@@ -259,7 +260,7 @@ public final class UnifiedPreviewActivity extends Activity {
             android.view.accessibility.AccessibilityManager am = (android.view.accessibility.AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
             String words = title;
-            if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), VpnGate.statusLabel(VpnGate.current()), AirPlayReceiver.ready) + ". Press OK.";
+            if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), VpnGate.statusLabel(VpnGate.current()), AirPlayReceiver.ready, AirPlayReceiver.checking()) + ". Press OK.";
             else if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
             else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
             if (words.equals(spoken)) return;
@@ -273,8 +274,16 @@ public final class UnifiedPreviewActivity extends Activity {
         private boolean light() { return prefs.getBoolean("lightweight", false); }
         private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
         private static boolean app(String key) { return !key.equals("neutral") && !key.startsWith("poster:"); }
-        /** Slow drifting light (spec 32.1), off with reduced motion, lightweight rendering or a still background. */
-        private boolean drifting() { return !calm() && !light() && !prefs.getBoolean("stillBackground", false); }
+        /**
+         * Slow drifting light (spec 32.1): on by default; off with reduced motion, lightweight rendering, a still background,
+         * or the TV's own animations switched off (respected, and explained once in plain words: stillOnce()).
+         */
+        private boolean drifting() { return AmbientLayer.stillReason(prefs.getBoolean("stillBackground", false), calm(), light(), AmbientLayer.tvAnimations()) == null; }
+        /** The TV's own animations are off: say once, kindly, why Home's light stays still and where that is changed. */
+        private void stillOnce() {
+            if (AmbientLayer.tvAnimations() || calm() || light() || prefs.getBoolean("stillBackground", false) || prefs.getBoolean("stillExplained", false)) return;
+            prefs.edit().putBoolean("stillExplained", true).apply(); info(AmbientLayer.TV_ANIMATIONS_OFF, 9000L);
+        }
         /** A focus move: the tile answers at once, the old title steps back, and the scene follows after the settle. */
         private void moved() {
             focusAt = SystemClock.uptimeMillis(); titleHidden = true;
@@ -315,7 +324,13 @@ public final class UnifiedPreviewActivity extends Activity {
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
-            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();invalidate();
+            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();stillOnce();airPlayFollowUps();invalidate();
+        }
+        /** Back from AirPin (opened from Unified TV): check AirPlay again a few times while its service starts (AirPlayReceiver). */
+        private final Runnable airPlayCheck = () -> { AirPlayReceiver.now(activity, Preview.this::postInvalidate); invalidate(); };
+        private void airPlayFollowUps() {
+            if (!AirPlayReceiver.takeReturn()) return;
+            handler.removeCallbacks(airPlayCheck); for (long ms : AirPlayReceiver.FOLLOW_UP_MS) handler.postDelayed(airPlayCheck, ms);
         }
         void home() {
             handler.removeCallbacks(hold); okDown = false; held = false; menu = false; apps = false; header = false;
@@ -326,7 +341,7 @@ public final class UnifiedPreviewActivity extends Activity {
         String currentScene() { return scene; }
         void pause() {
             if (layer != null) layer.pause();
-            handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);
+            handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);handler.removeCallbacks(airPlayCheck);
             handler.removeCallbacks(hold); okDown=false;held=false;
             if(moving) goBack();
             prefs.edit().putInt("focus",Math.max(0,index)).apply();
@@ -387,7 +402,8 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private Item defaultItem(String id) {
             switch (id) {
-                case "smartutube": return favourite(id, "SmartTube",
+                // Owner, 25 October 2026: SmartTube is the household's YouTube, so its tile is named and drawn as YouTube.
+                case "smartutube": return favourite(id, DockLabels.name("smartutube"),
                         DockPolicy.packages("smartutube"), "smarttube",
                         0xFF45434A, 0xFF1E1E27);
                 case "netflix": return favourite(id, "Netflix",
@@ -560,7 +576,7 @@ public final class UnifiedPreviewActivity extends Activity {
         /** OK on a pill icon opens it directly (UX-UTILITY-03): AirPin LITE, NordVPN, voice, or Settings. */
         private void utility(String id) {
             switch (id) {
-                case HomeUtilities.AIRPLAY: { String error = Launch.open(activity, airPin, "AirPin LITE"); if (error != null && !error.isEmpty()) info(error); break; }
+                case HomeUtilities.AIRPLAY: { String error = Launch.visit(activity, airPin, "AirPin LITE"); if (error != null && !error.isEmpty()) info(error); break; }
                 case HomeUtilities.VPN: VpnGate.connect(activity); break;
                 case HomeUtilities.VOICE: activity.startActivity(new Intent(activity, VoiceActivity.class)); break;
                 default: EditLock.ask(activity, () -> activity.startActivity(new Intent(activity, SettingsActivity.class))); break;
@@ -582,11 +598,13 @@ public final class UnifiedPreviewActivity extends Activity {
             if (why != null && !why.isEmpty()) info(why);
         }
 
-        private void info(String text) {
+        private void info(String text) { info(text, 3500L); }
+        /** A notice for {@code ms}; a longer one stays long enough to read. */
+        private void info(String text, long ms) {
             message = text;
-            messageUntil = SystemClock.uptimeMillis() + 3500L;
+            messageUntil = SystemClock.uptimeMillis() + ms;
             invalidate();
-            handler.postDelayed(this::invalidate, 3500);
+            handler.postDelayed(this::invalidate, ms);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -746,7 +764,7 @@ public final class UnifiedPreviewActivity extends Activity {
             }
             if (header && headerIndex >= 0 && headerIndex < n) {
                 // The short label sits outside the icon, under the pill, only while it has focus.
-                String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel, AirPlayReceiver.ready);
+                String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel, AirPlayReceiver.ready, AirPlayReceiver.checking());
                 float cx = Math.min(left + 64 + headerIndex * 96, W - 80 - 6.5f * words.length());
                 text(c, words, cx, 186, 23, WHITE, false, Paint.Align.CENTER);
             }
@@ -1018,16 +1036,18 @@ public final class UnifiedPreviewActivity extends Activity {
                 final List<HomeShelf.Poster> ready = found;
                 handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis();
                     posterIndex = shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate(); });
-                for (HomeShelf.Poster p : ready) {
-                    if (p.art.isEmpty() || posterArt.containsKey(p.id) || Thread.currentThread().isInterrupted()) continue;
-                    try {
-                        Bitmap b = Images.decode(DlnaClient.request(p.art, null, null), 240, 360);
-                        if (b == null) continue;
-                        posterArt.put(p.id, b); backdrops.put("poster:" + p.id, Backdrops.fromPoster(b));
-                        // A title already in focus gets its own backdrop with a dissolve, not a pop.
-                        handler.post(() -> { if (scene.equals("poster:" + p.id)) { formerScene = "neutral"; fadeAt = fadeMs() == 0 ? 0 : SystemClock.uptimeMillis(); } invalidate(); });
-                    } catch (Exception ignored) {}
-                }
+                // Each title's own poster (TMDB when the household added a key, else the server's picture) and, from it, a
+                // softened backdrop: the library's cache (Posters), asked in row order, delivered on the main thread.
+                handler.post(() -> {
+                    Posters art = Posters.get(activity); String udn = LibraryFolders.library(activity).udn();
+                    for (HomeShelf.Poster p : ready) {
+                        if (p.card == null || posterArt.containsKey(p.id)) continue;
+                        art.poster(p.card, udn, false, b -> { if (b != null) { posterArt.put(p.id, b); invalidate(); } });
+                        art.backdrop(p.card, udn, true, b -> { if (b == null) return; backdrops.put("poster:" + p.id, b);
+                            // A title already in focus gets its own backdrop with a dissolve, not a pop.
+                            if (scene.equals("poster:" + p.id)) { formerScene = "neutral"; fadeAt = fadeMs() == 0 ? 0 : SystemClock.uptimeMillis(); } invalidate(); });
+                    }
+                });
             }); } catch (java.util.concurrent.RejectedExecutionException e) { postersLoading = false; }
         }
         /** OK on a title plays it or opens its collection; the last card opens the full library or setup. A fade, never a flash. */
@@ -1035,8 +1055,10 @@ public final class UnifiedPreviewActivity extends Activity {
             Intent next;
             if (posterIndex < posters.size()) {
                 HomeShelf.Poster p = posters.get(posterIndex);
-                if (!p.folder && !p.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", p.url).putExtra("title", p.title).putExtra("dlnaItem", p.id).putExtra("root", p.root);
-                else next = new Intent(activity, DlnaLibraryActivity.class).putExtra("folder", p.id).putExtra("name", p.title).putExtra("fromShelf", true).putExtra("root", p.root);
+                LibraryCatalogue.Title t = p.card == null ? null : p.card.title;
+                if (t != null && !t.url.isEmpty()) next = new Intent(activity, PlayerActivity.class).putExtra("dlnaUrl", t.url).putExtra("title", t.kind == LibraryCatalogue.Kind.EPISODE ? t.showName + " " + t.label() : t.name).putExtra("dlnaItem", t.id).putExtra("root", t.root).putExtra("stableId", t.stableId);
+                else if (p.card != null && p.card.show != null) next = new Intent(activity, DlnaLibraryActivity.class).putExtra("show", p.card.show.key);
+                else next = new Intent(activity, LibraryActivity.class);
             } else { Launch.library(activity); return; }
             try { activity.startActivity(next); activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out); }
             catch (RuntimeException e) { info("Unable to open Films & TV"); }
@@ -1066,9 +1088,17 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void drawNotice(Canvas c, String s) {
-            glass(c, 365, 230, 1555, 320, 24, 0xDF111A2B, 0x88FFFFFF);
-            text(c, s.length() > 65 ? s.substring(0, 62) + "…" : s, 960, 287, 27,
-                    WHITE, false, Paint.Align.CENTER);
+            if (s.length() <= 65) {
+                glass(c, 365, 230, 1555, 320, 24, 0xDF111A2B, 0x88FFFFFF);
+                text(c, s, 960, 287, 27, WHITE, false, Paint.Align.CENTER);
+                return;
+            }
+            // A longer notice wraps onto a second line at the space nearest its middle, rather than being cut short.
+            int cut = s.lastIndexOf(' ', s.length() / 2); if (cut < 0) cut = s.indexOf(' ', s.length() / 2); if (cut < 0) cut = s.length() / 2;
+            String second = s.substring(cut).trim();
+            glass(c, 300, 222, 1620, 352, 24, 0xDF111A2B, 0x88FFFFFF);
+            text(c, s.substring(0, cut).trim(), 960, 278, 27, WHITE, false, Paint.Align.CENTER);
+            text(c, second.length() > 75 ? second.substring(0, 72) + "…" : second, 960, 322, 27, WHITE, false, Paint.Align.CENTER);
         }
 
         private void card(Canvas c, float x, float y, float right, float bottom, float radius, int start, int end) {

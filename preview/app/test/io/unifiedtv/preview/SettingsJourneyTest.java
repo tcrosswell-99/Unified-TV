@@ -57,7 +57,7 @@ public class SettingsJourneyTest {
             a.onBackPressed();idle();
             assertEquals(SettingsOverlay.Phase.ROOT,a.overlay().page());focused(a,"Appearance & Home");
             // SET-008: an integration that isn't set up offers "Set up", not empty switches.
-            open(a,"Smart Home");assertNotNull(find(root(a),"Set up Home Assistant"));assertNull(find(root(a),"Gallery & slideshow"));
+            open(a,"Smart Home");assertNotNull(find(root(a),"Set up on your phone"));assertNull(find(root(a),"Gallery & slideshow"));
             a.onBackPressed();idle();focused(a,"Smart Home");
             open(a,"Notifications & Doorbell");assertNull("no camera switches without Home Assistant",text(root(a),"Closes:"));
         }
@@ -198,11 +198,82 @@ public class SettingsJourneyTest {
             assertNotNull(find(root(b),"Switch profile (now Adults)"));
         }
     }
-    // SET-003: Frame-only rows appear only in the Frame room.
-    @Test public void frameOnlyRowsStayInTheFrameRoom(){
-        prefs().edit().putString("room","tcl").commit();
-        try(var controller=Robolectric.buildActivity(HouseholdActivity.class).setup()){assertNull(find(controller.get().findViewById(android.R.id.content),"Request native Frame Art Mode"));}
+    private java.util.List<Button> all(View v,String name,java.util.List<Button> out){if(v instanceof Button&&name.contentEquals(((Button)v).getText()))out.add((Button)v);if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)all(((ViewGroup)v).getChildAt(i),name,out);return out;}
+    private boolean anyText(View v,String part){if(v instanceof TextView&&((TextView)v).getText().toString().contains(part))return true;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)if(anyText(((ViewGroup)v).getChildAt(i),part))return true;return false;}
+    private static String title(SettingsActivity a){ViewGroup header=(ViewGroup)((ViewGroup)((ViewGroup)a.sheet()).getChildAt(((ViewGroup)a.sheet()).getChildCount()-1)).getChildAt(0);
+        for(int i=0;i<header.getChildCount();i++)if(header.getChildAt(i) instanceof LinearLayout)return String.valueOf(((TextView)((LinearLayout)header.getChildAt(i)).getChildAt(0)).getText());return "";}
+
+    // Owner, 25 October 2026: Smart Home is status first in one plain line and one action; no address, test, save or
+    // "enable connection" juggling. Setting up happens on the phone, inside the same half-width sheet.
+    @Test @Config(qualifiers="w960dp-h540dp-land-xhdpi") public void smartHomeIsStatusFirstAndPhoneSetupOpensInTheSheet(){
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
+            SettingsActivity a=controller.get();int standard=a.sheet().getLayoutParams().width;
+            open(a,"Smart Home");
+            assertNotNull("one plain status line",text(root(a),"Home Assistant: "));
+            for(String gone:new String[]{"Test connection","Save","Forget connection","Enable connection","Use a different address","Set up Home Assistant"})assertNull(gone+" is gone",find(root(a),gone));
+            for(String jargon:new String[]{"trusted LAN","Credentials not configured","long-lived","HTTP"})assertFalse(jargon,anyText(root(a),jargon));
+            assertNull("Disconnect only once connected",find(root(a),"Disconnect"));
+            assertNotNull(text(root(a),"Football fixtures: not set up"));
+            assertEquals("Home Assistant's and football's own phone setup",2,all(root(a),"Set up on your phone",new java.util.ArrayList<>()).size());
+            Button phone=find(root(a),"Set up on your phone");phone.requestFocus();phone.performClick();idle();
+            assertEquals(SettingsOverlay.Phase.TASK,a.overlay().page());assertEquals(SettingsActivity.PHONE_HA,a.overlay().task());
+            assertEquals("the same half-width sheet, never a full-screen page",standard,a.sheet().getLayoutParams().width);
+            assertEquals("Home Assistant",title(a));
+            assertTrue("the TV says what is happening",anyText(root(a),PhoneSetup.NO_NETWORK)||anyText(root(a),PhoneSetup.WAITING));
+            a.onBackPressed();idle();
+            assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());focused(a,"Set up on your phone");
+            Button advanced=find(root(a),"Advanced");assertNotNull(advanced);advanced.requestFocus();advanced.performClick();idle();
+            assertEquals(SettingsActivity.HA_ADVANCED,a.overlay().task());assertEquals(standard,a.sheet().getLayoutParams().width);
+            assertNotNull("typing on the TV only under Advanced",find(root(a),"Paste a token on this TV"));assertNotNull(find(root(a),"Change the address"));
+            a.onBackPressed();idle();focused(a,"Advanced");
+            Button football=all(root(a),"Set up on your phone",new java.util.ArrayList<>()).get(1);football.requestFocus();football.performClick();idle();
+            assertEquals(SettingsActivity.PHONE_FOOTBALL,a.overlay().task());assertEquals("Football fixtures",title(a));
+            assertTrue(anyText(root(a),"API-Football"));
+            a.onBackPressed();idle();a.onBackPressed();idle();focused(a,"Smart Home");
+        }
+    }
+    // Settings > Library: film posters show whether a key is saved and open their phone setup in the sheet.
+    @Test public void filmPostersOpenTheirPhoneSetup(){
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
+            SettingsActivity a=controller.get();open(a,"Library & Media");
+            Button posters=find(root(a),"Film posters: not set up");assertNotNull(posters);posters.requestFocus();posters.performClick();idle();
+            assertEquals(SettingsActivity.PHONE_TMDB,a.overlay().task());assertEquals(SettingsActivity.LIBRARY,a.overlay().category());assertEquals("Film posters",title(a));
+            assertTrue(anyText(root(a),"TMDB"));assertNull("nothing to remove yet",find(root(a),"Remove the film poster key"));
+            a.onBackPressed();idle();assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());focused(a,"Film posters: not set up");
+        }
+    }
+    // Owner, 25 October 2026: household setup in plain words, only what applies to this TV, inside the sheet. The Frame
+    // runs the separate Samsung app, so its rows never appear on Android, even for a room saved by an older version.
+    @Test public void householdSetupIsInTheSheetInPlainWordsForThisTvOnly(){
         prefs().edit().putString("room","frame").commit();
-        try(var controller=Robolectric.buildActivity(HouseholdActivity.class).setup()){assertNotNull(find(controller.get().findViewById(android.R.id.content),"Request native Frame Art Mode"));}
+        Intent intent=new Intent(RuntimeEnvironment.getApplication(),SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).putExtra("task",SettingsActivity.HOUSEHOLD);
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class,intent).setup()){
+            SettingsActivity a=controller.get();
+            assertEquals(SettingsOverlay.Phase.TASK,a.overlay().page());assertEquals(SettingsActivity.HOUSEHOLD,a.overlay().task());assertEquals(SettingsActivity.NOTIFICATIONS,a.overlay().category());
+            assertEquals("Doorbell, alarms & this TV",title(a));
+            assertNotNull(find(root(a),"This TV: TCL"));assertNotNull(find(root(a),"Doorbell button: none chosen"));
+            for(String frame:new String[]{"Request native Frame Art Mode","Samsung TV Plus script","Art Mode return script","Doorbell entry script","Doorbell return script"})assertNull(frame,find(root(a),frame));
+            assertFalse(anyText(root(a),"Samsung"));assertNull("Xbox is the Sony's",find(root(a),"Turn on the Xbox: none chosen"));
+            for(String jargon:new String[]{"binary sensor","entity","owner script","HDMI","Experimental","APK","Tizen"})assertFalse(jargon,anyText(root(a),jargon));
+            a.onBackPressed();idle();assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());assertEquals(SettingsActivity.NOTIFICATIONS,a.overlay().category());
+        }
+        prefs().edit().putString("room","sony").commit();
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class,intent).setup()){assertNotNull(find(root(controller.get()),"Turn on the Xbox: none chosen"));}
+    }
+    // The older entries hand over to the sheet: no full-screen setup page is left for Home Assistant.
+    @Test public void olderEntriesOpenTheSheet(){
+        try(var controller=Robolectric.buildActivity(HouseholdActivity.class).setup()){
+            Intent next=Shadows.shadowOf(controller.get()).getNextStartedActivity();assertNotNull(next);
+            assertEquals(SettingsActivity.class.getName(),next.getComponent().getClassName());assertEquals(SettingsActivity.HOUSEHOLD,next.getStringExtra("task"));assertTrue(controller.get().isFinishing());
+        }
+        Intent ha=new Intent(RuntimeEnvironment.getApplication(),ServiceDiscoveryActivity.class).putExtra("key","ha");
+        try(var controller=Robolectric.buildActivity(ServiceDiscoveryActivity.class,ha).setup()){
+            Intent next=Shadows.shadowOf(controller.get()).getNextStartedActivity();assertNotNull(next);
+            assertEquals(SettingsActivity.class.getName(),next.getComponent().getClassName());assertEquals(SettingsActivity.PHONE_HA,next.getStringExtra("task"));
+        }
+        Intent typed=new Intent(RuntimeEnvironment.getApplication(),ConnectionsActivity.class).putExtra("key","ha");
+        try(var controller=Robolectric.buildActivity(ConnectionsActivity.class,typed).setup()){
+            Intent next=Shadows.shadowOf(controller.get()).getNextStartedActivity();assertNotNull(next);assertEquals(SettingsActivity.HA_ADVANCED,next.getStringExtra("task"));
+        }
     }
 }

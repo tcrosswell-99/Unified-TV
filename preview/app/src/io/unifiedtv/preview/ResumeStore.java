@@ -6,8 +6,10 @@ import java.security.MessageDigest;
 import java.util.*;
 
 /**
- * Where each film was left, on this TV only (spec 27.2): never shown as Continue Watching and never sent to a server.
- * Keys are one-way hashes of the stream address, so no titles, folders or addresses are stored. Bounded: oldest entries go first.
+ * Where each film was left, on this TV only (spec 27.2), never sent to a server. The library shows these places as this
+ * profile's Continue Watching row (owner, 25 October 2026), most recent first; a title watched to the end has no place,
+ * so it drops off. Keys are one-way hashes of the title's server id (earlier places: of the stream address), so no
+ * titles, folders or addresses are stored. Bounded: oldest entries go first.
  *
  * One store per profile (owner, 25 October 2026): Adults and Kids never see each other's places. Places saved before
  * profiles had their own were all an adult's (Kids could not play NAS titles then), so they move to Adults once.
@@ -35,6 +37,14 @@ final class ResumeStore {
         JSONObject e=entries.optJSONObject(key);
         if(e==null||now-e.optLong("at")>EXPIRY_MS)return 0;
         return Math.max(0,e.optLong("pos"));
+    }
+    /** One saved place: where, how long the title is, and when it was saved. */
+    static final class Place{final long position,duration,at;Place(long position,long duration,long at){this.position=position;this.duration=duration;this.at=at;}}
+    /** The saved place, or null when there is none or it has expired (Continue Watching orders by {@code at}). */
+    Place place(String key,long now){
+        JSONObject e=entries.optJSONObject(key);
+        if(e==null||now-e.optLong("at")>EXPIRY_MS||e.optLong("pos")<=0)return null;
+        return new Place(e.optLong("pos"),Math.max(0,e.optLong("dur")),e.optLong("at"));
     }
     /** Records a position, or clears it when the film was watched to the end or barely started. */
     void record(String key,long position,long duration,long now){

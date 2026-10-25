@@ -1,165 +1,365 @@
 package io.unifiedtv.preview;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.content.Intent;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.TypedValue;
+import android.view.*;
+import android.view.inputmethod.EditorInfo;
 import android.widget.*;
-import org.json.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Automatic server search on first entry. Only explicitly selected folder roots become a library, and a saved viewer never browses above them.
- * Every load has a ticket and a time limit: a superseded or cancelled load can't paint over the screen, and nothing waits forever.
+ * Your Films & TV: poster rows over the highlighted title's own background (AGENTS rule 4), built from the saved list of
+ * the chosen folders (LibraryIndex) so it opens at once and works while the NAS sleeps.
  *
- * Profiles (owner, 25 October 2026): Adults use the household library (Vault "dlna"). Kids use only the Kids folders an
- * adult chose (Vault "dlna-kids", KidsPolicy), with refused ratings left out, and never reach setup; with no Kids folders
- * they see "Ask an adult". An adult chooses Kids folders here too ("kidsSetup", from Kids settings, behind the PIN).
- * Zero configuration: servers are offered by friendly name only, and only when they validated and show folders
- * (DlnaClient.offered); no address is ever typed or shown here.
+ * <pre>Search · Your folders
+ * [title, year, summary of the highlighted tile]
+ * Continue Watching · Recently added · Films · TV · Kids (Adults only)   each row ends with "All"
+ * OK: a film or episode plays; a programme opens its seasons; "All" opens the whole row as a grid.</pre>
+ *
+ * Loading always says so: the first list shows a spinner and how many titles have been found; a later refresh shows a
+ * small "Checking for new titles" while the saved list stays usable. Focus never waits for the network: pictures arrive
+ * when ready (Posters), and a tile without one is a clean title card.
+ *
+ * Profiles (owner, 25 October 2026): Kids see only titles in folders marked for Kids, within the Kids ratings; with no
+ * Kids folders they see "Ask an adult". Adults see everything, with a Kids row. The player checks Kids again at play time.
+ * Setup (choosing folders) is the glass sheet LibrarySetupActivity; old "setup" requests are passed to it.
  */
 public final class DlnaLibraryActivity extends Screen {
-    /** Longest a folder may load, including one quiet search for a server whose address changed, before Retry is offered. */
+    /** Longest a folder may load before Retry is offered (also used by the Wallpaper's folder chooser). */
     static final long LOAD_LIMIT_MS=25_000;
-    private final ExecutorService worker=Executors.newSingleThreadExecutor(),artwork=Executors.newFixedThreadPool(2);
+    static final int GRID_CHUNK=84;
+    enum Kind{ROWS,GRID,SHOW,SEARCH}
+    private static final class Place{final Kind kind;final String title,rowId,showKey;String query="",focus="";int shown=GRID_CHUNK;
+        Place(Kind kind,String title,String rowId,String showKey){this.kind=kind;this.title=title;this.rowId=rowId;this.showKey=showKey;}}
+
+    private final ExecutorService walker=Executors.newSingleThreadExecutor(),quick=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
-    private JSONObject source;private int generation;private boolean setup;private Future<?> task;
-    private DlnaScope.Trail trail=new DlnaScope.Trail();
-    /** The folder or title to focus when its screen is shown again, so Back lands on the poster the viewer left. */
-    private String focusId="";
-    /** The single-server shortcut runs once per visit, so Back out of its folders reaches the search screen instead of looping. */
-    private boolean autoChosen;
-    /** Which saved library this visit reads and writes: "dlna", or "dlna-kids" for Kids and for choosing Kids folders. */
-    private String store="dlna";private boolean kids,kidsSetup;
+    private LibraryFolders.Library lib;private LibraryCatalogue.Catalogue cat;private Posters posters;private String udn="";
+    private float unit;private boolean light,calm,postersOn;private int generation;
+    private ImageView[] backs=new ImageView[2];private int front=0;private String shownBack="",focusKey="",wantedBack="";
+    private TextView heroTitle,heroMeta,heroText,status;private ProgressBar statusSpin;
+    private FrameLayout area;private LinearLayout bar;
+    private final ArrayDeque<Place> stack=new ArrayDeque<>();
+    private boolean refreshing,firstLoad;
+    /** While the first list is made (perhaps by Home's row, already walking), the count follows the shared walk. */
+    private final Runnable countLater=new Runnable(){public void run(){if(!firstLoad)return;int n=LibraryIndex.walking;if(n>=0)loading(n);handler.postDelayed(this,500);}};
+    private final Runnable backdropLater=()->{LibraryCatalogue.Card c=cat==null?null:findCard(wantedBack);if(c!=null)backdrop(c);};
 
-    @Override public void onCreate(Bundle state){super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);
-        kids=Profiles.kids(this);kidsSetup=!kids&&getIntent().getBooleanExtra("kidsSetup",false);
-        store=kids||kidsSetup?KidsPolicy.STORE:"dlna";
-        // Kids never reach setup, whatever asked for it: only an adult in Adults chooses folders.
-        setup=!kids&&(kidsSetup||getIntent().getBooleanExtra("setup",false));
-        try{source=new Vault(this).read(store);}catch(Exception e){source=new JSONObject();}
-        if(kids&&!KidsPolicy.ready(source)){page("Your Films & TV");text(KidsPolicy.ASK_ADULT,24);text("An adult chooses which folders on the media server Kids can watch, in Settings > Profiles & Family > Kids settings.",18);button("Back",this::finish);return;}
-        if(kidsSetup){startKidsSetup();return;}
-        if(setup||!source.optBoolean("enabled")||source.optJSONArray("roots")==null){discover();return;}
-        JSONArray roots=source.optJSONArray("roots");
-        if(state!=null&&state.getString("trail")!=null){
-            focusId=state.getString("focus","");
-            DlnaScope.Trail saved=DlnaScope.Trail.restore(state.getString("trail"),roots);
-            if(!saved.isEmpty()){trail=saved;show();}else roots();
-            return;
-        }
-        // Home's poster row and saved-collection shortcuts open straight into a folder; anything else is ignored.
-        Intent in=getIntent();
-        DlnaScope.Frame start=DlnaScope.start(roots,in.getStringExtra("folder"),in.getStringExtra("name"),in.getBooleanExtra("fromShelf",false),in.getStringExtra("root"));
-        if(start!=null){String root=DlnaScope.root(roots,start.id)!=null?start.id:in.getStringExtra("root");trail.start(start,root);show();}else roots();
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);autoFocusButtons=false;DlnaClient.lan=LocalDiscovery.lan(this);
+        boolean kids=Profiles.kids(this);Intent in=getIntent();
+        // Choosing folders is the glass sheet now; Kids never reach it.
+        if(!kids&&(in.getBooleanExtra("setup",false)||in.getBooleanExtra("kidsSetup",false))){setup();finish();overridePendingTransition(0,0);return;}
+        android.util.DisplayMetrics m=getResources().getDisplayMetrics();unit=Math.max(.5f,Math.min(m.widthPixels/1920f,m.heightPixels/1080f));
+        android.content.SharedPreferences prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
+        calm=prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();
+        light=prefs.getBoolean("lightweight",false)||((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).isLowRamDevice();
+        posters=Posters.get(this);postersOn=Posters.on(this);   // read once: never a Vault read per focus move
+        lib=LibraryFolders.library(this);udn=lib.udn();
+        frame();
+        if(kids&&!lib.ready){message(KidsPolicy.ASK_ADULT,"An adult chooses the folders for Kids in the Adults profile.",null,null);return;}
+        if(!lib.ready){message("Your Films & TV isn't set up yet.","Unified TV finds the media server on your home network. Choose the folders that hold your films and programmes.","Set up Your Films & TV",this::setup);return;}
+        String search=in.getStringExtra("search");
+        stack.push(new Place(Kind.ROWS,"",null,null));
+        // Home's row opens a programme straight at its seasons; Back then shows the rows.
+        String showKey=in.getStringExtra("show");if(showKey!=null&&!showKey.isEmpty())stack.push(new Place(Kind.SHOW,"",null,showKey));
+        if(search!=null&&!search.trim().isEmpty()){Place p=new Place(Kind.SEARCH,"Search",null,null);p.query=search.trim();stack.push(p);}
+        load();
     }
-    /** Kids folders live on the household library's server when there is one: no second search. A fresh choice each time. */
-    private void startKidsSetup(){
-        JSONObject films;try{films=new Vault(this).read("dlna");}catch(Exception e){films=new JSONObject();}
-        if(films.optBoolean("enabled")&&!films.optString("control").isEmpty()){source=server(films);trail.start(new DlnaScope.Frame("0",source.optString("name","Media server"),0),"");show();}
-        else discover();
+    @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)rebuild(false);}   // Continue Watching may have changed
+    @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);walker.shutdownNow();quick.shutdownNow();super.onDestroy();}
+    private void setup(){try{startActivity(new Intent(this,LibrarySetupActivity.class));overridePendingTransition(0,0);}catch(RuntimeException e){note("Unable to open Films & TV setup");}}
+    private int px(float at1080){return Math.round(at1080*unit);}
+    private TextView words(String s,float size,int colour,boolean bold,int lines){
+        TextView t=new TextView(this);t.setText(s);t.setTextColor(colour);t.setTextSize(TypedValue.COMPLEX_UNIT_PX,size*unit);t.setMaxLines(lines);t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if(bold)t.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD));t.setFocusable(false);return t;
     }
-    /** Only what is needed to reach a server again; no folders come with it. */
-    private static JSONObject server(JSONObject from){JSONObject s=new JSONObject();try{for(String k:new String[]{"name","location","control","service","udn"})s.put(k,from.optString(k));s.put("enabled",true);}catch(JSONException ignored){}return s;}
-    private boolean active(int ticket){return ticket==generation&&!isFinishing()&&!isDestroyed();}
-    /** Supersedes whatever was loading: its result is ignored and its thread interrupted. */
-    private int nextTicket(){if(task!=null)task.cancel(true);task=null;handler.removeCallbacksAndMessages(null);return ++generation;}
 
-    private void discover(){int ticket=nextTicket();trail.clear();page(kidsSetup?"Kids folders":"Your Films & TV");
-        text(kidsSetup?"First, the media server that has the Kids folders.":"Bring your film and TV collection together in one place.",23);TextView status=text("Looking for your media server…",19);
-        LinearLayout found=new LinearLayout(this);found.setOrientation(LinearLayout.VERTICAL);column.addView(found);
-        Button again=button("Search again",this::discover);button("Back",this::finish);
-        List<DlnaClient.Device> ready=LocalDiscovery.fresh()?LocalDiscovery.nasFound:null;
-        task=worker.submit(()->{try{DlnaClient.Report report=new DlnaClient.Report();List<DlnaClient.Device> devices=ready!=null&&!ready.isEmpty()?ready:DlnaClient.discover(getApplicationContext(),true,report);runOnUiThread(()->{if(!active(ticket))return;
-            if(devices.isEmpty()){status.setText(report.plain());troubleshoot(found);again.requestFocus();return;}
-            // One media server on the home network: choose it for the viewer and go straight to their collection's folders.
-            if(devices.size()==1&&(kidsSetup||!source.optBoolean("enabled"))&&!autoChosen){autoChosen=true;DlnaClient.Device only=devices.get(0);EditLock.ask(this,()->choose(only));}
-            status.setText("Select your media server");List<String> names=DlnaClient.labels(devices);Button first=null;
-            for(int i=0;i<devices.size();i++){DlnaClient.Device device=devices.get(i);Button b=styled(names.get(i),()->EditLock.ask(this,()->choose(device)));
-                LinearLayout.LayoutParams at=new LinearLayout.LayoutParams(-1,-2);at.setMargins(0,dp(5),0,dp(5));found.addView(b,at);if(first==null)first=b;}
-            if(first!=null)first.requestFocus();});}
-            catch(Exception e){runOnUiThread(()->{if(!active(ticket))return;status.setText("The TV couldn't search your home network just now.");troubleshoot(found);again.requestFocus();});}});
+    // --- the frame: background, hero text, top bar, page area
+    private void frame(){
+        FrameLayout root=new FrameLayout(this);root.setBackground(MaterialScene.backdrop(this));
+        for(int i=0;i<2;i++){ImageView v=new ImageView(this);v.setScaleType(ImageView.ScaleType.CENTER_CROP);v.setAlpha(0f);v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);backs[i]=v;root.addView(v,new FrameLayout.LayoutParams(-1,-1));}
+        // A scrim so the words stay readable over any picture: darker on the left and along the bottom.
+        View scrim=new View(this);GradientDrawable left=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xE6060A12,0x99060A12,0x33060A12});
+        scrim.setBackground(left);root.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        View foot=new View(this);foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x00060A12,0xCC060A12,0xF2060A12}));
+        root.addView(foot,new FrameLayout.LayoutParams(-1,px(640),Gravity.BOTTOM));
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(px(96),px(48),px(64),0);
+        LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);
+        bar=new LinearLayout(this);bar.setOrientation(LinearLayout.HORIZONTAL);top.addView(bar,new LinearLayout.LayoutParams(0,-2,1));
+        statusSpin=new ProgressBar(this,null,android.R.attr.progressBarStyleSmall);statusSpin.setIndeterminate(true);statusSpin.setVisibility(View.GONE);statusSpin.setContentDescription("Loading");
+        top.addView(statusSpin,new LinearLayout.LayoutParams(px(30),px(30)));
+        status=words("",22,0xFFC3CEDD,false,1);status.setPadding(px(12),0,0,0);top.addView(status);
+        content.addView(top,new LinearLayout.LayoutParams(-1,px(64)));
+        LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(0,px(18),0,px(12));
+        heroTitle=words("Your Films & TV",48,0xFFF4F7FB,true,1);heroMeta=words("",24,0xFFC3CEDD,false,1);heroText=words("",22,0xFFDCE4EE,false,3);
+        heroMeta.setPadding(0,px(6),0,px(8));hero.addView(heroTitle);hero.addView(heroMeta);hero.addView(heroText,new LinearLayout.LayoutParams(px(1000),-2));
+        content.addView(hero,new LinearLayout.LayoutParams(-1,px(250)));
+        area=new FrameLayout(this);content.addView(area,new LinearLayout.LayoutParams(-1,0,1));
+        root.addView(content,new FrameLayout.LayoutParams(-1,-1));
+        setContentView(root);column=null;
     }
-    /** The owner's checklist, in plain words. No address, and no typed setup: Search again is the only next step. */
-    private void troubleshoot(LinearLayout into){
-        for(String line:new String[]{"Check these, then search again:","•  The NAS is switched on and has finished starting.","•  The TV and the NAS are on the same home network.",
-            "•  The NAS's media server (DLNA / UPnP) is switched on and sharing your video folders.","•  Guest Wi-Fi keeps devices apart: connect the TV to your main network, not the guest one.",
-            "•  If NordVPN is on, allow it to see devices on your home network."}){TextView t=new TextView(this);t.setText(line);t.setTextColor(0xffffffff);t.setTextSize(18);t.setPadding(8,4,8,4);into.addView(t);}
+    private Button pill(String label,Runnable action){
+        Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(TypedValue.COMPLEX_UNIT_PX,24*unit);b.setTextColor(SettingsGlass.textColours());
+        b.setBackground(SettingsGlass.row(px(28),Math.max(2,px(3)),false,calm?0:120));b.setStateListAnimator(null);b.setPadding(px(28),px(8),px(28),px(8));b.setMinHeight(px(52));b.setMinimumHeight(px(52));
+        b.setFocusableInTouchMode(true);b.setOnClickListener(v->action.run());b.setOnFocusChangeListener((v,f)->{if(f)hero(null);});return b;
     }
-    private void choose(DlnaClient.Device device){try{source=device.json();setup=true;trail.start(new DlnaScope.Frame("0",device.name,0),"");show();}catch(Exception e){note("Unable to select that server");}}
+    private void topBar(){
+        bar.removeAllViews();if(lib==null||!lib.ready)return;
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMarginEnd(px(16));
+        bar.addView(pill("Search",()->{Place p=new Place(Kind.SEARCH,"Search",null,null);rememberFocus();stack.push(p);show();}),lp);
+        if(!lib.kids)bar.addView(pill("Your folders",()->EditLock.ask(this,this::setup)),new LinearLayout.LayoutParams(lp));
+    }
+    /** A page with a message and at most one action (not set up, Ask an adult, nothing found). */
+    private void message(String title,String detail,String action,Runnable run){
+        area.removeAllViews();heroTitle.setText("Your Films & TV");heroMeta.setText("");heroText.setText("");
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(words(title,34,0xFFF4F7FB,true,3));TextView d=words(detail,24,0xFFC3CEDD,false,4);d.setPadding(0,px(10),0,px(24));box.addView(d,new LinearLayout.LayoutParams(px(1100),-2));
+        Button first=null;
+        if(action!=null){first=pill(action,run);box.addView(first,new LinearLayout.LayoutParams(-2,-2));}
+        Button back=pill("Back",this::finish);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.topMargin=px(12);box.addView(back,lp);
+        area.addView(box);(first!=null?first:back).requestFocus();
+    }
+    private void setStatus(boolean spinning,String text){statusSpin.setVisibility(spinning?View.VISIBLE:View.GONE);status.setText(text==null?"":text);}
 
-    private void roots(){nextTicket();trail.clear();page("Your Films & TV");text(kids?"Kids folders":"Your selected collection",20);JSONArray roots=source.optJSONArray("roots");Button again=null;
-        if(roots!=null)for(int i=0;i<roots.length();i++){JSONObject root=roots.optJSONObject(i);if(root==null)continue;String id=root.optString("id"),name=root.optString("name","Collection");
-            Button b=button(name,()->{trail.start(new DlnaScope.Frame(id,name,0),id);show();});if(id.equals(focusId))again=b;}
-        if(!kids)button("Change media server",()->EditLock.ask(this,()->{setup=true;discover();}));button("Back",this::finish);
-        if(again!=null)again.requestFocus();focusId="";
-    }
-    private void open(DlnaClient.Item folder){trail.open(new DlnaScope.Frame(folder.id,folder.title,0));show();}
-    /** Back one folder; from the first folder a viewer returns to the saved collections, never the server's top level. */
-    private void back(){
-        DlnaScope.Frame leaving=trail.current();DlnaScope.Frame parent=trail.back();focusId=leaving==null?"":leaving.id;
-        if(parent!=null)show();else if(setup)discover();else roots();
-    }
-    private void show(){
-        DlnaScope.Frame frame=trail.current();if(frame==null){roots();return;}
-        String id=frame.id;int offset=frame.offset;int ticket=nextTicket();
-        page(setup?(kidsSetup?"Choose Kids folders":"Choose library folders"):"Your Films & TV");if(!frame.name.isEmpty()&&!id.equals("0"))text(frame.name,22);TextView state=text("Loading…",19);
-        if(setup&&!id.equals("0"))button(kidsSetup?"Add this folder for Kids":"Add this folder to your library",()->{try{JSONArray roots=source.optJSONArray("roots");if(roots==null)roots=new JSONArray();if(DlnaScope.root(roots,id)==null)roots.put(new JSONObject().put("id",id).put("name",frame.name.isEmpty()?"Collection":frame.name));source.put("roots",roots);note("Folder selected");}catch(Exception e){note("Unable to select folder");}});
-        if(setup)button(kidsSetup?"Save Kids folders":"Save selected folders",()->{try{if(source.optJSONArray("roots")==null||source.getJSONArray("roots").length()==0){note("Select at least one folder");return;}new Vault(this).save(store,source);
-            if(kidsSetup){note("Kids folders saved");finish();return;}
-            getSharedPreferences("unified-tv-preview",0).edit().putString("librarySource","dlna").apply();setup=false;roots();}catch(Exception e){note("Unable to save library securely");}});
-        button("Back",this::back);
-        AtomicBoolean done=new AtomicBoolean();
-        JSONObject from=source;
-        task=worker.submit(()->{
-            DlnaClient.Page page;JSONObject moved=null;
-            try{page=DlnaClient.browse(from,id,offset);}
-            catch(Exception first){
-                // The NAS may have restarted with a new address: look for the same server (same UDN) once, quietly.
-                try{moved=first instanceof DlnaClient.Failure&&((DlnaClient.Failure)first).kind==DlnaClient.Failure.UNREACHABLE?relocate(from):null;
-                    if(moved==null)throw first;page=DlnaClient.browse(moved,id,offset);}
-                catch(Exception e){if(done.compareAndSet(false,true))runOnUiThread(()->failed(ticket,state,e));return;}
-            }
-            DlnaClient.Page result=page;JSONObject relocated=moved;
-            if(!done.compareAndSet(false,true))return;
-            runOnUiThread(()->{if(!active(ticket))return;if(relocated!=null)keep(relocated);render(ticket,state,frame,result);});
+    // --- loading
+    private void load(){
+        int mine=++generation;
+        // Cached list first (no network): rows appear at once when there is one.
+        quick.execute(()->{
+            LibraryIndex.Index index=LibraryIndex.cached(getApplicationContext(),lib);
+            LibraryCatalogue.Catalogue built=index.size()>0?build(index):null;
+            handler.post(()->{if(mine!=generation||isFinishing())return;
+                if(built!=null){cat=built;topBar();show();}
+                else{firstLoad=true;loading(0);handler.postDelayed(countLater,500);}
+                if(built==null||LibraryIndex.due(index,lib,System.currentTimeMillis()))refresh(built==null);
+            });
         });
-        handler.postDelayed(()->{if(active(ticket)&&done.compareAndSet(false,true)){if(task!=null)task.cancel(true);failed(ticket,state,new DlnaClient.Failure(DlnaClient.Failure.UNREACHABLE));}},LOAD_LIMIT_MS);
     }
-    /** The same server (matched by its UDN, never by name) at a new local address, or null. */
-    private JSONObject relocate(JSONObject from)throws Exception{return DlnaClient.relocate(getApplicationContext(),from);}
-    /** Saves the server's new address for this library; folders and their IDs are unchanged. */
-    private void keep(JSONObject relocated){source=relocated;if(!setup)try{new Vault(this).save(store,source);}catch(Exception ignored){/* Still usable for this visit. */}}
-    private void failed(int ticket,TextView state,Exception e){
-        if(!active(ticket))return;
-        int kind=e instanceof DlnaClient.Failure?((DlnaClient.Failure)e).kind:DlnaClient.Failure.SERVER;
-        state.setText(DlnaClient.Failure.plain(kind));
-        Button retry=button("Try again",this::show);retry.requestFocus();
-        if(kind==DlnaClient.Failure.MISSING&&!setup&&!kids)button("Choose folders again",()->EditLock.ask(this,()->{setup=true;discover();}));
+    private LibraryCatalogue.Catalogue build(LibraryIndex.Index index){
+        return LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(getApplicationContext()),ResumeStore.load(getApplicationContext()),System.currentTimeMillis());
     }
-    private void render(int ticket,TextView state,DlnaScope.Frame frame,DlnaClient.Page page){
-        List<DlnaClient.Item> entries=page.items;int offset=frame.offset;
-        // Kids: the walls are the Kids folders (the trail never climbs above one) and the rating table; refused titles never appear.
-        if(kids)entries=HomeShelf.kidsOnly(entries,source.optString("udn"),trail.rootId(),KidsPolicy.roots(source),HouseholdSettings.scheme(this));
-        state.setText(entries.isEmpty()?(page.more(offset)?"Nothing to show here yet.":"No supported videos or folders found."):setup?(kidsSetup?"Open a folder, then add it. Kids see only the folders you add, and only titles whose rating suits Kids.":"Open a folder, then add it. Only selected folders will appear in your library."):"");
-        LinearLayout row=null;Button again=null;String root=trail.rootId();
-        for(int i=0;i<entries.size();i++){DlnaClient.Item item=entries.get(i);if(i%4==0){row=new LinearLayout(this);column.addView(row);}
-            LinearLayout card=card(item,ticket,()->{focusId=item.id;if(item.folder)open(item);else if(!setup)startActivity(new Intent(this,PlayerActivity.class).putExtra("dlnaUrl",item.url).putExtra("title",item.title).putExtra("dlnaItem",item.id).putExtra("root",root));});
-            row.addView(card,new LinearLayout.LayoutParams(0,-2,1));if(item.id.equals(focusId))again=(Button)card.getChildAt(card.getChildCount()-1);}
-        if(page.more(offset))button("Show more",()->{trail.page(page.next(offset));show();});
-        if(again!=null)again.requestFocus();
+    /** The first time: a spinner and a count, never a blank screen. */
+    private void loading(int found){
+        if(!firstLoad)return;
+        TextView count=area.findViewWithTag("count");
+        if(count==null){area.removeAllViews();heroTitle.setText("Your Films & TV");heroMeta.setText("");heroText.setText("");
+            LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setGravity(Gravity.CENTER_HORIZONTAL);
+            ProgressBar spin=new ProgressBar(this,null,android.R.attr.progressBarStyleLarge);spin.setIndeterminate(true);spin.setContentDescription("Loading");spin.setTag("spinner");
+            box.addView(spin,new LinearLayout.LayoutParams(px(96),px(96)));
+            TextView t=words("Finding your films and TV…",32,0xFFF4F7FB,true,2);t.setGravity(Gravity.CENTER);t.setPadding(0,px(24),0,px(8));box.addView(t);
+            count=words("",24,0xFFC3CEDD,false,2);count.setGravity(Gravity.CENTER);count.setTag("count");box.addView(count);
+            TextView once=words("This happens once. Next time your library opens straight away.",22,0xFFC3CEDD,false,2);once.setGravity(Gravity.CENTER);once.setPadding(0,px(8),0,0);box.addView(once);
+            Button back=pill("Back",this::finish);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.topMargin=px(28);box.addView(back,lp);
+            FrameLayout.LayoutParams at=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER_HORIZONTAL);at.topMargin=px(40);area.addView(box,at);back.requestFocus();}
+        count.setText(found<=0?"Reading your folders":found==1?"1 video found so far":found+" videos found so far");
     }
-    /** Poster-first: a title shows its own server artwork, never another title's. No artwork means a plain card. */
-    private LinearLayout card(DlnaClient.Item item,int ticket,Runnable open){
-        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(6),dp(6),dp(6),dp(10));
-        String label=item.title+(item.year.isEmpty()?"":" ("+item.year+")");
-        if(!item.art.isEmpty()){ImageView poster=new ImageView(this);poster.setContentDescription(item.title);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);card.addView(poster,new LinearLayout.LayoutParams(-1,dp(220)));
-            artwork.execute(()->{try{if(!active(ticket))return;android.graphics.Bitmap image=Images.decode(DlnaClient.request(item.art,null,null),320,440);runOnUiThread(()->{if(active(ticket)&&image!=null)poster.setImageBitmap(image);});}catch(Exception ignored){}});}
-        Button b=styled(label,open);b.setTextSize(18);b.setContentDescription((item.folder?"Open ":"Play ")+item.title);card.addView(b,new LinearLayout.LayoutParams(-1,-2));
-        if(autoFocusButtons&&column.findFocus()==null)b.requestFocus();return card;
+    private void refresh(boolean first){
+        if(refreshing)return;refreshing=true;int mine=generation;
+        if(!first)setStatus(true,"Checking for new titles…");
+        walker.execute(()->{
+            LibraryIndex.Index index=null;Exception failure=null;
+            try{index=LibraryIndex.refresh(getApplicationContext(),lib,false,(titles,folders)->handler.post(()->{if(mine==generation)loading(titles);}));}
+            catch(Exception e){failure=e;}
+            LibraryCatalogue.Catalogue built=index!=null?build(index):null;
+            LibraryIndex.Index got=index;Exception problem=failure;
+            handler.post(()->{if(mine!=generation||isFinishing())return;refreshing=false;
+                if(built==null){setStatus(false,"");
+                    if(cat==null){firstLoad=false;int kind=problem instanceof DlnaClient.Failure?((DlnaClient.Failure)problem).kind:DlnaClient.Failure.UNREACHABLE;
+                        message("Your films and TV aren't answering.",DlnaClient.Failure.plain(kind),"Try again",()->{firstLoad=true;loading(0);refresh(true);});}
+                    else setStatus(false,"Showing your saved list. The media server isn't answering.");
+                    return;}
+                setStatus(false,got.stale?"Showing your saved list. Some folders didn't answer.":"");
+                boolean wasEmpty=cat==null;LibraryCatalogue.Catalogue old=cat;cat=built;firstLoad=false;
+                if(wasEmpty){topBar();show();}
+                else if(changed(old,built))refreshPage();
+            });
+        });
     }
-    @Override public void onBackPressed(){if(!trail.isEmpty())back();else super.onBackPressed();}
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);if(!setup&&!trail.isEmpty()){out.putString("trail",trail.save());out.putString("focus",focusId);}}
-    @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);worker.shutdownNow();artwork.shutdownNow();super.onDestroy();}
+    private static boolean changed(LibraryCatalogue.Catalogue a,LibraryCatalogue.Catalogue b){
+        if(a.titles.size()!=b.titles.size()||a.rows.size()!=b.rows.size())return true;
+        for(int i=0;i<a.titles.size();i++)if(!a.titles.get(i).stableId.equals(b.titles.get(i).stableId))return true;return false;
+    }
+    /** Continue Watching after the player, or a refreshed list: same page, same tile in focus. */
+    private void rebuild(boolean force){
+        int mine=generation;
+        quick.execute(()->{LibraryCatalogue.Catalogue built=build(LibraryIndex.cached(getApplicationContext(),lib));
+            handler.post(()->{if(mine!=generation||isFinishing()||built.isEmpty())return;cat=built;refreshPage();});});
+    }
+    private void refreshPage(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();show();}
+    private LibraryCatalogue.Card findCard(String key){
+        if(cat==null||key==null||key.isEmpty())return null;
+        for(LibraryCatalogue.Row r:cat.rows)for(LibraryCatalogue.Card c:r.all)if(c.key().equals(key))return c;
+        return cat.find(key);
+    }
+
+    // --- pages
+    private void show(){
+        if(cat==null||stack.isEmpty())return;Place p=stack.peek();area.removeAllViews();
+        switch(p.kind){
+            case ROWS:rows(p);break;
+            case GRID:{LibraryCatalogue.Row r=cat.row(p.rowId);if(r==null){stack.pop();show();return;}grid(p,r.label,r.all);break;}
+            case SHOW:{LibraryCatalogue.Show s=cat.shows.get(p.showKey);if(s==null){stack.pop();show();return;}season(p,s);break;}
+            case SEARCH:search(p);break;
+        }
+    }
+    private void rows(Place p){
+        if(cat.isEmpty()){message(lib.kids?"Nothing in the Kids folders yet.":"No videos found in your folders yet.",lib.kids?"Ask an adult to add some.":"Check that the folders you chose hold your films and programmes.",lib.kids?null:"Your folders",lib.kids?null:(Runnable)this::setup);return;}
+        ScrollView sv=new ScrollView(this);sv.setFocusable(false);sv.setVerticalScrollBarEnabled(false);sv.setClipToPadding(false);
+        LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(0,0,0,px(80));sv.addView(list);
+        PosterView again=null,first=null;
+        for(LibraryCatalogue.Row r:cat.rows){
+            List<LibraryCatalogue.Card> cards=new ArrayList<>(r.shown());
+            TextView label=words(r.label+(r.all.size()>3&&!r.id.equals("continue")?"  ·  "+r.all.size():""),28,0xFFF4F7FB,true,1);label.setPadding(px(6),px(14),0,px(6));list.addView(label);
+            HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setFocusable(false);hs.setClipToPadding(false);hs.setPadding(px(8),px(8),px(80),px(8));
+            LinearLayout line=new LinearLayout(this);line.setOrientation(LinearLayout.HORIZONTAL);hs.addView(line);
+            for(int i=0;i<cards.size();i++){PosterView v=tile(cards.get(i),cards,i);line.addView(v,tileParams());if(first==null)first=v;if(cards.get(i).key().equals(p.focus))again=v;}
+            if(!r.id.equals("continue")&&r.all.size()>3){PosterView all=action("All "+r.label.toLowerCase(Locale.ROOT).replace("tv","TV"),r.all.size()==1?"1 title":r.all.size()+" titles",()->{rememberFocus();stack.push(new Place(Kind.GRID,r.label,r.id,null));show();});line.addView(all,tileParams());}
+            list.addView(hs);
+        }
+        area.addView(sv);
+        PosterView target=again!=null?again:first;p.focus="";if(target!=null){PosterView t=target;t.requestFocus();handler.post(t::requestFocus);}
+    }
+    private LinearLayout.LayoutParams tileParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(px(208),px(312));lp.setMarginEnd(px(20));return lp;}
+    private void grid(Place p,String title,List<LibraryCatalogue.Card> all){
+        heading(title,all.size()==1?"1 title, A to Z":all.size()+" titles, A to Z");
+        List<LibraryCatalogue.Card> sorted=new ArrayList<>(all);if(!"continue".equals(p.rowId))sorted.sort(LibraryCatalogue.A_TO_Z);
+        cards(p,sorted,null);
+    }
+    private void season(Place p,LibraryCatalogue.Show s){
+        heading(s.name,(s.year.isEmpty()?"":s.year+"  ·  ")+(s.episodes.size()==1?"1 episode":s.episodes.size()+" episodes"));
+        ScrollView sv=new ScrollView(this);sv.setFocusable(false);sv.setVerticalScrollBarEnabled(false);LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(0,0,0,px(80));sv.addView(list);
+        PosterView again=null,first=null;
+        for(int season:s.seasons()){
+            List<LibraryCatalogue.Card> cards=new ArrayList<>();for(LibraryCatalogue.Title t:s.episodes)if(t.season==season)cards.add(new LibraryCatalogue.Card(t));
+            list.addView(words(season<0?"Episodes":season==0?"Specials":"Season "+season,28,0xFFF4F7FB,true,1));
+            HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setFocusable(false);hs.setClipToPadding(false);hs.setPadding(px(8),px(8),px(80),px(8));
+            LinearLayout line=new LinearLayout(this);hs.addView(line);
+            for(int i=0;i<cards.size();i++){PosterView v=tile(cards.get(i),cards,i);line.addView(v,tileParams());if(first==null)first=v;if(cards.get(i).key().equals(p.focus))again=v;}
+            list.addView(hs);
+        }
+        area.addView(sv);PosterView target=again!=null?again:first;p.focus="";if(target!=null){PosterView t=target;t.requestFocus();handler.post(t::requestFocus);}
+    }
+    private void search(Place p){
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);
+        EditText field=new EditText(this);field.setSingleLine(true);field.setText(p.query);field.setHint("Type a title, or speak into your remote");field.setTextColor(0xFFF4F7FB);field.setHintTextColor(0xFF93A5BC);
+        field.setTextSize(TypedValue.COMPLEX_UNIT_PX,30*unit);field.setImeOptions(EditorInfo.IME_ACTION_SEARCH);field.setContentDescription("Search your films and TV");field.setSaveEnabled(false);
+        field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        GradientDrawable bg=new GradientDrawable();bg.setColor(0x33FFFFFF);bg.setCornerRadius(px(14));bg.setStroke(Math.max(1,px(2)),0x80FFFFFF);field.setBackground(bg);field.setPadding(px(24),px(14),px(24),px(14));
+        LinearLayout.LayoutParams fl=new LinearLayout.LayoutParams(px(1100),-2);fl.bottomMargin=px(16);box.addView(field,fl);
+        FrameLayout results=new FrameLayout(this);box.addView(results,new LinearLayout.LayoutParams(-1,0,1));
+        area.addView(box);heading("Search","Your films and programmes, on this TV");
+        int[] ticket={0};
+        Runnable run=()->{int mine=++ticket[0];String q=p.query;
+            if(q.trim().isEmpty()){results.removeAllViews();TextView t=words("Search your films and programmes by name.",24,0xFFC3CEDD,false,2);results.addView(t);return;}
+            LibraryCatalogue.Catalogue c=cat;
+            quick.execute(()->{List<LibraryCatalogue.Card> hits=LibraryCatalogue.search(c,q);
+                handler.post(()->{if(mine!=ticket[0]||isFinishing()||stack.peek()!=p)return;results.removeAllViews();
+                    if(hits.isEmpty()){results.addView(words("Nothing called “"+q.trim()+"” in your library.",24,0xFFC3CEDD,false,2));return;}
+                    LinearLayout holder=new LinearLayout(this);holder.setOrientation(LinearLayout.VERTICAL);results.addView(holder);
+                    cardsInto(holder,p,hits,(hits.size()==1?"1 result":hits.size()+" results"));});});
+        };
+        field.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
+            public void afterTextChanged(Editable e){p.query=e.toString();handler.removeCallbacks(run);handler.postDelayed(run,250);}});
+        field.setOnEditorActionListener((v,action,ev)->{handler.removeCallbacks(run);run.run();View f=results.findFocus();if(f==null){View first=firstPoster(results);if(first!=null)first.requestFocus();}return true;});
+        run.run();
+        if(p.focus.isEmpty())field.requestFocus();
+    }
+    private static View firstPoster(View v){if(v instanceof PosterView)return v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){View f=firstPoster(((ViewGroup)v).getChildAt(i));if(f!=null)return f;}return null;}
+    private void heading(String title,String meta){heroTitle.setText(title);heroMeta.setText(meta);heroText.setText("");}
+    /** A grid of tiles, a chunk at a time ("More" adds the next): bounded views however large the library. */
+    private void cards(Place p,List<LibraryCatalogue.Card> all,String caption){
+        FrameLayout holder=new FrameLayout(this);area.addView(holder);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);holder.addView(box);
+        cardsInto(box,p,all,caption);
+    }
+    private void cardsInto(LinearLayout box,Place p,List<LibraryCatalogue.Card> all,String caption){
+        box.removeAllViews();
+        if(caption!=null){TextView c=words(caption,24,0xFFC3CEDD,false,1);c.setPadding(px(6),0,0,px(6));box.addView(c);}
+        ScrollView sv=new ScrollView(this);sv.setFocusable(false);sv.setVerticalScrollBarEnabled(false);sv.setClipToPadding(false);
+        LinearLayout grid=new LinearLayout(this);grid.setOrientation(LinearLayout.VERTICAL);grid.setPadding(px(8),px(8),0,px(80));sv.addView(grid);box.addView(sv,new LinearLayout.LayoutParams(-1,-1));
+        int columns=Math.max(3,(getResources().getDisplayMetrics().widthPixels-px(160))/(px(208)+px(20)));
+        int shown=Math.min(all.size(),Math.max(GRID_CHUNK,p.shown));List<LibraryCatalogue.Card> visible=all.subList(0,shown);
+        PosterView again=null,first=null;LinearLayout line=null;
+        for(int i=0;i<visible.size();i++){
+            if(i%columns==0){line=new LinearLayout(this);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.bottomMargin=px(20);grid.addView(line,lp);}
+            PosterView v=tile(visible.get(i),visible,i);line.addView(v,tileParams());if(first==null)first=v;if(visible.get(i).key().equals(p.focus))again=v;
+        }
+        if(shown<all.size()){
+            if(line==null||line.getChildCount()>=columns){line=new LinearLayout(this);grid.addView(line);}
+            int more=Math.min(GRID_CHUNK,all.size()-shown);
+            PosterView m=action("Show more",more+" more",()->{p.shown=shown+GRID_CHUNK;p.focus=visible.get(visible.size()-1).key();cardsInto(box,p,all,caption);});line.addView(m,tileParams());
+        }
+        PosterView target=again!=null?again:(p.kind==Kind.SEARCH?null:first);p.focus="";
+        if(target!=null){PosterView t=target;t.requestFocus();handler.post(t::requestFocus);}
+    }
+
+    // --- tiles
+    private PosterView tile(LibraryCatalogue.Card card,List<LibraryCatalogue.Card> neighbours,int at){
+        PosterView v=new PosterView(this,unit,calm);v.show(card);
+        Bitmap b=posters.cachedPoster(card);if(b!=null)v.art(b);else posters.poster(card,udn,false,bmp->{if(v.card==card&&bmp!=null)v.art(bmp);});
+        v.setOnClickListener(x->open(card));
+        v.setOnFocusChangeListener((x,focused)->{if(!focused)return;hero(card);
+            // The tile in focus and its neighbours come first in the picture queue.
+            for(int d=-2;d<=4;d++){int i=at+d;if(i<0||i>=neighbours.size())continue;LibraryCatalogue.Card n=neighbours.get(i);if(posters.cachedPoster(n)==null)posters.poster(n,udn,true,d==0?bmp->{if(v.card==card&&bmp!=null&&!v.hasArt())v.art(bmp);}:null);}});
+        return v;
+    }
+    private PosterView action(String title,String detail,Runnable run){
+        PosterView v=new PosterView(this,unit,calm);v.showAction(title,detail);v.setOnClickListener(x->run.run());
+        v.setOnFocusChangeListener((x,f)->{if(f){heroTitle.setText(title);heroMeta.setText(detail);heroText.setText("");focusKey="";wantedBack="";handler.removeCallbacks(backdropLater);toBack(null,"");}});return v;
+    }
+    /** The highlighted title's words at once; its own background shortly after focus settles (never another title's). */
+    private void hero(LibraryCatalogue.Card c){
+        if(c==null){focusKey="";return;}
+        focusKey=c.key();heroTitle.setText(c.name());
+        List<String> meta=new ArrayList<>();if(!c.year().isEmpty())meta.add(c.year());
+        if(c.show!=null)meta.add(c.show.episodes.size()==1?"1 episode":c.show.episodes.size()+" episodes");else if(!c.detail().isEmpty())meta.add(c.detail());else meta.add("Film");
+        if(c.kids()&&!lib.kids)meta.add("Kids");
+        if(c.resume>0)meta.add("Resume from "+PlaybackPolicy.clock(c.resume)+" (on this TV)");
+        heroMeta.setText(String.join("  ·  ",meta));
+        String[] details=posters.details(c,udn);String overview=details==null?"":details[0];
+        heroText.setText(!overview.isEmpty()?overview:postersOn?"":Posters.HINT);
+        wantedBack=c.key();handler.removeCallbacks(backdropLater);
+        Bitmap b=posters.cachedBackdrop(c,light);
+        if(b!=null){toBack(b,c.key());return;}
+        // Not ready: fade to the calm neutral scene at once (no stale picture), then the title's own when it arrives.
+        if(!shownBack.isEmpty())toBack(null,"");
+        handler.postDelayed(backdropLater,calm?0:160);
+    }
+    private void backdrop(LibraryCatalogue.Card c){
+        String key=c.key();
+        posters.backdrop(c,udn,light,bmp->{if(bmp!=null&&key.equals(wantedBack)&&key.equals(focusKey)){toBack(bmp,key);
+            String[] details=posters.details(c,udn);if(details!=null&&!details[0].isEmpty()&&key.equals(focusKey))heroText.setText(details[0]);}});
+    }
+    /** Crossfades to a picture (null: the neutral scene). Reduce motion: no fade. */
+    private void toBack(Bitmap b,String key){
+        if(key.equals(shownBack)&&(b!=null||shownBack.isEmpty()))return;shownBack=key;
+        ImageView from=backs[front],to=backs[1-front];front=1-front;
+        to.animate().cancel();from.animate().cancel();to.setImageBitmap(b);
+        if(calm||light){to.setAlpha(b==null?0f:1f);from.setAlpha(0f);if(b==null)to.setImageDrawable(null);from.setImageDrawable(null);return;}
+        to.setAlpha(0f);if(b!=null)to.animate().alpha(1f).setDuration(280).start();
+        from.animate().alpha(0f).setDuration(280).withEndAction(()->{if(backs[front]!=from)from.setImageDrawable(null);}).start();
+    }
+    private void open(LibraryCatalogue.Card c){
+        rememberFocus();
+        if(c.show!=null){stack.push(new Place(Kind.SHOW,c.show.name,null,c.show.key));show();return;}
+        LibraryCatalogue.Title t=c.title;
+        Intent play=new Intent(this,PlayerActivity.class).putExtra("dlnaUrl",t.url).putExtra("title",t.kind==LibraryCatalogue.Kind.EPISODE?t.showName+" "+t.label():t.name)
+            .putExtra("dlnaItem",t.id).putExtra("root",t.root).putExtra("stableId",t.stableId);
+        try{startActivity(play);}catch(RuntimeException e){note("Unable to play this title");}
+    }
+    private void rememberFocus(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();}
+    @Override public void onBackPressed(){
+        if(stack.size()>1){stack.pop();show();return;}
+        super.onBackPressed();
+    }
+    /** For tests: the page now showing, and the catalogue. */
+    Kind page(){return stack.isEmpty()?null:stack.peek().kind;}
+    LibraryCatalogue.Catalogue catalogue(){return cat;}
 }

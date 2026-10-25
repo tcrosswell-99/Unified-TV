@@ -36,6 +36,8 @@ final class HaEntities {
     static final boolean EVENT_DOORBELLS = true;
     static final String[] ROLES={"door","person","camera","calendar","xbox","tvplus","art","ringEnter","ringExit"};
     static final String[][] ROOMS={{"tcl","TCL"},{"sony","Sony BRAVIA"},{"frame","Samsung The Frame"}};
+    /** The rooms this Android app can be in: the Frame runs the separate Tizen app, so it is never offered here. */
+    static final String[][] ANDROID_ROOMS={ROOMS[0],ROOMS[1]};
 
     private HaEntities(){}
 
@@ -140,7 +142,7 @@ final class HaEntities {
                     if(e.responding()&&e.any("tottenham","spurs","thfc","hotspur","fixtures","fixture"))strong.add(e);else other.add(e);}
                 break;
             case "xbox":case "tvplus":case "art":case "ringEnter":case "ringExit":
-                heading="Other scripts";
+                heading="Other Home Assistant actions";
                 for(Entity e:all){if(!e.domain.equals("script"))continue;if(e.responding()&&scriptFits(role,e))strong.add(e);else other.add(e);}
                 break;
             default:throw new IllegalArgumentException(role);

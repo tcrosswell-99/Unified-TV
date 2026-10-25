@@ -18,10 +18,13 @@ final class About {
         {"OkHttp 4.12.0","Apache License 2.0","Square, github.com/square/okhttp"},
         {"Okio","Apache License 2.0","Square, github.com/square/okio"},
         {"Kotlin standard library (used by OkHttp)","Apache License 2.0","JetBrains, github.com/JetBrains/kotlin"},
+        {"QR Code generator library (Java)","MIT License","Copyright (c) Project Nayuki, nayuki.io/page/qr-code-generator-library; draws phone setup's QR codes"},
     };
     static String licences(){
         StringBuilder b=new StringBuilder();
         for(String[] l:LIBRARIES)b.append(b.length()==0?"":"\n\n").append(l[0]).append("\n").append(l[1]).append(" · ").append(l[2]);
+        // TMDB's terms ask for this notice wherever its data or pictures are used (Films & TV posters, by title).
+        b.append("\n\nFilm and programme posters (optional, with your own key): The Movie Database (TMDB), themoviedb.org. ").append(Tmdb.ATTRIBUTION);
         return b.append("\n\nApp icons on the Apps screen come from the installed apps themselves. Home's tile symbols, the team badge and the utility icons are drawn by Unified TV; no brand artwork or club crest is bundled.").toString();
     }
     /** "Title: credit" for each picture in the artwork catalogue; empty when it can't be read. */

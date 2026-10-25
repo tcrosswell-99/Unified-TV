@@ -96,7 +96,9 @@ final class AppCatalogue {
         new Entry("youtube","YouTube",YOUTUBE,new String[]{"com.google.android.youtube.tv"},true,true,false,null,ANDROID,TIZEN),
         new Entry("youtubekids","YouTube Kids",YOUTUBE,new String[]{"com.google.android.youtube.tvkids"},true,true,false,null,ANDROID,TIZEN),
         // SmartTube: not in Google Play and not on Tizen. Recognised if the household installed it; never installed by us.
-        new Entry("smarttube","SmartTube",YOUTUBE,DockPolicy.packages("smartutube"),false,false,false,"smarttube",ANDROID),
+        // Owner, 25 October 2026: it is the household's YouTube, so on Home its tile reads "YouTube" with the YouTube symbol
+        // (DockLabels); here, where both can be chosen, its name says which YouTube it is.
+        new Entry("smarttube","YouTube (SmartTube)",YOUTUBE,DockPolicy.packages("smartutube"),false,false,false,"smarttube",ANDROID),
         // Casting: AirPin is recognised by its installed name (as AirPlayReceiver does); no store handoff.
         new Entry("airpin","AirPin (AirPlay receiver)",CASTING,new String[0],false,false,false,"airpin",ANDROID)));
 

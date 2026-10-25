@@ -4,11 +4,11 @@ import org.json.*;
 import java.util.*;
 
 /**
- * The poster row that rises from Home on Down (spec 4.6): a few titles from the household's own collections, never a guess.
- * Per profile (owner, 25 October 2026): Adults see the household library ("dlna"); Kids see only the Kids folders
- * ("dlna-kids") with the Kids rating table applied, and nothing at all until an adult has chosen Kids folders. Titles
- * with a place saved on this TV, in this profile's own store, come first and say so ("resume on this TV"): a local place,
- * never called Continue Watching from the server (spec 9).
+ * The poster row that rises from Home on Down (spec 4.6), from the same saved list as the library (LibraryIndex), so it
+ * appears at once and matches what the library shows: this profile's Continue Watching first (labelled "on this TV"),
+ * then titles from the library's own rows in turn (Recently added, Films, TV, Kids). Never a folder name, never a guess.
+ * Per profile (owner, 25 October 2026): Kids see only titles in folders marked for Kids, within the Kids ratings, and
+ * nothing at all until an adult has marked some.
  */
 final class HomeShelf {
     static final int MAX=18,ROOTS=3;
@@ -16,8 +16,25 @@ final class HomeShelf {
         final String id,title,year,art,url,root;final boolean folder;
         /** This profile's saved place on this TV, in milliseconds; 0 when there is none. */
         long resume;
+        /** The library tile behind it (its poster, its programme), when it came from the saved list. */
+        LibraryCatalogue.Card card;
         Poster(String id,String title,String year,String art,String url,boolean folder,String root){this.id=id;this.title=title;this.year=year;this.art=art;this.url=url;this.folder=folder;this.root=root;}
         String label(){return (year.isEmpty()?title:title+" ("+year+")")+(resume>0?" · resume on this TV":"");}
+        static Poster of(LibraryCatalogue.Card c){
+            LibraryCatalogue.Title t=c.title;
+            Poster p=new Poster(c.key(),c.name(),c.year(),c.serverArt(),t==null?"":t.url,t==null,t==null?"":t.root);p.card=c;p.resume=c.resume;return p;
+        }
+    }
+    /** Continue Watching first, then one title from each row in turn, no tile twice, at most {@code max}. */
+    static List<Poster> fromCatalogue(LibraryCatalogue.Catalogue cat,int max){
+        List<Poster> out=new ArrayList<>();Set<String> seen=new HashSet<>();if(cat==null)return out;
+        List<List<LibraryCatalogue.Card>> rows=new ArrayList<>();
+        for(LibraryCatalogue.Row r:cat.rows){if(r.id.equals("continue")){for(LibraryCatalogue.Card c:r.all)if(out.size()<max&&seen.add(c.key()))out.add(Poster.of(c));}else rows.add(r.all);}
+        for(int i=0;out.size()<max;i++){boolean any=false;
+            for(List<LibraryCatalogue.Card> r:rows){if(i>=r.size())continue;any=true;LibraryCatalogue.Card c=r.get(i);
+                if(seen.add(c.key()))out.add(Poster.of(c));if(out.size()>=max)break;}
+            if(!any)break;}
+        return out;
     }
     /** Interleave each collection's first page so one large folder doesn't crowd out the others; titles only, no duplicates. */
     static List<Poster> pick(List<List<DlnaClient.Item>> pages,List<String> roots,int max){
@@ -39,21 +56,23 @@ final class HomeShelf {
     static List<DlnaClient.Item> kidsOnly(List<DlnaClient.Item> items,String udn,String root,Set<String> kidsRoots,KidsPolicy.Scheme scheme){
         List<DlnaClient.Item> out=new ArrayList<>();for(DlnaClient.Item i:items)if(KidsPolicy.allows(CatalogueItem.fromDlna(i,udn,root),kidsRoots,scheme))out.add(i);return out;
     }
-    /** The saved collections of this profile only; nothing is shown from folders the household didn't choose. */
+    /**
+     * The row for this profile: from the saved list, made first if there is none yet (one walk for the whole app, shared
+     * with the library). Runs off the main thread.
+     */
     static List<Poster> load(Context c)throws Exception{
-        boolean kids=Profiles.kids(c);
-        JSONObject source=new Vault(c).read(kids?KidsPolicy.STORE:"dlna");JSONArray roots=source.optJSONArray("roots");if(!source.optBoolean("enabled")||roots==null)return new ArrayList<>();
-        Set<String> kidsRoots=KidsPolicy.roots(source);KidsPolicy.Scheme scheme=HouseholdSettings.scheme(c);
-        DlnaClient.lan=LocalDiscovery.lan(c);List<List<DlnaClient.Item>> pages=new ArrayList<>();List<String> ids=new ArrayList<>();
-        for(int i=0;i<Math.min(ROOTS,roots.length());i++){JSONObject root=roots.optJSONObject(i);if(root==null)continue;String id=root.optString("id");
-            try{List<DlnaClient.Item> items=DlnaClient.browse(source,id,0).items;pages.add(kids?kidsOnly(items,source.optString("udn"),id,kidsRoots,scheme):items);ids.add(id);}catch(Exception ignored){}}
-        return resumeFirst(pick(pages,ids,MAX),ResumeStore.load(c),System.currentTimeMillis());
+        LibraryFolders.Library lib=LibraryFolders.library(c);if(!lib.ready)return new ArrayList<>();
+        DlnaClient.lan=LocalDiscovery.lan(c);
+        LibraryIndex.Index index=LibraryIndex.cached(c,lib);
+        if(index.size()==0||LibraryIndex.due(index,lib,System.currentTimeMillis()))try{index=LibraryIndex.refresh(c,lib,false,null);}catch(Exception e){if(index.size()==0)throw e;}
+        LibraryCatalogue.Catalogue cat=LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(c),ResumeStore.load(c),System.currentTimeMillis());
+        return fromCatalogue(cat,MAX);
     }
     /** A library is set up for whoever is watching: Kids folders (or a Kids media account) for Kids, the household's for Adults. */
     static boolean configured(Context c){
         try{
-            if(Profiles.kids(c))return KidsPolicy.ready(new Vault(c).read(KidsPolicy.STORE))||new Vault(c).read(Vault.mediaKey(c)).optBoolean("enabled");
-            if(new Vault(c).read("dlna").optBoolean("enabled"))return true;return new Vault(c).read(Vault.mediaKey(c)).optBoolean("enabled");
+            if(LibraryFolders.library(c).ready)return true;
+            return LibraryFolders.read(c,Vault.mediaKey(c)).optBoolean("enabled");
         }catch(Exception e){return false;}
     }
 }

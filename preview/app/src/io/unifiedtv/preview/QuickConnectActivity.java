@@ -5,14 +5,14 @@ import android.widget.*;
 import org.json.JSONObject;
 import java.util.concurrent.*;
 
-/** Sign in with your phone: a short code on the TV, approved in the Jellyfin app. Typing stays an advanced option. */
-public final class QuickConnectActivity extends Screen {
+/** Sign in with your phone: a short code on the TV, approved in the Jellyfin app. Typing stays an advanced option. The glass sheet over Home (OD-11). */
+public final class QuickConnectActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();private final Handler timer=new Handler(Looper.getMainLooper());
     private String key,base,name;private JSONObject pending;private QuickConnect.Start start;private TextView code,state;private long until;private boolean active;
     @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);active=true;
         key=getIntent().getStringExtra("key");base=getIntent().getStringExtra("base");name=getIntent().getStringExtra("name");if(key==null||base==null){finish();return;}
         page(name==null||name.isEmpty()?"Your Films & TV":name);
-        code=text("",64);code.setLetterSpacing(.25f);
+        code=text("",64);code.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,textPx(64));code.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE,android.graphics.Typeface.BOLD));code.setLetterSpacing(.25f);
         state=text("One moment...",21);
         button("Sign in another way (advanced)",()->{startActivity(new Intent(this,ConnectionsActivity.class).putExtra("key",key).putExtra("discoveredBase",base).putExtra("discoveredName",name));finish();});
         button("Cancel",this::finish);

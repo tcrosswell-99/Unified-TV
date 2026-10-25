@@ -54,9 +54,11 @@ final class HomeUtilities {
         return landing(after);
     }
     /** The short label shown outside the focused icon (and spoken). */
-    static String label(String id,String vpnState,boolean airplayReady){
+    static String label(String id,String vpnState,boolean airplayReady){return label(id,vpnState,airplayReady,false);}
+    /** While a check is running and AirPlay isn't confirmed yet, it says so, rather than repeating an answer that may be stale. */
+    static String label(String id,String vpnState,boolean airplayReady,boolean airplayChecking){
         switch(id){
-            case AIRPLAY:return airplayReady?"AirPlay ready":"AirPlay: AirPin isn't offering AirPlay right now";
+            case AIRPLAY:return airplayReady?"AirPlay ready":airplayChecking?"AirPlay: checking AirPin…":"AirPlay: AirPin isn't offering AirPlay right now";
             case VPN:return vpnState;
             case VOICE:return "Ask your TV";
             case SETTINGS:return "Settings";

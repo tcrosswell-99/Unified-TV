@@ -9,7 +9,7 @@ import java.util.*;
 
 /**
  * Football fixtures from API-Football (owner, 25 October 2026), one FixtureSource behind Fixtures.FixtureSource; the
- * Home Assistant calendar stays as the alternative. The household's own key (Settings > Smart Home > Add a service) is
+ * Home Assistant calendar stays as the alternative. The household's own key (added from a phone: PhoneService, Settings > Smart Home) is
  * kept in the Vault, sent only in the x-apisports-key header to the one fixed origin, and never logged or shown again.
  *
  * API v3 (documentation: https://www.api-football.com/documentation-v3, base https://v3.football.api-sports.io). The
@@ -170,12 +170,34 @@ final class ApiFootball {
         return new int[]{read,all};
     }
 
+    // --- checking a key (phone setup)
+    /** The account endpoint: API-Football documents that it doesn't count against the daily quota. */
+    static final String STATUS="/status";
+    /**
+     * A /status reply: {"errors":[],"response":{"account":{...},"subscription":{"plan","end","active"},"requests":
+     * {"current","limit_day"}}}. Returns {requests used today, daily limit}; Refused for errors or an inactive account.
+     * Account names and email addresses in the reply are never read.
+     */
+    static int[] account(JSONObject body)throws Refused{
+        response(body);
+        JSONObject r=body.optJSONObject("response");if(r==null)throw new Refused("empty");
+        JSONObject sub=r.optJSONObject("subscription");if(sub!=null&&sub.has("active")&&!sub.optBoolean("active"))throw new Refused("inactive");
+        JSONObject req=r.optJSONObject("requests");
+        return new int[]{req==null?0:Math.max(0,req.optInt("current")),req==null?DAILY_LIMIT:req.optInt("limit_day",DAILY_LIMIT)};
+    }
+    /** What a failed check means to the household: a bad key, a busy service, or no connection. */
+    static PhoneFlows.Verdict verdict(Exception e){
+        if(e==null)return PhoneFlows.Verdict.OK;
+        if(e instanceof Refused){Refused r=(Refused)e;return r.quota()?PhoneFlows.Verdict.BUSY:PhoneFlows.Verdict.REFUSED;}
+        return PhoneFlows.Verdict.OFFLINE;
+    }
+
     // --- network (the app's plain HttpURLConnection, as LocalApi: fixed origin, timeouts, no redirects, bounded size)
     static final int LIMIT=2*1024*1024;
     /** One GET to the fixed origin. Errors carry an HTTP code or the API's error key, never the key or the body. */
     static JSONObject get(String key,String pathAndQuery)throws Exception{
         if(key==null||key.trim().isEmpty())throw new Refused("token");
-        if(!pathAndQuery.matches("/(leagues|teams|fixtures)\\?[A-Za-z0-9=&_.-]+"))throw new IllegalArgumentException("unexpected request");
+        if(!pathAndQuery.equals(STATUS)&&!pathAndQuery.matches("/(leagues|teams|fixtures)\\?[A-Za-z0-9=&_.-]+"))throw new IllegalArgumentException("unexpected request");
         HttpURLConnection c=(HttpURLConnection)new URL(BASE+pathAndQuery).openConnection();
         c.setConnectTimeout(8000);c.setReadTimeout(12000);c.setInstanceFollowRedirects(false);c.setRequestMethod("GET");c.setRequestProperty(HEADER,key.trim());c.setUseCaches(false);
         try{

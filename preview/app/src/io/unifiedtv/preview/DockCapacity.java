@@ -79,7 +79,7 @@ final class DockCapacity {
     private static String room(SharedPreferences p){return p.getString("room",android.os.Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");}
     /** A tile's name for a dialog: Unified TV's own names, else the installed app's label. */
     static String name(Context c,String id){
-        switch(id){case "smartutube":return "SmartTube";case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC";case "live":return "Live TV";
+        switch(id){case "smartutube":return DockLabels.name(id);case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC";case "live":return "Live TV";
             case "music":return "Music";case "xbox":return "Xbox";case "tvplus":return "Samsung TV Plus";case DockPolicy.LIBRARY:return "Library";default:break;}
         try{android.content.pm.PackageManager pm=c.getPackageManager();return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(id,0)));}catch(Exception e){return id;}
     }

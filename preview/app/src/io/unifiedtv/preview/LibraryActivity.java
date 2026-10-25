@@ -25,7 +25,7 @@ public final class LibraryActivity extends Screen {
     @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);
         try {if("dlna".equals(getSharedPreferences("unified-tv-preview",0).getString("librarySource",""))||!new Vault(this).read(Vault.mediaKey(this)).optBoolean("enabled")){
             // Folder shortcuts (folder, name, fromShelf, root) pass through; DlnaLibraryActivity accepts them only for saved collections.
-            Intent dlna=new Intent(this,DlnaLibraryActivity.class);for(String key:new String[]{"folder","name","root"})if(getIntent().hasExtra(key))dlna.putExtra(key,getIntent().getStringExtra(key));
+            Intent dlna=new Intent(this,DlnaLibraryActivity.class);for(String key:new String[]{"folder","name","root","search"})if(getIntent().hasExtra(key))dlna.putExtra(key,getIntent().getStringExtra(key));
             if(getIntent().getBooleanExtra("fromShelf",false))dlna.putExtra("fromShelf",true);startActivity(dlna);finish();return;}}catch(Exception e){page("Your Films & TV");text("Unlock your saved library in Settings.",20);button("Back",this::finish);return;}load("");}
     private String rootQuery(String type,String search){
         return "/Users/"+LocalApi.segment(config.optString("user"))+"/Items?Recursive=true&IncludeItemTypes="+type+

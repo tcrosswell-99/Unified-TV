@@ -7,6 +7,9 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <!-- Ask your TV only: asked for the first time the household presses Speak, and used only while the pane says
+       "Listening" (VoiceActivity). Nothing listens in the background. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-feature android:name="android.software.leanback" android:required="false"/>
   <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
   <queries>
@@ -15,6 +18,8 @@
     <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/></intent>
     <!-- Build My TV (SET-BUILD-03): only to tell whether a store can open a Google Play listing; nothing is installed. -->
     <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="market"/></intent>
+    <!-- Ask your TV: whether the TV's own speech service can listen inside the pane (SpeechRecognizer). -->
+    <intent><action android:name="android.speech.RecognitionService"/></intent>
   </queries>
   <application android:name=".PreviewApp" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="@string/app_name"
       android:icon="@drawable/preview_icon" android:banner="@drawable/preview_banner"
@@ -23,23 +28,27 @@
     <!-- HTTP is permitted only by LocalApi after explicit consent for the configured origin.
          Redirects are refused. No WebView, exported setup receiver or remote URL activity. -->
     <activity android:name=".DlnaLibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".ServiceDiscoveryActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- Choosing the folders for Films & TV: the same glass sheet over a still Home as Settings. -->
+    <activity android:name=".LibrarySetupActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Setup screens are the same glass sheet over a still Home as Settings (OD-11). -->
+    <activity android:name=".ServiceDiscoveryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape"/>
     <!-- Module 13: a translucent glass overlay over a stationary Home (res/values/settings_glass.xml). -->
     <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
-    <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".QuickConnectActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".QuickConnectActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".AppsActivity" android:exported="false" android:screenOrientation="landscape"/>
     <!-- Build My TV (v3.4.5/3.4.6): optional setup, opened from Home's one-time card or Settings. Not exported. -->
-    <activity android:name=".BuildMyTvActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".BuildMyTvActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <service android:name=".LiveTvGuard" android:exported="false"/>
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
-    <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- OD-11: Gallery's settings are the glass sidebar over a still Home; its slideshow fills the screen. -->
+    <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".WallpaperActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".PhotoFoldersActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".PhotoFoldersActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".NowPlayingActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".RemoteCheckActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".RemoteCheckActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Lets Unified TV see the TV's media sessions once the owner allows notification access. It reads no
          notifications: it disconnects as soon as it is bound. Only the system can bind it (the permission). -->
     <service android:name=".MediaWatch" android:exported="true" android:label="@string/app_name"
@@ -55,9 +64,11 @@
     </service>
     <activity android:name=".KidsActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".OwnerDiagnosticsActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Ask your TV: a small glass listening pane under Home's pill, over a still Home (translucent). -->
+    <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-11: setup and check screens open as the glass sidebar over a still Home (SheetScreen). -->
+    <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- SET-043: an adult resets a forgotten PIN from a computer (PinReset says why this is safe). Only a sender holding
          WRITE_SECURE_SETTINGS (the ADB shell; never a store app) can reach it. -->
     <receiver android:name=".PinReset" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">

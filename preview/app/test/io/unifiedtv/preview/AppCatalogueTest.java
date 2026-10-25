@@ -47,10 +47,14 @@ public class AppCatalogueTest {
         assertTrue("sign-in is stated, never collected",AppCatalogue.describe(AppCatalogue.entry("netflix"),AppCatalogue.State.INSTALLED_AND_LAUNCHABLE).contains("sign-in, in its own app"));
         for(AppCatalogue.Entry e:AppCatalogue.ENTRIES)for(String p:e.packages)assertTrue(p,p.matches("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+"));
     }
-    @Test public void smartTubeAndYouTubeGlyphsStayApart(){
-        assertEquals("smarttube",DockLabels.glyph("smartutube"));
-        for(String p:DockPolicy.packages("smartutube"))assertEquals(p,"smarttube",DockLabels.glyph(p));
-        assertNotEquals(DockLabels.glyph("smartutube"),DockLabels.glyph("com.google.android.youtube.tv"));
+    // Owner, 25 October 2026: SmartTube is the household's YouTube, so its tile is named YouTube and draws the YouTube symbol.
+    @Test public void smartTubeIsShownAsYouTube(){
+        assertEquals("play",DockLabels.glyph("smartutube"));
+        for(String p:DockPolicy.packages("smartutube")){assertEquals(p,"play",DockLabels.glyph(p));assertEquals(p,"YouTube",DockLabels.name(p));}
+        assertEquals(DockLabels.glyph("smartutube"),DockLabels.glyph("com.google.android.youtube.tv"));
+        assertEquals("YouTube",DockLabels.name("smartutube"));assertNull("an ordinary app keeps its own name",DockLabels.name("com.netflix.ninja"));
+        assertTrue("Build My TV still says which YouTube it is",AppCatalogue.entry("smarttube").name.contains("YouTube")&&AppCatalogue.entry("smarttube").name.contains("SmartTube"));
+        assertEquals("detection is unchanged",DockPolicy.packages("smartutube").length,AppCatalogue.entry("smarttube").packages.length);
         assertNotEquals("two music apps on Home look different",DockLabels.glyph("music"),DockLabels.glyph("com.spotify.tv.android"));
         for(AppCatalogue.Category c:AppCatalogue.CATEGORIES)assertTrue(c.glyph,DockLabels.GLYPHS.contains(c.glyph));
         for(AppCatalogue.Entry e:AppCatalogue.ENTRIES)for(String p:e.packages)assertTrue(p,DockLabels.GLYPHS.contains(DockLabels.glyph(p)));
