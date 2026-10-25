@@ -1,0 +1,4 @@
+requirement_id,feature,gate,device,status,evidence_level,source_commit,build_id,app_variant,firmware,remote,test_steps,expected,observed,evidence_link,blocker,owner_action,reviewed_at
+DOCK-01,Editable six-app dock,G2,TCL,implemented_unverified,source_review,PR #9 reported; audit needed,,,,,Owner D-pad edit/persist test,Edits persist,Not physically tested,,Audit PR merge and actual code,Owner tests on TCL,
+APPS-01,Apps grid,G2,TCL,implemented_unverified,source_review,PR #9 reported; audit needed,,,,,Owner navigation test,Grid works,Not physically tested,,Audit source,Owner tests on TCL,
+NAS-PAGING,NAS paging,G3,TCL,implemented_unverified,source_review,PR #9 reported; audit needed,,,,,Owner real NAS browse,Paging works,Not physically tested,,Audit source,Owner tests on TCL,

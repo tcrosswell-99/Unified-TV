@@ -145,3 +145,28 @@ Use a schema-versioned configuration model, e.g.:
 - Ring camera auto-dismiss timeout not decided; expose design option but do not hardcode as confirmed.
 - Kids restrictions outside Unified TV may not be enforceable on stock Tizen/Android without system support. Describe actual boundary.
 - Cross-device account sync, individual profiles, cloud login, voice assistant and universal search are later, separately approved features.
+
+## v3.4.1 Settings addition — Home navigation
+
+- **SET-090:** Add **Appearance & Home → Navigation & Shortcuts** with Utilities row enable/disable, reorder, remove/add detected installed utility shortcuts (e.g. NordVPN, AirPin), direct Settings entry and preferred Library landing row.
+- **SET-091:** The Home Up key must focus Utilities directly rather than opening the old menu. The Down key must reveal Library/NAS films. These are fixed default navigation semantics, not remappable directional actions.
+- **SET-092:** Explain unsupported/missing apps, preserve a safe path to Settings, and show graceful Library states when no NAS is connected.
+- **SET-093:** Settings preview must demonstrate navigation without changing the live remote mapping until confirmed; provide reset-to-default navigation.
+
+
+## UX-UTILITY — Top-right frosted-glass utility pill (v3.4.3 mandatory)
+
+**UX-UTILITY-01 — Visual contract.** On active Home, render **one compact frosted-glass pill in the top-right** containing, in order, **AirPlay status, NordVPN state, AI voice assistant, and Settings**. Use **minimalist, text-free white glyphs only**: AirPlay/cast glyph, VPN shield, microphone, gear. No flags, text lockups, coloured app squares, duplicated top-right menu, or permanently expanded labels. Icons must have uniform optical size, consistent stroke/weight, adequate spacing, and readable contrast against the animated mesh. Brand marks must respect licensing; use a neutral, accurate capability glyph where necessary.
+
+**UX-UTILITY-02 — Truthful state.** AirPlay/AirPin status must not imply a receiver is running if it is not installed, permitted, or connected. NordVPN shield must not imply protection unless a verified VPN connection is active; distinguish disconnected, connecting, verified, and unknown with subtle accessible treatments while keeping the normal pill monochrome. The AI microphone must not imply active listening unless it is actually listening, with an explicit consent/permission path. Unsupported features should be omitted or safely disabled with explanation on focus, not fabricated.
+
+**UX-UTILITY-03 — Interaction.** **Single Up from the six-app dock focuses the pill directly**, without opening an intermediate menu. Left/Right moves through its four focusable icons; OK activates the focused action or relevant detail, Back returns to the dock. On focus, a short accessible label may appear **outside the icon** or through a focus tooltip; the glyph itself remains text-free. D-pad focus order, Back restoration and reduced-motion settings apply. The configurable utility shortcut mapping remains available in Settings; this visual grouping must not hardcode NordVPN or AirPin for every household.
+
+**UX-UTILITY-04 — Motion and interruption.** Pill is **visually silent during normal browsing**: no looping pulse, animated status, or intrusive pop-up. Expand/animate only for a **critical, verified state change** requiring user action, e.g. protected Live TV VPN verification failure. A mere focus change gets the normal restrained focus outline, not a critical alert. Emergency smoke/CO alerts always outrank pill activity. Hide the pill in gallery/ambient mode, Samsung native Art Mode and third-party full-screen apps, preserving platform restrictions.
+
+**UX-UTILITY-05 — Acceptance.** Verify on TCL Android TV, Sony Google TV and Samsung Frame: default/focused appearance over moving mesh; icon contrast; Up/Left/Right/OK/Back; receiver absent; VPN connected/disconnected/unknown; microphone permission denied; Settings access; critical-state expansion; ambient/Art Mode absence; emergency priority. Record platform limitations and physical-TV evidence in the existing acceptance register. These are requirements, not claims of implementation.
+
+
+## v3.4.4 — Dock & Icons / label visibility
+
+**SET-026 — App label visibility (owner-confirmed).** Provide **Appearance & Home → Dock & Icons → App label visibility** with radio choices **Focused only (default)**, **Always show labels**, **Hide labels**. Show an accurate D-pad-operable live preview, explanatory text and a visible selected option. Setting is per Adults/Kids profile, persists across restart, and resets to Focused only when Appearance is reset. This controls labels *outside* the tiles, never the minimalist glyphs. Use the shared `dock.labelVisibility` enum and migration specified in UX-ICON-06. Ensure a clear focused app identity and accessibility in Hide labels mode. Do not accidentally turn on always-visible labels because the approved Home screenshot shows them.

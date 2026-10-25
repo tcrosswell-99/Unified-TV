@@ -1,3 +1,5 @@
+> **Repository copy (25 October 2026).** This is the owner's v3.4.4 developer pack text, unchanged except that the link to the approved Home image is shown as a plain path. The pack's reference images (approved Home, six palettes, five Wallpaper references) are **kept outside Git**: they contain third-party marks (Netflix, Disney+, BBC and others) and are reference only, not licensed production assets ([REFERENCES.md](../../design/REFERENCES.md)).
+
 # Unified TV — Specification v3.4 (authoritative index)
 
 **Date:** 25 October 2026 (UK local decision date)  
@@ -57,3 +59,18 @@ Six palette images exist under `references/ambient/01-smarttube.jpg` ... `06-mus
 ## Archive and source traceability
 
 `archive/` contains original v3.2 documents, unchanged. Earlier functional detail remains searchable there, but v3.4 modules are the current implementation contracts. If a historical feature is absent from current modules, log a **scope reconciliation issue** and obtain owner confirmation before implementing it. Do not silently drop or reintroduce historical scope. The [coverage crosswalk](MODULE_COVERAGE_AND_MIGRATION.md) identifies moved sections and known gaps.
+
+## v3.4.1 owner clarification — direct vertical navigation
+
+**Confirmed:** Home Up moves directly to the configurable utility icons (NordVPN/AirPin examples), without opening a menu. Home Down reveals NAS films / separate Library with direct focus. Minimal dock-centred Home remains unchanged when idle. See NAV-01–NAV-08 in modules 05/07 and SET-090–SET-093 in module 12. These requirements supersede any previous Up-menu or page-transition interpretation.
+
+## v3.4.2 owner clarification — minimalist dock icons
+
+**Confirmed mandatory:** all six app-dock tiles use cohesive minimalist, monochromatic or simplified vector glyphs; no text-only tiles or default heavy full-colour Android/Tizen app squares. Labels remain outside tiles for clarity and accessibility; focus treatment retains lift, luminous outline, halo and app title. See UX-ICON-01–UX-ICON-04 in `modules/05_UX_Motion_Design.md`. This overrides the legacy v3.2 text-lockup fallback, even where archived text says otherwise. The owner's requested exact v3.2 replacements are included in `archive/Unified-TV-Specification-v3.2-minimalist-icons.md` for traceability; the current modules remain authoritative.
+
+**v3.4.3 utility pill amendment:** The top-right Home utilities must be a compact frosted-glass pill with minimalist text-free white AirPlay status, NordVPN state, AI voice assistant and Settings glyphs. This supersedes older country-flag/ChatGPT text or icon-group guidance. See `modules/05_UX_Motion_Design.md` UX-UTILITY-01–05.
+
+
+## v3.4.4 — Approved Home visual and default dock labels
+
+**Binding owner decision:** The primary Home visual reference is `references/approved-home/Unified-TV-Approved-Home-2026-10-25.jpg`. It supersedes older Home compositions, subject to accessibility, technical and safety contracts. The image shows labels for all six apps, but **the implementation default MUST be Focused only**. Users can choose Always show labels or Hide labels at **Settings → Appearance & Home → Dock & Icons → App label visibility**, stored independently for Adults/Kids. Minimalist icons are mandatory in every mode. Requirements: **UX-ICON-05, UX-ICON-06, UX-VISUAL-01/02, SET-026, OD-15/16**. The historical v3.2 archive is not normative.

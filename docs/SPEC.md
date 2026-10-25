@@ -4,7 +4,7 @@
 
 **Version:** 3.3, with the owner's later decisions | **Date:** 25 October 2026 (UK time) | **Status:** working specification. It states requirements, **not** features already built or verified.
 
-> **v3.4 has started to arrive.** The owner supplied the v3.4 index and module 12 (Settings, onboarding and configuration) on 25 October 2026: [docs/spec/v3.4/](spec/v3.4/README.md). v3.4 modules are the normative requirements as they arrive; **module 12 overrides this document where they overlap.** Modules 00–11 have not been supplied yet (placeholders mark them), so for everything else this document remains the working reference. The owner's latest explicit instructions take precedence over both.
+> **v3.4.4 is the current specification.** The owner supplied the full v3.4.4 developer pack on 25 October 2026: [docs/spec/v3.4/](spec/v3.4/README.md) (index, modules 00–12, changelogs, handover, build plan). Its modules are the normative requirements; where they and this document differ, **the v3.4.4 modules win**, and the owner's later explicit instructions (recorded below, for example the fixtures, alarm-switch, Live TV and PIN-reset answers) win over both. This document remains the consolidated reference for decisions and detail the modules don't restate. The pack's reference images are kept outside Git (third-party marks).
 
 > **North star: Content first, underlying technology hidden.**
 >
@@ -123,7 +123,7 @@ Detail: PRODUCT_SPEC.md authority section, Sections 25, 27–29.
 
 These are the v3.3 developer pack's names, adopted by the owner on 25 October 2026. The pack has no separate "failed" or "deferred" status: a hardware failure stays `implemented_unverified` with the failure recorded, and deliberately deferred work is `not_started` with the reason in `next_action`.
 
-**Test level vocabulary** (the register's `test_level` column): `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame`. **Only a `physical_*` level with evidence can make `physical_verified`.**
+**Test level vocabulary** (the register's `test_level` column; the evidence-level words of v3.4 module 10, adopted 25 October 2026): `none`, `source_review`, `unit`, `emulator`, `CI`, `PC_network`, `physical_TCL`, `physical_Sony`, `physical_Frame`. **Only a `physical_*` level with evidence can make `physical_verified`.** Earlier values were migrated: `simulated` (Robolectric journeys) → `emulator`, `ci_build` → `CI`, `pc_network` → `PC_network`, `physical_tcl/sony/frame` → `physical_TCL/Sony/Frame`.
 
 **Evidence row:** the register columns `requirement_id, feature, owner_agent, branch_commit, build_hash, device_model, firmware, test_level, observed_result, evidence_path, status, severity, next_action`. A hardware row also names the physical remote and the app variant/version/signature. No evidence means not verified.
 

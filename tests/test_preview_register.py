@@ -14,8 +14,8 @@ COLUMNS = ["requirement_id", "feature", "owner_agent", "branch_commit", "build_h
 # The v3.3 developer pack's status names, adopted by the owner on 25 October 2026 (docs/SPEC.md section 5).
 STATUSES = {"not_started", "implemented_unverified", "test_passed_nonphysical", "physical_verified", "blocked",
             "unsupported_verified"}
-# One vocabulary (spec v3.3, docs/SPEC.md section 5): how far a result has actually been tested.
-TEST_LEVELS = {"none", "unit", "simulated", "ci_build", "pc_network", "physical_tcl", "physical_sony", "physical_frame"}
+# One vocabulary (v3.4 module 10 evidence levels; docs/SPEC.md section 5): how far a result has actually been tested.
+TEST_LEVELS = {"none", "source_review", "unit", "emulator", "CI", "PC_network", "physical_TCL", "physical_Sony", "physical_Frame"}
 
 
 def rows():
@@ -51,7 +51,7 @@ class Register(unittest.TestCase):
     def test_a_nonphysical_pass_is_backed_by_an_automated_test_level(self):
         for r in rows()[1]:
             if r["status"] == "test_passed_nonphysical":
-                self.assertIn(r["test_level"], ("unit", "simulated", "ci_build"), r["requirement_id"])
+                self.assertIn(r["test_level"], ("unit", "emulator", "CI"), r["requirement_id"])
 
     def test_requirement_ids_are_unique(self):
         ids = [r["requirement_id"] for r in rows()[1]]

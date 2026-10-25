@@ -140,4 +140,4 @@ Evidence: <photo/video name, or tool output pasted>
 Result: pass / fail / unsure
 ```
 
-The agent then updates the register row: `test_level` becomes `physical_tcl`, and `status` becomes `physical_verified` only with that evidence (a failure stays `implemented_unverified`, with what happened written down).
+The agent then updates the register row: `test_level` becomes `physical_TCL`, and `status` becomes `physical_verified` only with that evidence (a failure stays `implemented_unverified`, with what happened written down).
