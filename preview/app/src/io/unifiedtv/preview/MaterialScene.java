@@ -37,7 +37,7 @@ final class MaterialScene {
         next.setPixels(a,0,w,0,0,w,h);frost.put(key,next);return next;
     }
     static void glass(Canvas c,RectF bounds,float radius,String key,boolean opaque){
-        Paint p=glassPaint;p.reset();p.setFlags(3);Path clip=glassClip;clip.reset();clip.addRoundRect(bounds,radius,radius,Path.Direction.CW);
+        Paint p=glassPaint;p.reset();p.setFlags(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);Path clip=glassClip;clip.reset();clip.addRoundRect(bounds,radius,radius,Path.Direction.CW);
         c.save();c.clipPath(clip);
         p.setAlpha(opaque?0:215);c.drawBitmap(frosted(key),null,screen,p);p.setAlpha(255);
         p.setShader(new LinearGradient(0,bounds.top,0,bounds.bottom,new int[]{opaque?0xff192334:0x664e6477,opaque?0xff192334:0x8a14202f},null,Shader.TileMode.CLAMP));c.drawRect(bounds,p);
