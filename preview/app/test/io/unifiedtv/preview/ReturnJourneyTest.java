@@ -138,13 +138,13 @@ public class ReturnJourneyTest {
 
     // --- OD-11: setup and management as the glass sidebar over a still Home
     @Test public void setupScreensAreTheSidebarNotAFullScreenPage(){
-        for(Class<? extends SheetScreen> type:java.util.Arrays.asList(BuildMyTvActivity.class,PerformanceActivity.class,RemoteCheckActivity.class,GalleryActivity.class)){
+        for(Class<? extends GlassScreen> type:java.util.Arrays.asList(BuildMyTvActivity.class,PerformanceActivity.class,RemoteCheckActivity.class,GalleryActivity.class)){
             Intent i=new Intent(app(),type).putExtra("edit",true);
-            try(ActivityController<? extends SheetScreen> c=Robolectric.buildActivity(type,i).setup()){
-                SheetScreen s=c.get();assertTrue(type.getSimpleName()+" over a still Home",translucent(s));assertNotNull(type.getSimpleName(),s.sheet());
-                int screen=s.getResources().getDisplayMetrics().widthPixels,width=s.sheet().getLayoutParams().width;
+            try(ActivityController<? extends GlassScreen> c=Robolectric.buildActivity(type,i).setup()){
+                GlassScreen s=c.get();assertTrue(type.getSimpleName()+" over a still Home",translucent(s));assertNotNull(type.getSimpleName(),s.sheet);
+                int screen=s.getResources().getDisplayMetrics().widthPixels,width=s.sheet.getLayoutParams().width;
                 assertTrue(type.getSimpleName()+" is a sidebar ("+width+" of "+screen+")",width<screen*.8f);
-                assertEquals(Gravity.END,((android.widget.FrameLayout.LayoutParams)s.sheet().getLayoutParams()).gravity);
+                assertEquals(Gravity.END,((android.widget.FrameLayout.LayoutParams)s.sheet.getLayoutParams()).gravity);
             }
         }
     }

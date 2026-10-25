@@ -13,8 +13,8 @@ import android.widget.TextView;
  * are recorded and still passed on to Android. Nothing is sent anywhere; the summary stays on the TV.
  * Hold OK for two seconds, or press Back twice, to finish.
  */
-/* OD-11: a setup screen, so the glass sidebar over a still Home (SheetScreen). */
-public final class RemoteCheckActivity extends SheetScreen {
+/* OD-11: a setup screen, so the glass sidebar over a still Home (GlassScreen). */
+public final class RemoteCheckActivity extends GlassScreen {
     static final String REPORT_FILE = "remote-check.txt";
     private final RemoteLog log = new RemoteLog();
     private boolean logging = true, swallowOkUp;
@@ -68,8 +68,7 @@ public final class RemoteCheckActivity extends SheetScreen {
         logging = false;
         String summary = log.summary(PerformanceActivity.header(this));
         String saved = PerformanceActivity.saveReport(this, REPORT_FILE, summary);
-        column.removeAllViews();
-        text("Remote check finished", 30);
+        page("Remote check finished");
         text("Copy this into the report, or photograph it. It holds no addresses, serial numbers or account details.", 17);
         if (saved != null) text("Also saved on the TV as " + saved, 16);
         button("Back", this::finish).requestFocus();

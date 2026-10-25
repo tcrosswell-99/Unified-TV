@@ -331,7 +331,11 @@ public final class SettingsActivity extends Screen {
         text(DockLabels.FOCUSED_ONLY.equals(labels)?"Only the app in focus is named, under its tile.":DockLabels.ALWAYS.equals(labels)?"Every app on Home is named under its tile.":"No names under the tiles; the app in focus is named above the dock.",15);
         text("For "+Profiles.label(Profiles.current(prefs))+" only: each profile keeps its own choice. Tiles always show simple symbols, never names.",15);
         section("Ambient background");
-        toggle("Reduce motion","reduceMotion",on->restyle());toggle("Keep the Home background still","stillBackground");toggle("Lightweight rendering","lightweight",on->restyle());
+        // Why Home's light isn't moving, in plain words, whenever it is still (the household's switches or the TV's own setting).
+        TextView[] still=new TextView[1];Runnable why=()->{String r=AmbientLayer.stillReason(prefs.getBoolean("stillBackground",false),prefs.getBoolean("reduceMotion",false),prefs.getBoolean("lightweight",false),AmbientLayer.tvAnimations());
+            still[0].setText(r==null?"":r);still[0].setVisibility(r==null?View.GONE:View.VISIBLE);};
+        toggle("Reduce motion","reduceMotion",on->{why.run();restyle();});toggle("Keep the Home background still","stillBackground",on->why.run());toggle("Lightweight rendering","lightweight",on->{why.run();restyle();});
+        still[0]=text("",15);why.run();
         section("Clock");
         String zone=prefs.getString(HouseholdSettings.ZONE,"");
         button("Time zone: "+(zone.isEmpty()?"Follow this TV ("+java.time.ZoneId.systemDefault().getId()+")":zone),this::chooseZone);

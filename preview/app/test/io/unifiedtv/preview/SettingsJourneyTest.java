@@ -276,4 +276,18 @@ public class SettingsJourneyTest {
             Intent next=Shadows.shadowOf(controller.get()).getNextStartedActivity();assertNotNull(next);assertEquals(SettingsActivity.HA_ADVANCED,next.getStringExtra("task"));
         }
     }
+
+    // Appearance & Home > Ambient background: when Home's light is still, the sheet says why, in plain words (AmbientLayer.stillReason).
+    @Test public void ambientBackgroundSaysWhyHomeIsStill(){
+        prefs().edit().putBoolean("stillBackground",true).commit();
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
+            SettingsActivity a=controller.get();open(a,"Appearance & Home");
+            TextView why=text(root(a),"Keep the Home background still is on.");assertNotNull("the reason is shown under the switches",why);assertEquals(View.VISIBLE,why.getVisibility());
+            find(root(a),"Keep the Home background still").performClick();idle();
+            String now=AmbientLayer.stillReason(false,false,false,AmbientLayer.tvAnimations());
+            if(now==null)assertEquals("moving again: no line",View.GONE,why.getVisibility());else assertEquals(now,why.getText().toString());
+            find(root(a),"Reduce motion").performClick();settle();
+            assertNotNull("Reduce motion says so",text(root(a),"Reduce motion is on, so the Home background stays still."));
+        }
+    }
 }

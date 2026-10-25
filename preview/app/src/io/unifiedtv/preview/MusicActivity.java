@@ -10,16 +10,20 @@ import java.util.Locale;
  * Uses the official installed app. No simulated account playlists or unsupported playback API. When the owner has let
  * Unified TV see media notifications and something is playing, Music opens Now Playing, which shows and controls only
  * what that app reports to Android (spec 11, Music).
+ *
+ * OD-11: this page shows no music of its own (no artwork, lists or playback); it only chooses where to go: Amazon Music,
+ * the app store, or Now Playing. A choice page like that is the glass sidebar over a still Home, never a full-screen page.
+ * The content it leads to (Now Playing, the Amazon Music app) stays full screen.
  */
-public final class MusicActivity extends Screen {
+public final class MusicActivity extends GlassScreen {
     @Override public void onCreate(Bundle b){super.onCreate(b);
         if(MediaWatch.best(this)!=null){startActivity(new Intent(this,NowPlayingActivity.class));finish();return;}
-        page("Music");text("Your music, playlists and search",24);
+        page("Music","Your music, playlists and search");card();
         Intent launch=find(this);
         if(launch!=null){text("Listen with Amazon Music. Account playlists, search and playback open in its app.",20);button("Open Amazon Music",()->open(this));}
         else{text("Amazon Music is not installed on this TV. Check its availability in your TV's app store.",20);button("Find Amazon Music",()->open(this));}
         button("Now playing",()->startActivity(new Intent(this,NowPlayingActivity.class)));
-        text("Unified TV's own account playlists and player are awaiting authorised Amazon integration.",17);button("Back",this::finish);
+        text("Unified TV's own account playlists and player are awaiting authorised Amazon integration.",17);card();button("Back",this::finish);
     }
     /** The official Amazon Music app's launch intent, found by package or its own name; null when it isn't installed. */
     static Intent find(Context c){PackageManager pm=c.getPackageManager();for(ResolveInfo ri:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER),0)){

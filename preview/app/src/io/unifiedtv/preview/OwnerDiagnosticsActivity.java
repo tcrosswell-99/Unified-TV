@@ -1,6 +1,5 @@
 package io.unifiedtv.preview;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -16,21 +15,21 @@ import java.util.concurrent.*;
 /**
  * Settings > Updates & About > Advanced > Owner diagnostics (owner, 25 October 2026): one scrolling page of read-only checks, Adults
  * only and behind the PIN, never on Home. Nothing is changed, saved or sent. No token or secret is shown; addresses only
- * after "Show advanced details".
+ * after "Show advanced details". A settings screen, so the glass sidebar over a still Home (OD-11), wide (about three
+ * quarters) for its long report lines.
  */
-public final class OwnerDiagnosticsActivity extends Screen {
+public final class OwnerDiagnosticsActivity extends GlassScreen {
     private final ExecutorService worker=Executors.newFixedThreadPool(2);
     private volatile boolean active=true;
     private TextView advanced;private final List<String> addresses=Collections.synchronizedList(new ArrayList<>());
 
-    @Override public void onCreate(Bundle state){super.onCreate(state);autoFocusButtons=false;
-        SharedPreferences prefs=getSharedPreferences("unified-tv-preview",0);
-        page("Owner diagnostics");
-        if(Profiles.kids(prefs)){text("Owner diagnostics are for Adults. Switch to Adults first.",20);button("Back",this::finish).requestFocus();return;}
-        text("Read-only. Nothing here changes the TV, the NAS or Home Assistant.",17);
+    @Override public void onCreate(Bundle state){super.onCreate(state);wide(true);
+        page("Owner diagnostics","Updates & About > Advanced");
+        if(Profiles.kids(prefs)){card();text("Owner diagnostics are for Adults. Switch to Adults first.",20);button("Back",this::finish).requestFocus();return;}
+        card();text("Read-only. Nothing here changes the TV, the NAS or Home Assistant.",17);
         Button back=button("Back",this::finish);back.requestFocus();
 
-        text("Media server (NAS)",24);TextView nas=text("Searching the home network…",17);
+        group("Media server (NAS)");card();TextView nas=text("Searching the home network…",17);
         DlnaClient.lan=LocalDiscovery.lan(this);
         worker.execute(()->{StringBuilder out=new StringBuilder();
             try{List<DlnaClient.Check> all=DlnaClient.survey(getApplicationContext(),true);
@@ -44,7 +43,7 @@ public final class OwnerDiagnosticsActivity extends Screen {
             }catch(Exception e){out.append("\nSaved library: couldn't be read.");}
             post(nas,out.toString());});
 
-        text("Ring and Home Assistant",24);TextView ha=text("Checking…",17);
+        group("Ring and Home Assistant");card();TextView ha=text("Checking…",17);
         worker.execute(()->{StringBuilder out=new StringBuilder();JSONObject config,house;
             try{config=new Vault(this).read("ha");house=new Vault(this).read("household");}catch(Exception e){post(ha,"Saved connection couldn't be read.");return;}
             String status=HaStatus.before(config);
@@ -57,15 +56,15 @@ public final class OwnerDiagnosticsActivity extends Screen {
             if(!config.optString("base").isEmpty())addresses.add("Home Assistant: "+OwnerChecks.host(config.optString("base")));
             post(ha,out.toString());});
 
-        text("VPN and Live TV",24);
+        group("VPN and Live TV");card();
         String live=LiveTvProtection.livePackage(this);
         text(OwnerChecks.liveTv(VpnGate.statusLabel(VpnGate.inspect(this)),VpnGate.routed(this),LiveTvProtection.now(this,live)),17);
         text("Live TV app: "+(live.isEmpty()?"not identified":live)+". Android's always-on VPN with “block connections without VPN” is what stops traffic when NordVPN drops; this page can't test that.",16);
 
-        text("This app",24);
+        group("This app");card();
         text(app(),17);
 
-        text("Profile and Kids guard",24);
+        group("Profile and Kids guard");card();
         String setting="";try{setting=Settings.Secure.getString(getContentResolver(),Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);}catch(RuntimeException ignored){}
         StringBuilder kids=new StringBuilder("Profile: "+Profiles.label(Profiles.current(prefs))+". Adult PIN: "+(prefs.getString("pin","").isEmpty()?"not set":"set")+".");
         kids.append("\nApps approved for Kids: ").append(KidsPolicy.apps(prefs.getString(KidsPolicy.APPS_PREF,"")).size());
@@ -78,11 +77,11 @@ public final class OwnerDiagnosticsActivity extends Screen {
         if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));
         button("Measure Home",()->startActivity(new Intent(this,PerformanceActivity.class)));
 
-        text("Hardware tests to work through",24);
+        group("Hardware tests to work through");card();
         StringBuilder list=new StringBuilder();for(String r:OwnerChecks.REGISTER)list.append(list.length()==0?"":"\n").append("•  ").append(r);
         text(list.toString(),16);
 
-        button("Show advanced details (addresses)",()->{if(advanced==null){advanced=text("",15);}synchronized(addresses){advanced.setText(addresses.isEmpty()?"No addresses found yet.":String.join("\n",addresses));}});
+        card();button("Show advanced details (addresses)",()->{if(advanced==null){advanced=text("",15);}synchronized(addresses){advanced.setText(addresses.isEmpty()?"No addresses found yet.":String.join("\n",addresses));}});
     }
     private static String name(JSONObject names,String key,String entity){
         String n=names==null?"":names.optString(key,"").trim();

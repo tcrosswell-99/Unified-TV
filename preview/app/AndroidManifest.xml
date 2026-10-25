@@ -32,7 +32,8 @@
     <activity android:name=".LibrarySetupActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Setup screens are the same glass sheet over a still Home as Settings (OD-11). -->
     <activity android:name=".ServiceDiscoveryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
-    <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- OD-11: Music's choice page (Amazon Music, the store or Now Playing) is the glass sidebar; Now Playing is content. -->
+    <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Module 13: a translucent glass overlay over a stationary Home (res/values/settings_glass.xml). -->
     <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
@@ -62,12 +63,13 @@
       <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/kids_guard"/>
     </service>
-    <activity android:name=".KidsActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".OwnerDiagnosticsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- OD-11: Kids settings and Owner diagnostics are the glass sidebar over a still Home (GlassScreen). -->
+    <activity android:name=".KidsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".OwnerDiagnosticsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Ask your TV: a small glass listening pane under Home's pill, over a still Home (translucent). -->
     <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
-    <!-- OD-11: setup and check screens open as the glass sidebar over a still Home (SheetScreen). -->
+    <!-- OD-11: setup and check screens open as the glass sidebar over a still Home (GlassScreen). -->
     <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- SET-043: an adult resets a forgotten PIN from a computer (PinReset says why this is safe). Only a sender holding
          WRITE_SECURE_SETTINGS (the ADB shell; never a store app) can reach it. -->
