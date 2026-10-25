@@ -51,6 +51,10 @@ Remote interaction outranks animation and network imagery on the Sony and low-me
 | Keep background still | no drift; crossfade kept | Home |
 | Lightweight | still frames, 200 ms crossfade | Home |
 
+## Settings and setup always use the sidebar (never break)
+
+Owner design principle, 25 October 2026. **Every settings or setup screen opens as the glass sidebar that overlays a still Home screen**: Settings itself, choosing NAS folders and media servers, Home Assistant, football, film posters, phone (QR) setup, household setup, apps and dock management, Kids and profiles, and anything added later. Home stays visible and does not move behind it; the sidebar is half the screen, widening to about three quarters only for wide tasks (module 13). A full-screen settings or setup page is a defect, whatever it is for. Content you watch or browse (the film library itself, the player, Wallpaper) is not a settings screen and may use the full screen.
+
 ## Interactions that remain hidden until needed
 
 - **Smoke or carbon monoxide alarm:** the highest priority (owner decision OD-07). Full-screen, each alarm separate with its room and time, acknowledged one at a time; a banner while any is active; the doorbell waits until every alarm has cleared.
