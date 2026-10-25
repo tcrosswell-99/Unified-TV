@@ -29,7 +29,10 @@
     { id: 'overlay', label: 'Drawing over other apps or Art Mode', value: 'unknown', expected: 'Not possible for a Tizen web app (spec 10.8)' },
     { id: 'art-mode', label: 'Art Mode left untouched', value: 'unknown', expected: 'The app never controls Art Mode (WP-12)' },
     { id: 'vpn', label: 'NordVPN protection for Live TV', value: 'unknown', expected: 'No per-app VPN on Tizen; Live TV stays locked (NT-10)' },
-    { id: 'echo-studio', label: 'Echo Studio audio after Art Mode', value: 'unknown', expected: 'Depends on the audio connection (AT-12)' }
+    { id: 'echo-studio', label: 'Echo Studio audio after Art Mode', value: 'unknown', expected: 'Depends on the audio connection (AT-12)' },
+    { id: 'pin-crypto', label: 'Adult PIN hashing (SubtleCrypto)', value: 'unknown', expected: 'May be missing outside a secure context; the JavaScript fallback is used then' },
+    { id: 'kids-guard', label: 'Stopping apps opened outside Unified TV in Kids', value: 'unknown', expected: 'Not possible for a web app: only launches from Unified TV are checked (KIDS-02)' },
+    { id: 'ring-person', label: 'Person toast and doorbell card', value: 'unknown', expected: 'Only while Unified TV is open and in front; no live camera yet (RING-05)' }
   ];
   function list() { return FRAME.map(function (c) { return { id: c.id, label: c.label, value: c.value, expected: c.expected }; }); }
   function label(value) { return value === 'supported_verified' ? 'Works (tested)' : value === 'unsupported_verified' ? 'Doesn\'t work (tested)' : 'Not tested yet'; }

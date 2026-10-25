@@ -29,6 +29,12 @@ Values follow [SPEC.md](../SPEC.md) section 6.3: `supported_verified`, `unsuppor
 | Live TV with proven NordVPN protection | `unknown` | No per-app VPN on Tizen and no Live TV client; the tile stays locked | NT-10, GATE-VPN-03 |
 | Echo Studio audio after leaving Art Mode | `unknown` | Depends on the TV's own audio connection | AT-12 |
 | Ambient mesh frame rate and focus latency | `unknown` | CSS opacity crossfade and transform drift; still fallback if slow | AM-01–AM-12, NT-12 |
+| Ring person toast and doorbell card (RING-01..04) | `unknown` | Shown only while Unified TV is open and in front; the doorbell card has no live camera and says so | RING-05 |
+| Tizen Key Manager keeps the adult PIN record and Kids folders | `unknown` | Without it there is no PIN, so Kids can't be switched on (fail closed) | PROFILE-FRAME-01, GATE-CONN-02 |
+| SubtleCrypto PBKDF2 for the adult PIN | `unknown` | A Tizen app page may not be a secure context; the identical JavaScript PBKDF2 is used then, at an untimed speed | PROFILE-FRAME-01 |
+| Kids: apps opened outside Unified TV (Smart Hub, app buttons, voice) | `unknown` | Not expected: a web app can't see or close other apps, so there is no Kids app guard; only launches from Unified TV are checked | KIDS-FRAME-02 |
+| Kids NAS folders and rating check (BrowseMetadata parent walk at play time) | `unknown` | Depends on the media server returning `parentID` and `upnp:rating`; unrated titles are allowed only inside a Kids folder | KIDS-FRAME-01 |
+| Local resume per profile in AVPlay | `unknown` | Position kept in web storage by hashed key; seek-on-open behaviour to be checked per format | KIDS-FRAME-03, CW-01 |
 | Native Home reassignment (CleanFrame-style) | `unknown` | Proposal only, not authorised ([SAMSUNG_HOME_PROPOSAL.md](../SAMSUNG_HOME_PROPOSAL.md)) | CF-03–CF-05 |
 
 How to change a value: run the matching test on this TV with the exact signed build, and record the model, firmware, remote, build hash and what was observed ([OWNER_TESTING.md](../OWNER_TESTING.md)). A value becomes `supported_verified` or `unsupported_verified` only with that evidence.
