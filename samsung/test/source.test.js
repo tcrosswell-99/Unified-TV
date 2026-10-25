@@ -118,3 +118,18 @@ test('the modules load in a browser-like global without Node\'s require', () => 
   assert.strictEqual(sandbox.UTV.Settings.defaults().motion, 'default');
   assert.ok(sandbox.UTV.Capabilities.list().every((c) => c.value === 'unknown'), 'nothing is claimed as verified on the Frame');
 });
+
+// A Content-Security-Policy is not set yet: the wrong policy could block AVPlay's <object> or the HA and NAS connections on
+// the Frame, and that can only be checked on the TV. Until then the page stays ready for one: no inline script, no inline
+// event handlers, no style attributes and no eval, so adding the policy later needs no code changes.
+test('the page stays ready for a Content-Security-Policy', () => {
+  const html = read(path.join(SAMSUNG, 'src', 'index.html')).replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(html), 'inline <script> in index.html');
+  assert.ok(!/\son[a-z]+\s*=/i.test(html), 'inline event handler in index.html');
+  assert.ok(!/\sstyle\s*=/i.test(html), 'style attribute in index.html');
+  for (const p of SRC.filter((f) => f.endsWith('.js'))) {
+    const s = stripComments(read(p));
+    assert.ok(!/\beval\s*\(|new\s+Function\s*\(|set(Timeout|Interval)\s*\(\s*['"`]/.test(s), 'eval-like code in ' + path.basename(p));
+    assert.ok(!/setAttribute\(\s*['"](style|on[a-z]+)['"]/.test(s), 'inline style or handler attribute set in ' + path.basename(p));
+  }
+});
