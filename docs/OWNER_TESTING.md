@@ -1,6 +1,6 @@
 # Owner testing: what runs on your PC and TVs
 
-Agents work only in the repository and cannot reach the televisions. Everything on this page is run by the owner from a Windows PC on the same network as the TV. Nothing becomes `hardware_pass` in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv) without the evidence asked for at the end.
+Agents work only in the repository and cannot reach the televisions. Everything on this page is run by the owner from a Windows PC on the same network as the TV. Nothing becomes `physical_verified` in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv) without the evidence asked for at the end.
 
 ## What the agent does, and what you do
 
@@ -140,4 +140,4 @@ Evidence: <photo/video name, or tool output pasted>
 Result: pass / fail / unsure
 ```
 
-The agent then updates the register row: `test_level` becomes `physical_tcl`, and `status` becomes `hardware_pass` or `hardware_fail` only with that evidence.
+The agent then updates the register row: `test_level` becomes `physical_tcl`, and `status` becomes `physical_verified` only with that evidence (a failure stays `implemented_unverified`, with what happened written down).

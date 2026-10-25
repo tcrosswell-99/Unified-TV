@@ -14,6 +14,10 @@ Nothing in a release has been tested on a television unless the entry says so. P
   - Limits: the NAS address is typed once under Advanced (web apps cannot discover it; awaiting the owner's acceptance), the Ring card has no live camera, private NAS playback and a Content-Security-Policy are not built, and Samsung TV Plus is found by name because its app id is unconfirmed.
 - **Samsung Home-button proposal** ([SAMSUNG_HOME_PROPOSAL.md](docs/SAMSUNG_HOME_PROPOSAL.md)) and the Frame capability table ([samsung-frame-2021.md](docs/devices/samsung-frame-2021.md), every value `unknown`). A proposal only: nothing was run on the TV.
 
+### Changed
+
+- **Register status names** follow the v3.3 developer pack, as the owner chose on 25 October 2026: `test_passed_nonphysical`, `physical_verified` and `unsupported_verified` replace `automated_pass`, `hardware_pass` and `unsupported`. The pack has no failed or deferred status, so a failed TV test stays `implemented_unverified` with the failure written down. The 44 rows whose automated tests pass are now `test_passed_nonphysical`; none is `physical_verified`.
+
 ### Fixed
 
 - **Smoke/CO alarms, Android and Frame** (from an independent review of the alarm code against the spec; unit-tested only):

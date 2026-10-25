@@ -1,6 +1,6 @@
 # G1 on the TCL: making Unified TV the Home screen, and getting back
 
-Gate G1 in [SPEC.md](SPEC.md) Section 4 asks for proof, on the TCL and with its own remote, that Unified TV can be the Home screen and that the TV's own Home always comes back. This page gives the exact steps, in order. You run them from the Windows PC and with the remote. The agent cannot reach the TV. Nothing here counts as `hardware_pass` until you report the results with the template at the end.
+Gate G1 in [SPEC.md](SPEC.md) Section 4 asks for proof, on the TCL and with its own remote, that Unified TV can be the Home screen and that the TV's own Home always comes back. This page gives the exact steps, in order. You run them from the Windows PC and with the remote. The agent cannot reach the TV. Nothing here counts as `physical_verified` until you report the results with the template at the end.
 
 **Order matters.** Record the factory Home first (step 1), and test the way back (step 7 with `--check`) before you make Unified TV the Home screen.
 
@@ -138,4 +138,4 @@ Evidence: <photo/video name, or tool output pasted>
 Result: pass / fail / unsure
 ```
 
-The agent then updates the rows in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv). Only this evidence can make a G1 test `hardware_pass`.
+The agent then updates the rows in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv). Only this evidence can make a G1 test `physical_verified`.

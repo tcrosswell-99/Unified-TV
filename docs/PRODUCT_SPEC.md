@@ -166,7 +166,7 @@ This is the complete consolidated product requirement, including the detailed ea
 - The owner supplied five AI-generated JPGs and expressly authorised their inclusion as example gallery images in the repository. Preserve their originals, aspect ratio and existing borders; do not treat these as private family photos. Other private household photos/camera feeds remain excluded.
 - Gallery rotates selected images, has timing and remote controls, no permanent UI, reduced-motion behaviour and sensible fitting. Local/USB/document-provider/network sources appear only when supported.
 - Household hostnames, addresses, tokens, accounts, device IDs and signing secrets belong only in private local setup and encrypted device storage. Never publish them in Git, APK defaults, Actions logs, screenshots or handovers. Use symbolic placeholders in commands and keep the actual local inventory outside the repository.
-- Testing must state the exact build and `test_level`: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony` or `physical_frame` *(changed in v3.3)*. These levels are not interchangeable; only a `physical_*` level with evidence can support `hardware_pass`.
+- Testing must state the exact build and `test_level`: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony` or `physical_frame` *(changed in v3.3)*. These levels are not interchangeable; only a `physical_*` level with evidence can support `physical_verified`.
 - Take revised screenshots only from the tested revised APK and label their version. Existing 0.3 screenshots must never be presented as 0.4 evidence.
 
 ## 1. Product scope and non-negotiables
@@ -1085,7 +1085,7 @@ Before designing feature-complete Tizen parity, verify in this order on the actu
 
 ### 27.6 Evidence register and multi-agent change control
 
-Maintain one machine-readable acceptance register (CSV/JSON/Markdown table is acceptable) with these columns: `requirement_id`, `feature`, `owner_agent`, `branch_commit`, `build_hash`, `device_model`, `firmware`, `test_level`, `observed_result`, `evidence_path`, `status`, `severity`, `next_action`. Allowed status values: `not_started`, `implemented_unverified`, `automated_pass`, `hardware_pass`, `hardware_fail`, `blocked`, `unsupported`, `deferred_preview_only`. Allowed `test_level` values: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame` *(changed in v3.3)*. The register is `ACCEPTANCE_REGISTER.csv`, the only place status is recorded. Only `hardware_pass`, backed by evidence at a `physical_*` level on a named model, may support a hardware claim; source code and simulation do not imply cross-TV completion.
+Maintain one machine-readable acceptance register (CSV/JSON/Markdown table is acceptable) with these columns: `requirement_id`, `feature`, `owner_agent`, `branch_commit`, `build_hash`, `device_model`, `firmware`, `test_level`, `observed_result`, `evidence_path`, `status`, `severity`, `next_action`. Allowed status values: `not_started`, `implemented_unverified`, `test_passed_nonphysical`, `physical_verified`, `blocked`, `unsupported_verified` (v3.3 developer pack names, adopted 25 October 2026). Allowed `test_level` values: `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame` *(changed in v3.3)*. The register is `ACCEPTANCE_REGISTER.csv`, the only place status is recorded. Only `physical_verified`, backed by evidence at a `physical_*` level on a named model, may support a hardware claim; source code and simulation do not imply cross-TV completion.
 
 Assign one active agent per owned path/feature. Keep Android, Tizen, shared design tokens, service adapters and release automation in explicit branch ownership. Fetch before editing and pushing, stage only owned paths, scan for private data, avoid force-push and do not merge another agent's unreviewed work. Keep durable private release signing, same-author updates, rollback and immutable tags. The concise current decision index is [SPEC.md](SPEC.md); superseded proposal documents are kept unchanged in [archive/](archive/README.md) (done in v3.3); **never delete historical evidence**.
 
@@ -1229,7 +1229,7 @@ On each actual remote, record its photo/model where possible, button legend, sho
 | HRC-10 | Android TVs | Restore factory Home after default selection, including if Unified crashes | Fully tested supported OS recovery with physical remote, no PC or ADB required |
 | HRC-11 | All three | 20 successive round trips across apps and standby/wake | No stranded state, lost focus or unexpected return to stock interface beyond documented reserved-key limits |
 
-**Release gate:** TCL HRC-01 to HRC-04 and HRC-10 are **P0 before the next owner daily-use build**. Sony HRC-05/06/10 are **P0 before Sony daily-use release**. Samsung HRC-07/08 and a written owner decision on Smart Hub limitations are **P0 before Samsung is called a seamless household deployment**. Mark `hardware_pass` only after observed tests on exact TV, firmware, APK/WGT hash and physical remote. No emulator-only or automated-only sign-off.
+**Release gate:** TCL HRC-01 to HRC-04 and HRC-10 are **P0 before the next owner daily-use build**. Sony HRC-05/06/10 are **P0 before Sony daily-use release**. Samsung HRC-07/08 and a written owner decision on Smart Hub limitations are **P0 before Samsung is called a seamless household deployment**. Mark `physical_verified` only after observed tests on exact TV, firmware, APK/WGT hash and physical remote. No emulator-only or automated-only sign-off.
 
 ### 29.6 Immediate recovery and development sequencing
 
@@ -1332,7 +1332,7 @@ Primary sources (reviewed 24 October 2026):
 | Startup | Normal power-on after another app remained tentative | Must be tested independently: power-on, standby and cold restart differ |
 | Art Mode and native Smart Hub escape | Corrected native escape and Art Mode still required physical confirmation in reference guide | Preserve native Art Mode as a release blocker; cannot assume parity |
 
-Do **not** convert author-reported results into owner-device `hardware_pass`. A repo source file, successful build or simulator test is not physical evidence.
+Do **not** convert author-reported results into owner-device `physical_verified`. A repo source file, successful build or simulator test is not physical evidence.
 
 ### 31.3 Engineering explanation (research, not a supported public API)
 

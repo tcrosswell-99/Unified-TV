@@ -2,7 +2,7 @@
 
 Date: 25 October 2026. Specification: [SPEC.md](SPEC.md) v3.3.
 
-**This page describes features and their known limits. It is not a status record:** the only live implementation and acceptance status is [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv). Where the two disagree, the register is right. Nothing has been tested on a TV unless the register says `hardware_pass` with evidence.
+**This page describes features and their known limits. It is not a status record:** the only live implementation and acceptance status is [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv). Where the two disagree, the register is right. Nothing has been tested on a TV unless the register says `physical_verified` with evidence.
 
 Preview 0.5 changes are marked **0.5** below; they are code-checked and unit-tested only, with the on-TV checks in [PREVIEW_0_5_TESTS.md](PREVIEW_0_5_TESTS.md).
 

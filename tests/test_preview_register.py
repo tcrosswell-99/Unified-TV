@@ -11,8 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTER = ROOT / "docs" / "ACCEPTANCE_REGISTER.csv"
 COLUMNS = ["requirement_id", "feature", "owner_agent", "branch_commit", "build_hash", "device_model", "firmware",
            "test_level", "observed_result", "evidence_path", "status", "severity", "next_action"]
-STATUSES = {"not_started", "implemented_unverified", "automated_pass", "hardware_pass", "hardware_fail", "blocked",
-            "unsupported", "deferred_preview_only"}
+# The v3.3 developer pack's status names, adopted by the owner on 25 October 2026 (docs/SPEC.md section 5).
+STATUSES = {"not_started", "implemented_unverified", "test_passed_nonphysical", "physical_verified", "blocked",
+            "unsupported_verified"}
 # One vocabulary (spec v3.3, docs/SPEC.md section 5): how far a result has actually been tested.
 TEST_LEVELS = {"none", "unit", "simulated", "ci_build", "pc_network", "physical_tcl", "physical_sony", "physical_frame"}
 
@@ -44,8 +45,13 @@ class Register(unittest.TestCase):
 
     def test_a_hardware_result_needs_a_physical_test_level(self):
         for r in rows()[1]:
-            if r["status"] in ("hardware_pass", "hardware_fail"):
+            if r["status"] in ("physical_verified", "unsupported_verified"):
                 self.assertTrue(r["test_level"].startswith("physical_"), f"{r['requirement_id']} claims {r['status']} at {r['test_level']}")
+
+    def test_a_nonphysical_pass_is_backed_by_an_automated_test_level(self):
+        for r in rows()[1]:
+            if r["status"] == "test_passed_nonphysical":
+                self.assertIn(r["test_level"], ("unit", "simulated", "ci_build"), r["requirement_id"])
 
     def test_requirement_ids_are_unique(self):
         ids = [r["requirement_id"] for r in rows()[1]]
@@ -58,7 +64,7 @@ class Register(unittest.TestCase):
 
     def test_hardware_results_name_their_device_firmware_and_evidence(self):
         for r in rows()[1]:
-            if r["status"] in ("hardware_pass", "hardware_fail"):
+            if r["status"] in ("physical_verified", "unsupported_verified"):
                 for column in ("device_model", "firmware", "evidence_path", "build_hash"):
                     self.assertTrue(r[column].strip(), f"{r['requirement_id']} claims {r['status']} without {column}")
 

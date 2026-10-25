@@ -77,7 +77,7 @@ There is **one gate order**, used in every document:
 
 **Gate rules**
 
-- A gate passes only when its required tests reach `hardware_pass` on the named TV with evidence. Source, CI and simulations never pass a gate.
+- A gate passes only when its required tests reach `physical_verified` on the named TV with evidence. Source, CI and simulations never pass a gate.
 - G2 takes priority over G3 if capacity conflicts. Parallel work (for example the G5P proposal, the signing plan or the alert schema) is allowed only with recorded file ownership and must not destabilise G1/G2.
 - The emergency-priority policy is P0 for any build that enables Ring or advertises household alerts. No alert feature is "finished" before SAFE-01–10.
 - Do not label the household release complete until every agreed required gate has passed. A platform's result never substitutes for another's.
@@ -91,19 +91,19 @@ Detail: PRODUCT_SPEC.md authority section, Sections 25, 27–29.
 | Status | Meaning |
 |---|---|
 | `not_started` | Required; no work in source. |
-| `implemented_unverified` | In source; not proven on the named TV. |
-| `automated_pass` | Unit, simulated or CI checks pass; not hardware evidence. |
-| `hardware_pass` | Passed on the named TV, firmware and exact build, with evidence. |
-| `hardware_fail` | Tried on hardware and failed. |
-| `blocked` | A hardware, account, permission or service prerequisite is missing. |
-| `unsupported` | Proven impossible on that device/firmware, with evidence and an agreed fallback. |
-| `deferred_preview_only` | Deliberately left out of the preview, with the reason recorded. |
+| `implemented_unverified` | In source; not proven on the named TV. Also the status of a requirement that **failed** on hardware: the failure, build and TV go in `observed_result` and `test_level` records the physical attempt. |
+| `test_passed_nonphysical` | Unit, simulated or CI checks pass; not hardware evidence. |
+| `physical_verified` | Passed on the named TV, firmware and exact build, with evidence. |
+| `blocked` | A hardware, account, permission, service or owner-decision prerequisite is missing. |
+| `unsupported_verified` | Proven impossible on that device/firmware, with evidence and an agreed fallback. |
 
-**Test level vocabulary** (the register's `test_level` column): `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame`. **Only a `physical_*` level with evidence can make `hardware_pass`.**
+These are the v3.3 developer pack's names, adopted by the owner on 25 October 2026. The pack has no separate "failed" or "deferred" status: a hardware failure stays `implemented_unverified` with the failure recorded, and deliberately deferred work is `not_started` with the reason in `next_action`.
+
+**Test level vocabulary** (the register's `test_level` column): `none`, `unit`, `simulated`, `ci_build`, `pc_network`, `physical_tcl`, `physical_sony`, `physical_frame`. **Only a `physical_*` level with evidence can make `physical_verified`.**
 
 **Evidence row:** the register columns `requirement_id, feature, owner_agent, branch_commit, build_hash, device_model, firmware, test_level, observed_result, evidence_path, status, severity, next_action`. A hardware row also names the physical remote and the app variant/version/signature. No evidence means not verified.
 
-**Physical testing is run by the owner.** Agents cannot reach the televisions. The owner runs test steps from a Windows PC and on the TV, and reports the evidence back (steps and reporting in [OWNER_TESTING.md](OWNER_TESTING.md)). Nothing becomes `hardware_pass` without that evidence. Screenshots must come from the exact tested build and be labelled with its version.
+**Physical testing is run by the owner.** Agents cannot reach the televisions. The owner runs test steps from a Windows PC and on the TV, and reports the evidence back (steps and reporting in [OWNER_TESTING.md](OWNER_TESTING.md)). Nothing becomes `physical_verified` without that evidence. Screenshots must come from the exact tested build and be labelled with its version.
 
 ## 6. Platform contracts
 
