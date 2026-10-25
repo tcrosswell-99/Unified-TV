@@ -69,7 +69,7 @@ Detail: PRODUCT_SPEC.md Sections 1–3, 15.
 
 ## 3. Owner decisions
 
-All eight decisions were confirmed by the owner on **25 October 2026 (UK time)**. They are binding; do not reopen them.
+OD-01 to OD-08 were confirmed by the owner on **25 October 2026 (UK time)**. They are binding; do not reopen them.
 
 | ID | Decision | What it means |
 |---|---|---|
@@ -81,6 +81,8 @@ All eight decisions were confirmed by the owner on **25 October 2026 (UK time)**
 | OD-06 | **TCL/Sony remote identification: Claude helps later.** | Do not block work waiting for remote models. At the physical gate, guide the owner through About screens, remote photos and key logs; never invent key mappings. |
 | OD-07 | **Smoke and carbon monoxide alarms outrank Ring.** | Smoke and CO are equal and highest. Ring never covers an active emergency. The TV is a supplementary display, never a certified alarm. Section 10. |
 | OD-08 | **Durable signing for in-place updates.** | The owner creates a durable key on their own computer; the separate launcher app uses it from its first release; the existing preview stays as it is. Section 12. |
+| OD-09 | **Every service is set up on the phone, by QR code.** (Owner, 25 October 2026.) | Any service that needs an account, a sign-in or a key (Home Assistant, API-Football, TMDB, and every later one) is set up from a QR code on the TV that opens a temporary page on the household's phone. The phone page links to the service's sign-up with plain steps, takes the sign-in or key, and the TV tests and saves it; nothing long is typed with the remote. The QR screen and its status live in the Settings half-page glass panel; typing on the TV stays only as an Advanced fallback. |
+| OD-10 | **Film and TV artwork comes from TMDB; the NAS stays Synology Media Server.** (Owner, 25 October 2026.) | Posters, backgrounds and descriptions are matched by title from TMDB with the household's own free key (entered by OD-09), as the inherited CleanYourTV UI did. Only the cleaned title and year are sent. No Jellyfin or other NAS install is required. |
 
 **Still unknown (not a reason to stop safe work):** the exact TCL button that previously escaped to the manufacturer interface. Capture it with the owner during G1 and add it as a named regression case (HRC-01).
 
