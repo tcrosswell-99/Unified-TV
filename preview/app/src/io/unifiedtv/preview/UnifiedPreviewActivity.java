@@ -440,7 +440,9 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 beforeMove = null;
             } else if (apps) apps = false;
-            else { index = -1; commitScene("neutral", ""); }
+            // At the main screen: as the TV's chosen Home, Back stays put with focus where it was (spec 28.3). Otherwise
+            // Unified TV is just an app, so Back leaves it, the way any TV app does.
+            else if (!DefaultHome.isDefault(activity)) { activity.finish(); return; }
             invalidate();
         }
 
