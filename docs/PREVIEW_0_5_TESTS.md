@@ -129,6 +129,29 @@ These checks cover only what the status *says*. They are not a protection test. 
 9. Compare with the mockups you supplied. (AM-12)
    - **Record:** what differs.
 
+## Wallpaper (WP-01 to WP-16)
+
+1. Settings → Appearance: check the Wallpaper rows are reachable with the remote and remembered after leaving Settings. (WP-01)
+2. Choose **Start: after 2 minutes**, go Home and leave the remote alone. (WP-02)
+   - **Pass:** full-screen artwork with a clock; no dock, clock header or VPN icon.
+3. Wait for the minute to change. (WP-06)
+   - **Pass:** the time updates with no flash.
+4. Press Right once. (WP-07)
+   - **Pass:** Home appears at once with the same app in focus, and nothing opens. The next press moves focus normally.
+5. Press Back, OK and Home in turn to leave the Wallpaper. (WP-07)
+   - **Pass:** each one just brings Home back.
+6. From the Wallpaper, open Netflix, then press Home. (WP-08)
+   - **Pass:** the Wallpaper never covers Netflix.
+7. Turn on **Reduce motion** and **High contrast**. (WP-14)
+   - **Pass:** no slow zoom; the clock stays readable.
+8. Leave the Wallpaper for 30 minutes. (WP-14, OLED)
+   - **Pass:** the clock dims; it has moved between pictures.
+9. During the Wallpaper, run **Test: someone rings the doorbell** and **Test: smoke alarm** from household setup (use a phone timer and a second remote press, or start them first and wait). (WP-15, SAFE-02)
+   - **Pass:** the alarm screen shows over the Wallpaper; afterwards the remote still works.
+10. Use **Open original TV interface** after leaving the Wallpaper. (WP-16)
+
+Depth clock (WP-04, WP-05): not testable yet; no picture has a prepared mask. My Photos (WP-03, WP-10, WP-11): not built.
+
 ## Films & TV from Home (P05-02, spec 4.6)
 
 1. With the NAS set up, press Down on Home.

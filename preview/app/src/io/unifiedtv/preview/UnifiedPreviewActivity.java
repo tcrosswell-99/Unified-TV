@@ -49,11 +49,16 @@ public final class UnifiedPreviewActivity extends Activity {
     @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});}
     @Override protected void onStop(){VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;super.onStop();}
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
+    /** Idle on Home: the Wallpaper (spec 33; artwork by default), or with Wallpaper off, the owner's gallery if one is set. */
+    private boolean wallpaperOn() { return !WallpaperPolicy.OFF.equals(WallpaperPolicy.source(getSharedPreferences("unified-tv-preview",0).getString("wallpaperSource",null))); }
     private final Runnable gallery = () -> {
+        if (wallpaperOn()) { startActivity(new Intent(this, WallpaperActivity.class)); return; }
         try { if (new Vault(this).read("gallery").optJSONArray("images") != null)
             startActivity(new Intent(this, GalleryActivity.class)); } catch (Exception ignored) {}
     };
-    @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery); idleHandler.postDelayed(gallery,300000); }
+    @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery);
+        int minutes = wallpaperOn() ? WallpaperPolicy.idle(getSharedPreferences("unified-tv-preview",0).getInt("wallpaperIdle",-1)) : 5;
+        if (minutes > 0) idleHandler.postDelayed(gallery, minutes * 60_000L); }
     @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null)surface.refresh();
         LiveTvGuard.stop(this);
         if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}

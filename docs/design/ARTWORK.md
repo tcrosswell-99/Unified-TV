@@ -20,6 +20,8 @@ Every image shipped as artwork has a row here **before** it is committed. No row
 
 ## Bundled today
 
+The Wallpaper shows exactly the pictures listed in `preview/app/src/main/assets/wallpaper/catalogue.json` (file, title, credit, and optionally `mask`). An image is added to that list only after its row exists below.
+
 These images are already in the repository and may be offered as artwork without further licensing work.
 
 | File | What it is | Source and licence | Attribution | Size | SHA-256 | Mask |

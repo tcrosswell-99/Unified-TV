@@ -1,6 +1,7 @@
 package io.unifiedtv.preview;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.*;
@@ -42,7 +43,8 @@ public final class SettingsActivity extends Screen {
             text("Smoke and carbon monoxide alarms come first, then the doorbell. They add to your alarms and never replace them. Native Samsung and third-party protected-video behaviour require separate device tests.",16);break;
         case 3:
             toggle("Reduce motion","reduceMotion");toggle("Keep the Home background still","stillBackground");toggle("High contrast","highContrast");toggle("Reduce transparency","opaque");toggle("Lightweight rendering","lightweight");
-            button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));break;
+            button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
+            wallpaper();break;
         case 4:
             button("Picture, sound, network & Bluetooth",()->{try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception e){note("Use the TV's own Settings");}});
             button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
@@ -63,6 +65,23 @@ public final class SettingsActivity extends Screen {
     }
     private void services(){detail="services";heading("Connected services","Available services on this Android TV");button("NordVPN",()->VpnGate.show(this));button("Ask your TV",()->startActivity(new Intent(this,VoiceActivity.class)));button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));button("AirPlay receiver",this::airplay);}
     private void airplay(){android.content.pm.PackageManager pm=getPackageManager();Intent q=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);for(android.content.pm.ResolveInfo ri:pm.queryIntentActivities(q,0))if(ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT).contains("airpin")){Intent i=pm.getLeanbackLaunchIntentForPackage(ri.activityInfo.packageName);if(i!=null){startActivity(i);return;}}note("No supported receiver found");}
+    /** Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). */
+    private void wallpaper(){
+        SharedPreferences p=getSharedPreferences("unified-tv-preview",0);
+        String source=WallpaperPolicy.source(p.getString("wallpaperSource",null)),clock=WallpaperPolicy.clock(p.getString("wallpaperClock",null));
+        int idle=WallpaperPolicy.idle(p.getInt("wallpaperIdle",-1)),slide=WallpaperPolicy.slide(p.getInt("wallpaperSlide",0));
+        text("Wallpaper: pictures and a clock when Home is left alone. Not Samsung Art Mode.",17);
+        button("Wallpaper: "+WallpaperPolicy.sourceLabel(source),()->choose("Wallpaper",new String[]{"Artwork","Off"},n->p.edit().putString("wallpaperSource",n==0?WallpaperPolicy.ARTWORK:WallpaperPolicy.OFF).apply()));
+        button("Clock: "+WallpaperPolicy.clockLabel(clock),()->choose("Clock",new String[]{WallpaperPolicy.clockLabel(WallpaperPolicy.AUTO),WallpaperPolicy.clockLabel(WallpaperPolicy.SIMPLE),WallpaperPolicy.clockLabel(WallpaperPolicy.NONE)},n->p.edit().putString("wallpaperClock",new String[]{WallpaperPolicy.AUTO,WallpaperPolicy.SIMPLE,WallpaperPolicy.NONE}[n]).apply()));
+        String[] idles=new String[WallpaperPolicy.IDLE_MINUTES.length];for(int i=0;i<idles.length;i++)idles[i]=WallpaperPolicy.idleLabel(WallpaperPolicy.IDLE_MINUTES[i]);
+        button("Start: "+WallpaperPolicy.idleLabel(idle).toLowerCase(java.util.Locale.UK),()->choose("Start the Wallpaper",idles,n->p.edit().putInt("wallpaperIdle",WallpaperPolicy.IDLE_MINUTES[n]).apply()));
+        String[] slides=new String[WallpaperPolicy.SLIDE_SECONDS.length];for(int i=0;i<slides.length;i++)slides[i]=WallpaperPolicy.slideLabel(WallpaperPolicy.SLIDE_SECONDS[i]);
+        button("Change picture every "+WallpaperPolicy.slideLabel(slide),()->choose("Change picture every",slides,n->p.edit().putInt("wallpaperSlide",WallpaperPolicy.SLIDE_SECONDS[n]).apply()));
+        if(!WallpaperPolicy.OFF.equals(source))button("Start Wallpaper now",()->startActivity(new Intent(this,WallpaperActivity.class)));
+    }
+    private void choose(String title,String[] options,java.util.function.IntConsumer pick){
+        new AlertDialog.Builder(this).setTitle(title).setItems(options,(d,n)->{pick.accept(n);show(3);}).show();
+    }
     private void toggle(String name,String key){CheckBox c=new CheckBox(this);c.setText(name);c.setTextColor(-1);c.setTextSize(17);c.setPadding(8,dp(10),8,dp(10));c.setChecked(getSharedPreferences("unified-tv-preview",0).getBoolean(key,false));c.setOnCheckedChangeListener((v,on)->getSharedPreferences("unified-tv-preview",0).edit().putBoolean(key,on).apply());c.setOnKeyListener((v,k,e)->{if(k==KeyEvent.KEYCODE_DPAD_LEFT){navigation[category].requestFocus();return true;}return false;});column.addView(c);}
     /** Recording is an adult's statement that the network-level check passed on this TV; versions are captured automatically. */
     private void protection(){

@@ -31,6 +31,7 @@
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
     <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".WallpaperActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape"/>
