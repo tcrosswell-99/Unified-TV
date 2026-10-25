@@ -201,7 +201,22 @@ public final class UnifiedPreviewActivity extends Activity {
             }
             // The dock's title, halo and light change together (spec 32.6); a title's name waits for its scene.
             sceneTitle = title; titleHidden = false; titleAt = now + (fadeMs() == 0 || app(key) ? 0 : fadeMs() / 3);
+            speak(title);
             invalidate();
+        }
+        /**
+         * Spec 4.11: Home is one drawn view, so a screen reader hears the focused item by name (and its place in the
+         * dock) whenever focus settles. Only when accessibility is on; nothing is announced otherwise.
+         */
+        private String spoken = "";
+        private void speak(String title) {
+            android.view.accessibility.AccessibilityManager am = (android.view.accessibility.AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+            if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
+            String words = title;
+            if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
+            else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
+            if (words.equals(spoken)) return;
+            spoken = words; setContentDescription(words); announceForAccessibility(words);
         }
         private boolean calm() { return prefs.getBoolean("reduceMotion", false); }
         private long lastKey = SystemClock.uptimeMillis();
