@@ -10,6 +10,15 @@ public class AlertPolicyTest {
         assertFalse(AlertPolicy.rising("binary_sensor.person","binary_sensor.door","binary_sensor.person","unknown","on"));
         assertFalse(AlertPolicy.rising("binary_sensor.person","binary_sensor.door","binary_sensor.person","on","on"));
     }
+    @Test public void eventDoorbellsRingOnEachNewPressButNotAfterARestart(){
+        String door="event.front_door_ding";
+        assertTrue(AlertPolicy.rising(door,door,"","2026-10-25T19:00:00+00:00","2026-10-25T19:42:00+00:00"));
+        assertTrue("first press after start-up",AlertPolicy.rising(door,door,"","unknown","2026-10-25T19:42:00+00:00"));
+        assertFalse("back from a restart",AlertPolicy.rising(door,door,"","unavailable","2026-10-25T19:42:00+00:00"));
+        assertFalse(AlertPolicy.rising(door,door,"","2026-10-25T19:42:00+00:00","unavailable"));
+        assertFalse("same press repeated",AlertPolicy.rising(door,door,"","2026-10-25T19:42:00+00:00","2026-10-25T19:42:00+00:00"));
+        assertFalse("not the chosen doorbell",AlertPolicy.rising("event.back_door",door,"","a","b"));
+    }
     @Test public void repeatedEventIsDeduplicatedButAnotherIsAccepted(){AlertPolicy p=new AlertPolicy();assertTrue(p.acceptRing("door-event",1000));assertFalse(p.acceptRing("door-event",1200));assertTrue(p.acceptRing("person-event",1300));}
     @Test public void ringSuppressesRemindersAndExpiredOnesStayHidden(){AlertPolicy p=new AlertPolicy();p.acceptRing("door",1000);assertFalse(p.reminderAllowed(1100,1200));p.dismiss();assertTrue(p.reminderAllowed(1100,1200));assertFalse(p.reminderAllowed(1100,32000));}
     @Test public void expiredRingWindowReleasesPriority(){AlertPolicy p=new AlertPolicy();p.acceptRing("door",1000);assertTrue(p.reminderAllowed(46000,46001));assertFalse(p.reminderAllowed(52000,46001));}

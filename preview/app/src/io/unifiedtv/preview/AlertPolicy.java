@@ -22,7 +22,11 @@ final class AlertPolicy {
     String release(long now){String text=deferred;deferred="";return !text.isEmpty()&&reminderAllowed(deferredFired,now)?text:null;}
     void dismiss(){ringUntil=0;}
     static boolean rising(String entity,String door,String person,String oldState,String next){
-        return !entity.isEmpty()&&(entity.equals(door)||entity.equals(person))&&"off".equals(oldState)&&"on".equals(next);
+        if(entity.isEmpty()||!(entity.equals(door)||entity.equals(person)))return false;
+        // Newer Ring, Nest and UniFi integrations report a press as an event entity whose state is the time of the last
+        // press: any new time is a new press. Coming back from unavailable (a restart) is not.
+        if(entity.startsWith("event."))return next!=null&&!next.equals(oldState)&&!"unavailable".equals(next)&&!"unknown".equals(next)&&!"unavailable".equals(oldState);
+        return "off".equals(oldState)&&"on".equals(next);
     }
 
     // Smoke and carbon monoxide detectors, from Home Assistant's own device classes; never guessed from an entity's name.
