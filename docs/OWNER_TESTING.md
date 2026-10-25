@@ -47,7 +47,7 @@ $tv = "<the TV's address>:5555"
    ```
 
    **Expected:** the hash matches the `UnifiedTV-Launcher-review.apk` line.
-3. **Confirm the preview is untouched before and after.**
+3. **Confirm the preview is untouched before and after** (skip this on the TCL: the owner removed the 0.3 preview there on 25 October 2026).
 
    ```powershell
    & "$HOME\platform-tools\adb.exe" -s $tv shell dumpsys package io.unifiedtv.preview | Select-String versionName,firstInstallTime
