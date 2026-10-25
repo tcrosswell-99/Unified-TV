@@ -162,7 +162,10 @@ public final class SettingsActivity extends Screen {
         case APPS:
             button("All apps",()->startActivity(new Intent(this,AppsActivity.class)));
             text("On Home, hold OK on a tile to move or remove it. In All apps, hold OK on an app to add it to Home. A new TV suggests up to six apps that are already installed; empty places are fine.",16);
-            // Build My TV (SET-BUILD, module 13 §C 02) goes here as a prominent card; it is being built separately and wired in afterwards.
+            // Build My TV (SET-BUILD, module 13 §C 02): resumable, so the row says where the household left it.
+            String build=HubBuilder.load(prefs,Profiles.current(prefs)).status;
+            button("Build My TV"+(HubBuilder.IN_PROGRESS.equals(build)?": continue where you left off":HubBuilder.COMPLETED.equals(build)?": done":""),()->EditLock.ask(this,()->BuildMyTvActivity.start(this)));
+            text("Choose your music, films and TV apps step by step, then arrange your dock. Nothing is installed without your OK.",15);
             button("Amazon Music",()->startActivity(new Intent(this,MusicActivity.class)));
             text("Menu on the remote also opens All apps from Home.",15);break;
         case NOTIFICATIONS:notifications();break;
@@ -280,7 +283,8 @@ public final class SettingsActivity extends Screen {
         button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
         wallpaper();
         section("Dock & Icons");
-        // Dock size (SET-027, 6 or 8 icons) and "Edit dock" go first in this card; DockCapacity is being built separately.
+        // Dock size (SET-027, 6 or 8 icons): shrinking asks which tiles leave; they stay installed and in All apps.
+        button("Dock size: "+DockCapacity.label(DockCapacity.get(prefs,Profiles.current(prefs))),()->EditLock.ask(this,()->DockCapacity.choose(this,()->show(APPEARANCE))));
         String key=DockLabels.key(Profiles.current(prefs)),labels=DockLabels.value(prefs.getString(key,DockLabels.FOCUSED_ONLY));
         button("App label visibility: "+DockLabels.label(labels),()->{String[] names=new String[DockLabels.VALUES.length];int now=0;for(int i=0;i<names.length;i++){names[i]=DockLabels.label(DockLabels.VALUES[i]);if(DockLabels.VALUES[i].equals(labels))now=i;}
             new AlertDialog.Builder(this).setTitle("App label visibility").setSingleChoiceItems(names,now,(d,n)->{prefs.edit().putString(key,DockLabels.VALUES[n]).apply();d.dismiss();show(APPEARANCE);}).setNegativeButton("Cancel",null).show();});
