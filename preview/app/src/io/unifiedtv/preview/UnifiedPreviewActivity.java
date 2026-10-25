@@ -177,6 +177,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 invalidate();
                 fixture();
                 AirPlayReceiver.refresh(activity, Preview.this::postInvalidate);
+                casting();
                 handler.postDelayed(this, 60_000L);
             }
         };
@@ -650,14 +651,34 @@ public final class UnifiedPreviewActivity extends Activity {
          * AirPlay ready (spec 7.1): a screen with an upward triangle, solid white at about 70 % with a tiny shadow. Drawn
          * only when AirPin LITE is confirmed to be offering AirPlay on the network; otherwise nothing is drawn at all.
          */
+        /**
+         * Owner design: while an iPhone is casting, the glyph brightens to full white with a soft halo. Known only when
+         * AirPin reports a playing media session and the owner has allowed notification access; otherwise it stays at 70 %.
+         */
+        private volatile boolean casting;
+        private void casting() {
+            if (!AirPlayReceiver.ready) { if (casting) { casting = false; postInvalidate(); } return; }
+            Thread t = new Thread(() -> {
+                String pkg = AirPlayReceiver.installed(activity);
+                boolean now = pkg != null && MediaWatch.sessionPlayingFor(activity, pkg);
+                if (now != casting) { casting = now; postInvalidate(); }
+            }, "airplay-casting");
+            t.setDaemon(true); t.start();
+        }
         private void airPlay(Canvas c, float cx, float cy) {
-            iconPaint(179, false);
+            if (casting) { iconPaint(90, false); icon.setShadowLayer(14, 0, 0, 0x8CFFFFFF); airPlayShape(c, cx, cy); }
+            int alpha = casting ? 255 : 179;
+            iconPaint(alpha, false);
+            airPlayShape(c, cx, cy, alpha);
+        }
+        private void airPlayShape(Canvas c, float cx, float cy) { airPlayShape(c, cx, cy, -1); }
+        private void airPlayShape(Canvas c, float cx, float cy, int fillAlpha) {
             glyph.reset();   // the screen, open at the bottom where the triangle sits
             glyph.moveTo(cx - 9, cy + 11); glyph.lineTo(cx - 18, cy + 11); glyph.quadTo(cx - 21, cy + 11, cx - 21, cy + 8);
             glyph.lineTo(cx - 21, cy - 12); glyph.quadTo(cx - 21, cy - 15, cx - 18, cy - 15); glyph.lineTo(cx + 18, cy - 15);
             glyph.quadTo(cx + 21, cy - 15, cx + 21, cy - 12); glyph.lineTo(cx + 21, cy + 8); glyph.quadTo(cx + 21, cy + 11, cx + 18, cy + 11);
             glyph.lineTo(cx + 9, cy + 11); c.drawPath(glyph, icon);
-            iconPaint(179, true);
+            if (fillAlpha >= 0) iconPaint(fillAlpha, true); else { icon.setStyle(Paint.Style.FILL); }
             glyph.reset(); glyph.moveTo(cx, cy + 3); glyph.lineTo(cx + 11, cy + 17); glyph.lineTo(cx - 11, cy + 17); glyph.close();
             c.drawPath(glyph, icon);
         }

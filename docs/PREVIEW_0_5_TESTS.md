@@ -152,6 +152,22 @@ These checks cover only what the status *says*. They are not a protection test. 
 
 Depth clock (WP-04, WP-05): not testable yet; no picture has a prepared mask. My Photos (WP-03, WP-10, WP-11): not built.
 
+## Music: Now Playing (MUSIC-01)
+
+1. With Amazon Music playing a song, open **Music** on the Unified TV dock.
+   - **If it asks for access:** press **Allow in Settings**. If the TV has no such setting, run this on the PC (it is also shown on screen):
+     ```powershell
+     & $adb -s $tv shell cmd notification allow_listener io.unifiedtv.launcher.devicecheck/io.unifiedtv.preview.MediaWatch
+     ```
+   - **Pass:** within 5 seconds the screen shows the song's art, title, artist, album and progress.
+2. Left/Right along the controls, OK on Play/Pause, Next and Previous.
+   - **Pass:** Amazon Music responds; the screen follows.
+   - **Record:** whether Shuffle is available.
+3. Back.
+   - **Pass:** you return to Home with Music in focus.
+4. With AirPin LITE ready, cast music from the iPhone and return to Unified TV Home.
+   - **Record:** whether the AirPlay glyph brightens with a halo while casting.
+
 ## AirPlay indicator (GATE-AIRPLAY-01, AT-64)
 
 1. With AirPin LITE opened once and running, go to Unified TV Home and wait up to two minutes.
