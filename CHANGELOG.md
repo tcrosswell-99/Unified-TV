@@ -10,6 +10,10 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **Football with no account (OD-22):** pick your UK team from TheSportsDB's league lists and fixtures appear; no sign-up, key or phone step. API-Football is optional for more detail, used first when a key is saved. **Not tested** on a television; TheSportsDB's free service was not reachable from the build environment.
+- **Open Unified TV when the TV turns on (OD-23, launcher only):** an opt-in setting. After start-up or standby, Unified TV comes to the front once, never over playback, a call, Live TV or an alarm. It uses the "Display over other apps" permission and never catches remote buttons. **Not tested** on a television.
+- **Disney+ tile:** Disney's own wordmark in white, from the owner's SVG.
+
 - **Memory and speed on 2 GB TVs (Android):** cheaper graphics and smaller caches on low-memory TVs, with the same look and navigation. Nothing runs while Home is hidden, and memory is given back when Android asks. `preview/tools/mem_check.py` measures it from a PC. **Not tested** on a television.
 - **What this TV can do, sound output, guided setup and remote help (Android Settings):** features are shown in five plain states, detected rather than assumed from the brand. Sound output is read-only. A resumable 5-step first-run guide can be re-run from Settings. **Not tested** on a television.
 - **White brand marks on the dock (OD-20), a country flag beside the VPN shield (OD-21), and Unified TV's own app icon and banner.** Settings > Updates & About shows the exact build. **Not tested** on a television.

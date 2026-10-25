@@ -25,6 +25,9 @@ final class About {
         for(String[] l:LIBRARIES)b.append(b.length()==0?"":"\n\n").append(l[0]).append("\n").append(l[1]).append(" · ").append(l[2]);
         // TMDB's terms ask for this notice wherever its data or pictures are used (Films & TV posters, by title).
         b.append("\n\nFilm and programme posters (optional, with your own key): The Movie Database (TMDB), themoviedb.org. ").append(Tmdb.ATTRIBUTION);
+        // OD-22: football fixtures and team names come from TheSportsDB by default; API-Football only with the household's own key.
+        b.append("\n\n").append(SportsDb.ATTRIBUTION).append(" Used through its free public API; no account. Scores, crests and pictures from it are never shown.");
+        b.append("\n\nMore football detail (optional, with your own key): API-Football (api-football.com, API-SPORTS).");
         return b.append("\n\nApp icons on the Apps screen come from the installed apps themselves. Home's tile symbols, the team badge and the utility icons are drawn by Unified TV; no brand artwork or club crest is bundled. The YouTube, Netflix, Disney+ and BBC iPlayer names and marks belong to their owners; their simple white marks are drawn only to identify the app a tile opens.").toString();
     }
     /** "Title: credit" for each picture in the artwork catalogue; empty when it can't be read. */

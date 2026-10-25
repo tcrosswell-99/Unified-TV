@@ -383,7 +383,9 @@ public final class SettingsActivity extends Screen {
             boolean ours=DefaultHome.isDefault(this),kept=!ours&&DefaultHome.fixed(this);
             // Chosen once, but this TV keeps its own Home button (owner's TCL, 25 October 2026): said plainly, no dead switch.
             text(ours?"The Home button opens Unified TV.":kept?DefaultHome.KEPT_WORDS:"The Home button opens the original TV interface.",16);
-            if(!ours&&!kept)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));}
+            if(!ours&&!kept)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            // OD-23: only while the Home button doesn't open Unified TV (TurnOn); the preview never shows it.
+            if(!ours)turnOnRow();}
         else{section("Home button");text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",15);}
         section("Advanced appearance");
         taskRow("Advanced appearance",APPEARANCE_ADVANCED,false,null);
@@ -614,7 +616,35 @@ public final class SettingsActivity extends Screen {
     }
     private boolean homeAsked;
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
-    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();if(guidedSetupOpen){guidedSetupOpen=false;refresh();}}
+    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();if(guidedSetupOpen){guidedSetupOpen=false;refresh();}
+        if(overlayAsked){overlayAsked=false;TurnOn.sync(this);refresh();}}
+    /** Back from Android's "Display over other apps" screen: the row shows whatever was chosen there. */
+    private boolean overlayAsked;
+    /**
+     * OD-23 "Open Unified TV when the TV turns on" (launcher app; Home button not Unified TV's): one row behind the adult
+     * PIN, its state said honestly (On, Needs permission, Off). The permission is Android's "Display over other apps",
+     * used only to come to the front: the TV's own screen for it when there is one, otherwise a one-time computer step.
+     */
+    private void turnOnRow(){
+        TurnOn.State s=TurnOn.state(this);
+        button(TurnOn.TITLE+": "+s.words,()->EditLock.ask(this,this::turnOnChange));
+        text(TurnOn.EXPLAIN,15);
+        if(s==TurnOn.State.NEEDS_PERMISSION)text(TurnOn.permissionScreen(this)!=null?TurnOn.PERMISSION_WORDS+" Press the row to open that setting."
+            :TurnOn.PERMISSION_WORDS+" "+TurnOn.NO_SCREEN_WORDS+" "+TurnOn.adb(this),15);
+    }
+    /** Behind the PIN: Off becomes On (asking for the permission if it is missing), On becomes Off. */
+    private void turnOnChange(){
+        TurnOn.State s=TurnOn.state(this);
+        if(s==TurnOn.State.ON){TurnOn.enabled(this,false);TurnOn.sync(this);show(APPEARANCE);return;}
+        if(s==TurnOn.State.OFF){TurnOn.enabled(this,true);TurnOn.sync(this);show(APPEARANCE);if(TurnOn.permitted(this))return;}
+        Intent screen=TurnOn.permissionScreen(this);
+        AlertDialog.Builder ask=new AlertDialog.Builder(this).setTitle(TurnOn.TITLE)
+            .setNeutralButton("Switch it off",(d,w)->{TurnOn.enabled(this,false);TurnOn.sync(this);show(APPEARANCE);});
+        if(screen!=null)ask.setMessage(TurnOn.PERMISSION_WORDS).setNegativeButton("Cancel",null)
+            .setPositiveButton("Open the TV's setting",(d,w)->{settingsPass();overlayAsked=true;try{startActivity(screen);}catch(RuntimeException e){overlayAsked=false;note(TurnOn.NO_SCREEN_WORDS+" "+TurnOn.adb(this));}});
+        else ask.setMessage(TurnOn.PERMISSION_WORDS+"\n\n"+TurnOn.NO_SCREEN_WORDS+"\n"+TurnOn.adb(this)).setPositiveButton("OK",null);
+        ask.show();
+    }
     /**
      * A feature's next step, from What this TV can do (Capabilities.GO_*): its category inside this sheet, its phone setup,
      * or its own screen. Kids settings and phone setup are behind the adult PIN, as everywhere else.

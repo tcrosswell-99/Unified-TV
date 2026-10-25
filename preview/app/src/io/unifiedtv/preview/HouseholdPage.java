@@ -93,7 +93,7 @@ final class HouseholdPage {
         List<String> waiting = snapshot == null ? null : HaEntities.waitingDoorbells(snapshot.entities);
         if (waiting != null && !waiting.isEmpty() && config.optString("door").isEmpty())
             a.text("Home Assistant also shows " + waiting.get(0) + " as a newer kind of doorbell. This TV can't use that kind yet, so choose a doorbell sensor if you have one.", 15);
-        if (!FixtureFeed.apiConfigured(a)) { a.section("Football"); a.button(label("calendar") + ": " + current(config, "calendar"), () -> choose("calendar")); a.text("Only needed if you don't use API-Football (Smart Home > Football).", 15); }
+        if (!FixtureFeed.listed(a)) { a.section("Football"); a.button(label("calendar") + ": " + current(config, "calendar"), () -> choose("calendar")); a.text("Only needed if you'd rather use your own calendar than choose your team from the list in Smart Home > Football.", 15); }
         if (visible("xbox", room)) { a.section("Xbox"); a.button(label("xbox") + ": " + current(config, "xbox"), () -> choose("xbox")); a.text("Choose the Home Assistant action that wakes the Xbox and switches the TV to it.", 15); }
 
         a.section("Alarms and reminders");

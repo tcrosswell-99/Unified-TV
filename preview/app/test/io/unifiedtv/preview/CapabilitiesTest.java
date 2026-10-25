@@ -30,7 +30,7 @@ public class CapabilitiesTest {
     }
     private static Capabilities.Facts everything(){
         Capabilities.Facts f=nothing();f.sdk=34;f.release="14";f.launcherApp=true;f.homeRole=true;f.isHome=true;f.librarySetUp=true;f.tmdbKey=true;f.airPin=true;f.airPlayReady=true;
-        f.nordVpn=true;f.liveVerifier=true;f.liveVerified=true;f.livePackage="tv.example.live";f.haSaved=true;f.haConnected=true;f.footballKey=true;f.overlays=true;
+        f.nordVpn=true;f.liveVerifier=true;f.liveVerified=true;f.livePackage="tv.example.live";f.haSaved=true;f.haConnected=true;f.footballKey=true;f.footballTeam=true;f.overlays=true;
         f.notificationAccess=true;f.kidsGuardAllowed=true;f.speech=true;f.microphone=true;f.outputs=true;f.exactOutput=true;f.reviewBuild=true;return f;
     }
     @Test public void aTvWithEverythingWorkingIsAllAvailable(){
@@ -51,6 +51,16 @@ public class CapabilitiesTest {
         assertEquals(Capabilities.State.UNSUPPORTED_ON_DEVICE,state(f,Capabilities.VOICE));
         assertEquals("everyday build: no key logging",Capabilities.State.UNSUPPORTED_ON_DEVICE,state(f,Capabilities.REMOTE_CHECK));
         assertTrue(Capabilities.evaluate(f,Capabilities.SOUND_OUTPUT).words.contains("doesn't tell apps for certain"));
+    }
+    // OD-22: football needs a team, never a key: TheSportsDB by default, the household's own API-Football key optional.
+    @Test public void footballNeedsOnlyATeam(){
+        Capabilities.Facts f=nothing();
+        assertEquals(Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.FOOTBALL));
+        assertTrue(Capabilities.evaluate(f,Capabilities.FOOTBALL).words.contains("no account or key"));
+        f.footballKey=true;assertEquals("a key alone isn't a team",Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.FOOTBALL));
+        f.footballKey=false;f.footballTeam=true;assertEquals("no key needed",Capabilities.State.AVAILABLE,state(f,Capabilities.FOOTBALL));
+        assertTrue(Capabilities.evaluate(f,Capabilities.FOOTBALL).words.contains("TheSportsDB"));
+        f.footballKey=true;assertTrue(Capabilities.evaluate(f,Capabilities.FOOTBALL).words.contains("API-Football key is asked first"));
     }
     @Test public void homeScreenFollowsWhatAndroidOffers(){
         Capabilities.Facts f=nothing();f.launcherApp=true;

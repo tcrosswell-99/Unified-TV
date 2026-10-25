@@ -40,9 +40,10 @@ final class Capabilities {
     // Feature identifiers (stable: tests and Settings refer to them).
     static final String HOME_SCREEN="home_screen",LIBRARY="library",POSTERS="posters",AIRPLAY="airplay",NORDVPN="nordvpn",
         LIVE_TV="live_tv",HOME_ASSISTANT="home_assistant",FOOTBALL="football",ALERTS_OVER_APPS="alerts_over_apps",
-        NOW_PLAYING="now_playing",KIDS_GUARD="kids_guard",VOICE="voice",SOUND_OUTPUT="sound_output",GLASS="glass",REMOTE_CHECK="remote_check";
+        NOW_PLAYING="now_playing",KIDS_GUARD="kids_guard",VOICE="voice",SOUND_OUTPUT="sound_output",GLASS="glass",REMOTE_CHECK="remote_check",
+        TURN_ON="turn_on";
     /** The order "What this TV can do" lists them in, within each state. */
-    static final List<String> ALL=Collections.unmodifiableList(Arrays.asList(HOME_SCREEN,LIBRARY,POSTERS,AIRPLAY,NORDVPN,LIVE_TV,
+    static final List<String> ALL=Collections.unmodifiableList(Arrays.asList(HOME_SCREEN,TURN_ON,LIBRARY,POSTERS,AIRPLAY,NORDVPN,LIVE_TV,
         HOME_ASSISTANT,FOOTBALL,ALERTS_OVER_APPS,NOW_PLAYING,KIDS_GUARD,VOICE,SOUND_OUTPUT,GLASS,REMOTE_CHECK));
     /** The order of the state groups on the page: what works, then what the household can do something about, then the rest. */
     static final List<State> ORDER=Collections.unmodifiableList(Arrays.asList(State.AVAILABLE,State.PERMISSION_REQUIRED,State.SETUP_REQUIRED,State.TEMPORARILY_UNAVAILABLE,State.UNSUPPORTED_ON_DEVICE));
@@ -72,6 +73,8 @@ final class Capabilities {
         boolean liveVerifier,liveVerified;String livePackage="";
         boolean haSaved,haConnected;
         boolean footballKey;
+        /** A team is chosen (from the list, or named for a calendar): fixtures need nothing else (OD-22). */
+        boolean footballTeam;
         boolean overlays;
         boolean notificationAccess;
         boolean kidsGuardAllowed;
@@ -79,6 +82,8 @@ final class Capabilities {
         boolean outputs,exactOutput;
         boolean lowRam;
         boolean reviewBuild;
+        /** OD-23: "Open Unified TV when the TV turns on" is switched on (it also needs {@code overlays}). */
+        boolean turnOn;
     }
 
     // --- pure
@@ -114,8 +119,8 @@ final class Capabilities {
                 return f.haConnected?c(id,"Home Assistant",State.AVAILABLE,"Set up, and it accepted Unified TV's sign-in last time it connected.",GO_HOME_ASSISTANT)
                     :c(id,"Home Assistant",State.TEMPORARILY_UNAVAILABLE,"Set up, but it hasn't accepted a connection from this TV yet. Smart Home shows why.",GO_HOME_ASSISTANT);
             case FOOTBALL:
-                return f.footballKey?c(id,"Football fixtures",State.AVAILABLE,"Set up with your own API-Football key.",GO_FOOTBALL)
-                    :c(id,"Football fixtures",State.SETUP_REQUIRED,"Add your own free API-Football key on your phone.",GO_FOOTBALL);
+                if(!f.footballTeam)return c(id,"Football fixtures",State.SETUP_REQUIRED,"Choose your team in Smart Home. Fixtures come from TheSportsDB, with no account or key.",GO_FOOTBALL);
+                return c(id,"Football fixtures",State.AVAILABLE,f.footballKey?"Your team is chosen. Your own API-Football key is asked first, then TheSportsDB.":"Your team is chosen. Fixtures come from TheSportsDB, with no account or key.",GO_FOOTBALL);
             case ALERTS_OVER_APPS:
                 return f.overlays?c(id,"Doorbell and alarms over other apps",State.AVAILABLE,"Allowed. Whether they appear over every app hasn't been tested on this TV.",GO_NOTIFICATIONS)
                     :c(id,"Doorbell and alarms over other apps",State.PERMISSION_REQUIRED,"Needs \"Display over other apps\" for Unified TV in the TV's own settings. Without it, alerts show only while Unified TV is open.",GO_NOTIFICATIONS);
@@ -137,6 +142,12 @@ final class Capabilities {
                 if(f.sdk<31)return c(id,"Frosted glass in Settings",State.UNSUPPORTED_ON_DEVICE,"Android "+(f.release==null||f.release.isEmpty()?"on this TV":f.release)+" can't blur behind an app, so Settings uses tinted glass without blur. Everything works the same.",null);
                 if(f.lowRam)return c(id,"Frosted glass in Settings",State.UNSUPPORTED_ON_DEVICE,"This TV reports little memory, so Settings uses tinted glass without blur. Everything works the same.",null);
                 return c(id,"Frosted glass in Settings",State.AVAILABLE,"Settings blurs a still copy of its own background. Lightweight rendering turns it off.",GO_APPEARANCE);
+            case TURN_ON:
+                // OD-23: launcher app only; "Display over other apps" is used solely to come to the front (module 03: no keys).
+                if(!f.launcherApp)return c(id,"Open when the TV turns on",State.UNSUPPORTED_ON_DEVICE,"Not available in the Unified TV preview. The separate Unified TV app can come to the front when the TV starts or wakes.",null);
+                if(f.isHome)return c(id,"Open when the TV turns on",State.AVAILABLE,"Not needed: the Home button opens Unified TV, so the TV already starts on it.",GO_APPEARANCE);
+                if(!f.overlays)return c(id,"Open when the TV turns on",State.PERMISSION_REQUIRED,"Needs \"Display over other apps\" for Unified TV, used only to come to the front. Appearance & Home > Home button explains how.",GO_APPEARANCE);
+                return c(id,"Open when the TV turns on",State.AVAILABLE,f.turnOn?"On. When the TV starts or wakes from standby, Unified TV comes to the front; the Home button still opens the TV's own.":"Allowed, and off. Switch it on in Appearance & Home > Home button.",GO_APPEARANCE);
             case REMOTE_CHECK:
                 return f.reviewBuild?c(id,"Remote button check",State.AVAILABLE,"Lists every button your remote sends. Nothing leaves the TV.",GO_CONNECTIONS)
                     :c(id,"Remote button check",State.UNSUPPORTED_ON_DEVICE,"Only in the Unified TV review build, so remote buttons are never recorded in an everyday build.",null);
@@ -178,7 +189,7 @@ final class Capabilities {
         if(need.contains(HOME_ASSISTANT)){Boolean saved=SettingsActivity.haForTests;
             if(saved==null)try{org.json.JSONObject ha=new Vault(c).read("ha");saved=ha.optBoolean("enabled")&&!ha.optString("token").isEmpty();}catch(Exception e){saved=false;}
             f.haSaved=saved;f.haConnected=saved&&p.getBoolean(AlarmWatch.CONFIGURED,false);}
-        if(need.contains(FOOTBALL))try{f.footballKey=FixtureFeed.apiConfigured(c);}catch(Exception ignored){}
+        if(need.contains(FOOTBALL))try{f.footballKey=FixtureFeed.apiConfigured(c);f.footballTeam=FixtureFeed.team(c)!=null;}catch(Exception ignored){}
         if(need.contains(ALERTS_OVER_APPS))try{f.overlays=android.provider.Settings.canDrawOverlays(c);}catch(RuntimeException ignored){}
         if(need.contains(NOW_PLAYING))f.notificationAccess=MediaWatch.granted(c);
         if(need.contains(KIDS_GUARD))try{f.kidsGuardAllowed=KidsGuard.enabledIn(android.provider.Settings.Secure.getString(c.getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),c.getPackageName(),KidsGuardService.class.getName());}catch(RuntimeException ignored){}
@@ -190,6 +201,9 @@ final class Capabilities {
         if(need.contains(SOUND_OUTPUT)){f.outputs=!SoundOutput.read(c).isEmpty();f.exactOutput=f.sdk>=33;}
         if(need.contains(GLASS))try{f.lowRam=((android.app.ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE)).isLowRamDevice();}catch(RuntimeException ignored){}
         if(need.contains(REMOTE_CHECK))f.reviewBuild=RemoteCheckActivity.allowed(c);
+        if(need.contains(TURN_ON)){f.launcherApp=DefaultHome.available(c);f.turnOn=TurnOn.enabled(c);
+            try{f.isHome=f.launcherApp&&DefaultHome.isDefault(c);}catch(RuntimeException ignored){}
+            try{f.overlays=android.provider.Settings.canDrawOverlays(c);}catch(RuntimeException ignored){}}
         return f;
     }
     private static boolean launchable(PackageManager pm,String pkg){

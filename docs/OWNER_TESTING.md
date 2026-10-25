@@ -92,6 +92,20 @@ Write down the last line: the TV's own Home (on the TCL it was `com.google.andro
 
 Removing the review build also hands Home back. Then, in the review build, open **Settings → TV & performance → Make Unified TV the Home screen**, and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
 
+## Open Unified TV when the TV turns on (launcher app, OD-23)
+
+For a TV that keeps its own Home button. In the launcher app: **Settings → Appearance & Home → Home button → Open Unified TV when the TV turns on** (adult PIN). It is off by default and not shown once the Home button opens Unified TV. The Home button still opens the TV's own Home; nothing reads or reassigns a key.
+
+It needs Android's **Display over other apps** permission, used only to bring Unified TV to the front. If the TV has a screen for it, the row opens it. If not, the row says **Needs permission** and shows this one-time computer step with the right package name (the review build is `io.unifiedtv.launcher.devicecheck`):
+
+```powershell
+& "$HOME\platform-tools\adb.exe" -s $tv shell appops set io.unifiedtv.launcher SYSTEM_ALERT_WINDOW allow
+```
+
+To take the permission away again: the same command with `default` instead of `allow`. Switching the row off stops the small watcher.
+
+On the TCL, with it switched on, record for each case which screen appears and after how long: (1) standby with the remote, wait 10 seconds, wake; (2) the same from inside Netflix, paused; (3) start a video, put the TV in standby and wake it: if the video is still playing, Unified TV should stay out of the way; (4) a full power cycle at the wall; (5) waking the TV by turning on a device on HDMI (HDMI-CEC), and with the TV set to start on its last input or on its own Live TV. Android does not tell apps the TV woke into another input, so in (5) Unified TV may come to the front over that input: say if it does. Also say if the TV's own Home appears on top of Unified TV a moment later, and send `adb shell dumpsys meminfo io.unifiedtv.launcher` after a day with it on.
+
 ## Fetching the Wallpaper artwork
 
 This cloud session cannot reach museum websites, so the curated artwork is fetched on your PC. The tool keeps only works the museum itself marks public domain.

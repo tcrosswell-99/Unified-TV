@@ -4,16 +4,8 @@ import java.util.*;
 import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
-/** API-Football v3 adapter (owner, 25 October 2026): parsing, request budget, schedule. Synthetic replies shaped like the API's. */
+/** API-Football v3 adapter, optional since OD-22 (owner, 25 October 2026): parsing, request budget, schedule, and the one request shape it may send. Synthetic replies shaped like the API's. */
 public class ApiFootballTest {
-    static final String LEAGUES="{\"get\":\"leagues\",\"parameters\":{\"country\":\"England\",\"current\":\"true\"},\"errors\":[],\"results\":3,\"paging\":{\"current\":1,\"total\":1},\"response\":["
-        +"{\"league\":{\"id\":901,\"name\":\"Example League\",\"type\":\"League\",\"logo\":\"https://example.invalid/l.png\"},\"country\":{\"name\":\"England\",\"code\":\"GB\",\"flag\":null},\"seasons\":[{\"year\":2025,\"start\":\"2025-08-01\",\"end\":\"2026-05-30\",\"current\":false},{\"year\":2026,\"start\":\"2026-08-01\",\"end\":\"2027-05-30\",\"current\":true}]},"
-        +"{\"league\":{\"id\":902,\"name\":\"Example Cup\",\"type\":\"Cup\",\"logo\":\"\"},\"country\":{\"name\":\"England\"},\"seasons\":[{\"year\":2026,\"current\":true}]},"
-        +"{\"league\":{\"id\":903,\"name\":\"Old League\",\"type\":\"League\"},\"country\":{\"name\":\"England\"},\"seasons\":[{\"year\":2019,\"current\":false}]}]}";
-    static final String TEAMS="{\"get\":\"teams\",\"parameters\":{\"league\":\"901\",\"season\":\"2026\"},\"errors\":[],\"results\":3,\"response\":["
-        +"{\"team\":{\"id\":7002,\"name\":\"Zeta Town\",\"code\":null,\"country\":\"England\",\"founded\":1900,\"national\":false,\"logo\":\"https://example.invalid/t.png\"},\"venue\":{\"id\":1,\"name\":\"Ground\"}},"
-        +"{\"team\":{\"id\":7001,\"name\":\"Alpha United\",\"code\":\"ALP\",\"country\":\"England\",\"national\":false},\"venue\":{}},"
-        +"{\"team\":{\"id\":10,\"name\":\"England\",\"code\":\"ENG\",\"national\":true},\"venue\":{}}]}";
     static final String FIXTURES="{\"get\":\"fixtures\",\"parameters\":{\"team\":\"7001\",\"next\":\"10\"},\"errors\":[],\"results\":3,\"response\":["
         +fixture(5001,1793026800L,"NS","Not Started")+","+fixture(5002,1793631600L,"PST","Match Postponed")+","+fixture(5003,1794236400L,"TBD","Time to be defined")+"]}";
     static String fixture(long id,long ts,String shortStatus,String longStatus){
@@ -23,14 +15,6 @@ public class ApiFootballTest {
             +"\"goals\":{\"home\":3,\"away\":1},\"score\":{\"halftime\":{\"home\":1,\"away\":0},\"fulltime\":{\"home\":3,\"away\":1},\"extratime\":{\"home\":null,\"away\":null},\"penalty\":{\"home\":null,\"away\":null}}}";
     }
 
-    @Test public void leaguesAreLeaguesWithACurrentSeason()throws Exception{
-        List<ApiFootball.League> l=ApiFootball.leagues(new JSONObject(LEAGUES));
-        assertEquals(1,l.size());assertEquals(901,l.get(0).id);assertEquals(2026,l.get(0).season);assertEquals("England",l.get(0).country);
-    }
-    @Test public void teamsAreClubsSortedByName()throws Exception{
-        List<ApiFootball.TeamEntry> t=ApiFootball.teams(new JSONObject(TEAMS));
-        assertEquals(2,t.size());assertEquals("Alpha United",t.get(0).name);assertEquals("ALP",t.get(0).code);assertEquals("",t.get(1).code);
-    }
     @Test public void fixturesNeverCarryAScoreAndPostponedOrTbdGiveNoCard()throws Exception{
         List<Fixtures.Fixture> f=ApiFootball.fixtures(new JSONObject(FIXTURES),0);
         assertEquals(3,f.size());assertEquals("api:5001",f.get(0).id);assertEquals(Arrays.asList("api:7001","api:7002"),f.get(0).teamIds);
@@ -51,19 +35,17 @@ public class ApiFootballTest {
     @Test public void errorsInA200ReplyAreRefusalsByKeyOnly()throws Exception{
         try{ApiFootball.fixtures(new JSONObject("{\"errors\":{\"requests\":\"You have reached the request limit for the day\"},\"response\":[]}"),0);fail();}
         catch(ApiFootball.Refused r){assertTrue(r.quota());assertFalse(r.key());assertFalse(r.getMessage().contains("limit for the day"));}
-        try{ApiFootball.teams(new JSONObject("{\"errors\":{\"token\":\"Error/Missing application key\"},\"response\":[]}"));fail();}catch(ApiFootball.Refused r){assertTrue(r.key());}
+        try{ApiFootball.fixtures(new JSONObject("{\"errors\":{\"token\":\"Error/Missing application key\"},\"response\":[]}"),0);fail();}catch(ApiFootball.Refused r){assertTrue(r.key());}
         assertEquals(0,ApiFootball.fixtures(new JSONObject("{\"errors\":[],\"response\":[]}"),0).size());
     }
-    @Test public void theBudgetIsAHundredAUtcDayWithRoomKeptForFixtures(){
+    @Test public void theBudgetIsAHundredAUtcDay(){
         long day=Instant.parse("2026-10-25T23:59:00Z").toEpochMilli();
-        ApiFootball.Budget b=ApiFootball.Budget.read("",day);for(int i=0;i<ApiFootball.CATALOGUE_SHARE;i++){assertTrue(b.allows(true));b=b.spend();}
-        assertFalse("the team list stops at its share",b.allows(true));assertTrue("fixtures still have room",b.allows(false));
-        for(int i=ApiFootball.CATALOGUE_SHARE;i<ApiFootball.DAILY_LIMIT;i++)b=b.spend();
-        assertFalse(b.allows(false));assertEquals(0,b.left());
+        ApiFootball.Budget b=ApiFootball.Budget.read("",day);for(int i=0;i<ApiFootball.DAILY_LIMIT;i++){assertTrue(b.allows());b=b.spend();}
+        assertFalse(b.allows());assertEquals(0,b.left());
         ApiFootball.Budget saved=ApiFootball.Budget.read(b.write(),day+60_000);   // a minute later: midnight UTC has passed
-        assertEquals(0,saved.used);assertTrue(saved.allows(false));
+        assertEquals(0,saved.used);assertTrue(saved.allows());
         assertEquals("kept across restarts on the same day",100,ApiFootball.Budget.read(b.write(),day).used);
-        assertFalse(ApiFootball.Budget.read("",day).exhausted().allows(false));
+        assertFalse(ApiFootball.Budget.read("",day).exhausted().allows());
     }
     @Test public void fixturesRefreshDailyHourlyOnMatchdayAndQuarterHourlyNearKickOff(){
         ZoneId z=ZoneId.of("Europe/London");long kick=Instant.parse("2026-10-31T15:00:00Z").toEpochMilli();
@@ -73,20 +55,15 @@ public class ApiFootballTest {
         assertEquals(ApiFootball.QUARTER_MS,ApiFootball.interval(f,kick-2*ApiFootball.HOUR_MS,z));
         assertEquals(ApiFootball.QUARTER_MS,ApiFootball.interval(f,kick+ApiFootball.HOUR_MS,z));
         assertTrue(ApiFootball.fixturesDue(0,f,kick,z));assertFalse(ApiFootball.fixturesDue(kick-ApiFootball.HOUR_MS-60_000,f,kick-ApiFootball.HOUR_MS,z));
-        assertTrue(ApiFootball.catalogueDue(0,1));assertFalse(ApiFootball.catalogueDue(1,ApiFootball.WEEK_MS));assertTrue(ApiFootball.catalogueDue(1,ApiFootball.WEEK_MS+1));
         // A whole matchday at most: hourly for 24 h plus the quarter-hours near kick-off stays well under the 100 a day.
         int requests=0;long last=0;long start=Instant.parse("2026-10-31T00:00:00Z").toEpochMilli();
         for(long t=start;t<start+ApiFootball.DAY_MS;t+=60_000)if(ApiFootball.fixturesDue(last,f,t,z)){requests++;last=t;}
-        assertTrue(String.valueOf(requests),requests<=ApiFootball.DAILY_LIMIT-ApiFootball.CATALOGUE_SHARE);
+        assertTrue(String.valueOf(requests),requests<=ApiFootball.DAILY_LIMIT/2);
     }
-    @Test public void theTeamListIsBuiltStepByStepWithoutLeagueIdsInSource()throws Exception{
-        JSONObject cat=new JSONObject();
-        assertEquals("/leagues?country=England&current=true",ApiFootball.next(cat));
-        ApiFootball.apply(cat,ApiFootball.next(cat),new JSONObject(LEAGUES),1);
-        for(String c:new String[]{"Scotland","Wales","Northern-Ireland"}){assertEquals("/leagues?country="+c+"&current=true",ApiFootball.next(cat));ApiFootball.apply(cat,ApiFootball.next(cat),new JSONObject("{\"errors\":[],\"response\":[]}"),1);}
-        assertEquals("/teams?league=901&season=2026",ApiFootball.next(cat));assertArrayEquals(new int[]{0,1},ApiFootball.progress(cat));
-        ApiFootball.apply(cat,ApiFootball.next(cat),new JSONObject(TEAMS),5);
-        assertNull(ApiFootball.next(cat));assertEquals(5,cat.optLong("fetchedAt"));assertArrayEquals(new int[]{1,1},ApiFootball.progress(cat));
-        assertEquals("Alpha United",cat.getJSONArray("leagues").getJSONObject(0).getJSONArray("teams").getJSONObject(0).getString("name"));
+    // OD-22: the team list comes from TheSportsDB; API-Football is only ever asked for fixtures (and /status for a key check).
+    @Test public void onlyFixturesAndTheKeyCheckAreEverRequested()throws Exception{
+        for(String bad:new String[]{"/leagues?country=England&current=true","/teams?league=39&season=2026","/fixtures?team=47&next=10&x=1","/fixtures?team=abc&next=10"})
+            try{ApiFootball.get("0123456789abcdef0123",bad);fail(bad);}catch(IllegalArgumentException expected){}
+        try{ApiFootball.get("",ApiFootball.STATUS);fail();}catch(ApiFootball.Refused r){assertTrue("no key: refused before anything is sent",r.key());}
     }
 }

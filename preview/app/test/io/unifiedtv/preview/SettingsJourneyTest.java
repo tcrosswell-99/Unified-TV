@@ -213,8 +213,9 @@ public class SettingsJourneyTest {
             for(String gone:new String[]{"Test connection","Save","Forget connection","Enable connection","Use a different address","Set up Home Assistant"})assertNull(gone+" is gone",find(root(a),gone));
             for(String jargon:new String[]{"trusted LAN","Credentials not configured","long-lived","HTTP"})assertFalse(jargon,anyText(root(a),jargon));
             assertNull("Disconnect only once connected",find(root(a),"Disconnect"));
-            assertNotNull(text(root(a),"Football fixtures: not set up"));
-            assertEquals("Home Assistant's and football's own phone setup",2,all(root(a),"Set up on your phone",new java.util.ArrayList<>()).size());
+            assertNotNull("OD-22: football needs only a team",text(root(a),"Football fixtures: choose your team"));
+            assertEquals("only Home Assistant needs the phone; football's key is an optional extra",1,all(root(a),"Set up on your phone",new java.util.ArrayList<>()).size());
+            assertNotNull(find(root(a),SetupPages.ADD_KEY));
             Button phone=find(root(a),"Set up on your phone");phone.requestFocus();phone.performClick();idle();
             assertEquals(SettingsOverlay.Phase.TASK,a.overlay().page());assertEquals(SettingsActivity.PHONE_HA,a.overlay().task());
             assertEquals("the same half-width sheet, never a full-screen page",standard,a.sheet().getLayoutParams().width);
@@ -226,9 +227,9 @@ public class SettingsJourneyTest {
             assertEquals(SettingsActivity.HA_ADVANCED,a.overlay().task());assertEquals(standard,a.sheet().getLayoutParams().width);
             assertNotNull("typing on the TV only under Advanced",find(root(a),"Paste a token on this TV"));assertNotNull(find(root(a),"Change the address"));
             a.onBackPressed();idle();focused(a,"Advanced");
-            Button football=all(root(a),"Set up on your phone",new java.util.ArrayList<>()).get(1);football.requestFocus();football.performClick();idle();
-            assertEquals(SettingsActivity.PHONE_FOOTBALL,a.overlay().task());assertEquals("Football fixtures",title(a));
-            assertTrue(anyText(root(a),"API-Football"));
+            Button football=find(root(a),SetupPages.ADD_KEY);football.requestFocus();football.performClick();idle();
+            assertEquals(SettingsActivity.PHONE_FOOTBALL,a.overlay().task());assertEquals("More football detail",title(a));
+            assertTrue(anyText(root(a),"API-Football"));assertEquals(standard,a.sheet().getLayoutParams().width);
             a.onBackPressed();idle();a.onBackPressed();idle();focused(a,"Smart Home");
         }
     }

@@ -45,7 +45,8 @@ public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
     @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});VpnGate.listen(()->{if(surface!=null)surface.postInvalidate();});
-        getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);}
+        getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);
+        TurnOn.sync(this);}   // OD-23: the "when the TV turns on" watcher follows its switch (and a permission given from a computer)
     @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;VpnGate.listen(null);super.onStop();}
     /**
      * SET-GLASS-09 / GLASS-04: Settings is a translucent sheet over Home, so Home is paused, not stopped, and stays on
@@ -89,7 +90,8 @@ public final class UnifiedPreviewActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent);
         // As the chosen Home: the Home button lands on the main screen with the same app still in focus (spec 28.3).
-        if (intent.hasCategory(Intent.CATEGORY_HOME) && surface != null) surface.home(); }
+        // OD-23: brought forward when the TV turned on: the same main screen as the Home button (TurnOn).
+        if ((intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra(TurnOn.EXTRA, false)) && surface != null) surface.home(); }
     // (A return from the Kids app guard arrives here too and is explained in onResume.)
     @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
 
@@ -228,7 +230,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private long messageUntil = 0;
         private long inputEvent;
         /**
-         * Spec 7: the household team's fixtures (FixtureFeed: API-Football or the Home Assistant calendar, each with its own
+         * Spec 7: the household team's fixtures (FixtureFeed: TheSportsDB by default, API-Football with the household's own
+         * key, or the Home Assistant calendar, each with its own
          * refresh rules); the card itself is worked out each minute from them. No team and no calendar: no card.
          */
         private List<Fixtures.Fixture> fixtures = new ArrayList<>();

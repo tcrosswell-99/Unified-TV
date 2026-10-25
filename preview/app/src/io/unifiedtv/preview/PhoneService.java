@@ -82,7 +82,7 @@ final class PhoneService {
                 });
             case FOOTBALL: return football(values -> {
                 String key = values.get("key");
-                try { int[] account = ApiFootball.account(ApiFootball.get(key, ApiFootball.STATUS)); FixtureFeed.saveKey(app, key); FixtureFeed.noteUsed(app, account[0]); TeamList.ensure(app); return PhoneFlows.Verdict.OK; }
+                try { int[] account = ApiFootball.account(ApiFootball.http.get(key, ApiFootball.STATUS)); FixtureFeed.saveKey(app, key); FixtureFeed.noteUsed(app, account[0]); TeamList.ensure(app); return PhoneFlows.Verdict.OK; }
                 catch (Exception e) { return ApiFootball.verdict(e, VpnGate.routed(app)); }
             });
             case TMDB: return tmdb(values -> {
@@ -109,14 +109,17 @@ final class PhoneService {
         }
     }
 
-    /** API-Football (football fixtures), with the given validate-and-save. */
+    /**
+     * API-Football (optional "more detail" for football fixtures, OD-22), with the given validate-and-save. Fixtures work
+     * without it, from TheSportsDB; this page is only for a household that wants to add its own key.
+     */
     static PhoneService football(Submit submit) {
-        PhoneService s = new PhoneService(FOOTBALL, "API-Football", "Football fixtures",
-            "Your team's fixtures come from API-Football, with your own free key.",
+        PhoneService s = new PhoneService(FOOTBALL, "API-Football", "More football detail",
+            "Optional. Your team's fixtures already come from TheSportsDB with no account. Add your own free API-Football key here only if you want it asked first.",
             new String[]{SCAN, "On your phone, tap Get a free key if you don't have an API-Football account. It opens their sign-up page.",
                 "Already signed up? Tap Open your key. On a phone, tap ☰, then Account → My Access, and tap the hidden key to show it. A blank key means a VPN or Private Relay is on: the phone page says what to switch off.",
                 "Copy your key, come back to the setup page and paste it. The TV checks it and saves it."},
-            "Your team's fixtures come from API-Football. You need your own free key. It takes about two minutes. One key works for all the API-SPORTS sports.",
+            "Optional. Your team's fixtures already come from TheSportsDB, with no account. If you add your own free API-Football key, the TV asks API-Football first. It takes about two minutes. One key works for all the API-SPORTS sports.",
             new Step[]{new Step("No API-Football account yet? Tap Get a free key. Their sign-up page opens in a new tab: create the account and confirm your email address.", FOOTBALL_SIGNUP, "Get a free key"),
                 new Step("Already have an account? Your key is on your API-Football dashboard.", FOOTBALL_KEY, "Already signed up? Open your key"),
                 new Step(FOOTBALL_WHERE), new Step(FOOTBALL_PROXY),

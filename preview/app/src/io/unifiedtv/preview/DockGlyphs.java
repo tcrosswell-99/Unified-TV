@@ -46,10 +46,8 @@ final class DockGlyphs {
             case "n":   // Netflix: the N ribbon, two shaded uprights behind one bright diagonal band
                 paint(icon,170,true);rect.set(cx-25,cy-40,cx-11,cy+40);c.drawRect(rect,icon);rect.set(cx+11,cy-40,cx+25,cy+40);c.drawRect(rect,icon);
                 paint(icon,250,true);path.reset();path.moveTo(cx-25,cy-40);path.lineTo(cx-11,cy-40);path.lineTo(cx+25,cy+40);path.lineTo(cx+11,cy+40);path.close();c.drawPath(path,icon);break;
-            case "arcplus":   // Disney+: the sweeping arc over a plus
-                icon.setStrokeWidth(6);rect.set(cx-50,cy-30,cx+50,cy+62);c.drawArc(rect,192,160,false,icon);
-                paint(icon,245,true);c.drawCircle(cx-48,cy+12,4,icon);   // the arc's bright start
-                paint(icon,240,false);icon.setStrokeWidth(6);c.drawLine(cx+4,cy-6,cx+4,cy+34,icon);c.drawLine(cx-16,cy+14,cx+24,cy+14,icon);break;
+            case "arcplus":   // Disney+: Disney's own 2024 wordmark (owner-supplied SVG, OD-20), filled white, fitted to the tile
+                paint(icon,245,true);c.save();{float w=112f,sc=w/BrandMarks.DISNEY_W;c.translate(cx-w/2,cy-BrandMarks.DISNEY_H*sc/2);c.scale(sc,sc);c.drawPath(BrandMarks.disney(),icon);}c.restore();break;
             case "blocks":   // BBC: three square blocks, each with its letter
                 paint(icon,240,true);text.setTextAlign(Paint.Align.CENTER);text.setTextSize(26);text.setTypeface(BOLD);text.setColor(0xFF172030);
                 for(int k=-1;k<=1;k++){rect.set(cx+k*34-15,cy-15,cx+k*34+15,cy+15);c.drawRect(rect,icon);c.drawText(k==1?"C":"B",cx+k*34,cy+9.5f,text);}break;

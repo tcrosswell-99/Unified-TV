@@ -28,6 +28,8 @@ public final class HouseholdService extends Service {
     private WindowManager windows;private View cameraOverlay,reminderOverlay,alarmOverlay;private ExoPlayer cameraPlayer;private AudioFocusRequest alarmFocus;
     private boolean stopped,authorised,simulationOnly;private long pendingCamera;private int retry=1000,command=10;private int streamId;private TextView cameraState;
     private static final int NOTIFICATION=42,STATES=3,STATES_MAX=8_000_000;
+    /** The alarm screen is up: "Open Unified TV when the TV turns on" (TurnOn) never comes forward over it. */
+    static volatile boolean alarmOnScreen;
     /** Waiting for the one large get_states reply; any other oversized message is still refused. */
     private volatile boolean statesPending;
     private final Runnable timeout=this::dismiss,reconnect=this::connect;
@@ -318,7 +320,7 @@ public final class HouseholdService extends Service {
             alarmList=new LinearLayout(this);alarmList.setOrientation(LinearLayout.VERTICAL);alarmList.setGravity(Gravity.CENTER);alarmList.setPadding(96,48,96,48);
             scroll.addView(alarmList,new ScrollView.LayoutParams(-1,-1));
             WindowManager.LayoutParams p=params(-1,-1,true);p.gravity=Gravity.CENTER;p.x=0;p.y=0;
-            alarmOverlay=scroll;windows.addView(scroll,p);
+            alarmOverlay=scroll;windows.addView(scroll,p);alarmOnScreen=true;
             // Ask other apps to step back so the alarm can be heard. Whether they pause, lower their sound or ignore it is
             // up to each app; nothing here can pause or mute them.
             alarmFocus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(new android.media.AudioAttributes.Builder()
@@ -350,7 +352,7 @@ public final class HouseholdService extends Service {
     /** Back on the alarm screen never acknowledges or closes anything: it is consumed, and focus stays where it is. */
     private final View.OnKeyListener backKeepsFocus=(v,key,e)->key==KeyEvent.KEYCODE_BACK;
     private void removeAlarmScreen(){
-        removeView(alarmOverlay,()->{alarmOverlay=null;alarmList=null;});
+        removeView(alarmOverlay,()->{alarmOverlay=null;alarmList=null;});alarmOnScreen=false;
         if(alarmFocus!=null){try{((AudioManager)getSystemService(AUDIO_SERVICE)).abandonAudioFocusRequest(alarmFocus);}catch(RuntimeException ignored){}alarmFocus=null;}
     }
     /** After acknowledgement: a banner that never takes focus, for as long as any alarm is active. */

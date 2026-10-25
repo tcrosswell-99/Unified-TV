@@ -31,7 +31,7 @@ final class PrivacyPage {
         item("Photo copies for the Wallpaper: "+PrivacyData.size(photos),photos>0&&!kids,()->confirm("Delete photo copies?","Copies of your photos kept for when the NAS is off are deleted. Your photos on the NAS are not touched.",()->PrivacyData.clearPhotos(a),"Photo copies deleted."));
         a.text("Doorbell camera pictures are never saved. The live view is shown and then gone.",15);
         a.section("Connected services");
-        a.text("Home Assistant: "+(SetupPages.haSaved(a)?"connected":"not set up")+" · Film posters: "+(TmdbKey.saved(a)?"key saved":"not set up")+" · Football: "+(FixtureFeed.apiConfigured(a)?"key saved":"not set up")+" · Media server: "+(MediaSources.library(a).ready?"set up":"not set up"),16);
+        a.text("Home Assistant: "+(SetupPages.haSaved(a)?"connected":"not set up")+" · Film posters: "+(TmdbKey.saved(a)?"key saved":"not set up")+" · Football: "+(FixtureFeed.listed(a)?"TheSportsDB, no account":FixtureFeed.team(a)!=null?"your calendar":"no team")+(FixtureFeed.apiConfigured(a)?", API-Football key saved":"")+" · Media server: "+(MediaSources.library(a).ready?"set up":"not set up"),16);
         a.text("Keys and sign-ins are encrypted on this TV and never shown, exported or backed up. Remove each one where it is set up.",15);
         if(!kids)a.chevron(a.button("Manage Home Assistant and football",()->a.show(SettingsActivity.SMART_HOME)));
         a.section("Event log");

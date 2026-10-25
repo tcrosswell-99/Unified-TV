@@ -24,14 +24,28 @@ final class Fixtures {
     /**
      * The household's team. The badge is generated (Unified TV draws the short name on the two colours); no crest is
      * bundled or downloaded. Aliases are other names the household's calendar uses ("Rovers"), shown as the display name.
+     * id is where the team was picked: "sdb:<n>" from TheSportsDB (the default, OD-22), "api:<n>" from API-Football's own
+     * list (earlier installs) or "calendar". alt is the same team's id at the other source when known ("api:47" for a
+     * TheSportsDB team whose record names its API-Football id), else empty.
      */
     static final class Team {
-        final String id,displayName,shortName;final int primary,secondary;final Sport sport;final List<String> aliases;
-        Team(String id,String displayName,String shortName,int primary,int secondary,Sport sport,List<String> aliases){
+        final String id,displayName,shortName,alt;final int primary,secondary;final Sport sport;final List<String> aliases;
+        Team(String id,String displayName,String shortName,int primary,int secondary,Sport sport,List<String> aliases){this(id,displayName,shortName,primary,secondary,sport,aliases,"");}
+        Team(String id,String displayName,String shortName,int primary,int secondary,Sport sport,List<String> aliases,String alt){
             this.id=id==null?"":id;this.displayName=displayName==null?"":displayName.trim();
             this.shortName=badgeText(shortName,this.displayName);this.primary=primary;this.secondary=secondary;
             this.sport=sport==null?Sport.FOOTBALL:sport;this.aliases=aliases==null?Collections.emptyList():Collections.unmodifiableList(new ArrayList<>(aliases));
+            this.alt=alt==null?"":alt.trim();
         }
+        /** The team's number at a source ("sdb" or "api"), from id or alt; null when it has none. Digits only. */
+        String at(String source){
+            for(String v:new String[]{id,alt})if(v.startsWith(source+":")&&v.substring(source.length()+1).matches("[0-9]{1,10}"))return v.substring(source.length()+1);
+            return null;
+        }
+        /** Picked from a list (TheSportsDB or API-Football), not named for a calendar. */
+        boolean listed(){return at("sdb")!=null||at("api")!=null;}
+        /** The same team with other badge colours or calendar names; everything else kept. */
+        Team with(int primary,int secondary,List<String> aliases){return new Team(id,displayName,shortName,primary,secondary,sport,aliases,alt);}
         /** True when the text mentions this team by its name or an alias, as whole words. */
         boolean named(String text){
             if(text==null||displayName.isEmpty())return false;
@@ -41,14 +55,14 @@ final class Fixtures {
         }
         JSONObject json(){
             try{JSONObject o=new JSONObject().put("id",id).put("name",displayName).put("short",shortName).put("c1",primary).put("c2",secondary).put("sport",sport.name());
-                o.put("aliases",new JSONArray(aliases));return o;}catch(Exception e){return new JSONObject();}
+                o.put("aliases",new JSONArray(aliases));if(!alt.isEmpty())o.put("alt",alt);return o;}catch(Exception e){return new JSONObject();}
         }
         /** A saved team, or null for none (the default) or anything unreadable. */
         static Team read(String saved){
             if(saved==null||saved.trim().isEmpty())return null;
             try{JSONObject o=new JSONObject(saved);if(o.optString("name").trim().isEmpty())return null;
                 List<String> aliases=new ArrayList<>();JSONArray a=o.optJSONArray("aliases");if(a!=null)for(int i=0;i<a.length();i++)if(!a.optString(i).trim().isEmpty())aliases.add(a.optString(i).trim());
-                return new Team(o.optString("id"),o.optString("name"),o.optString("short"),o.optInt("c1",COLOURS[0]),o.optInt("c2",COLOURS[1]),Sport.of(o.optString("sport")),aliases);
+                return new Team(o.optString("id"),o.optString("name"),o.optString("short"),o.optInt("c1",COLOURS[0]),o.optInt("c2",COLOURS[1]),Sport.of(o.optString("sport")),aliases,o.optString("alt"));
             }catch(Exception e){return null;}
         }
     }
@@ -100,7 +114,7 @@ final class Fixtures {
         }
     }
 
-    /** Where fixtures come from: the Home Assistant calendar now; an API (ApiFootball) or an ICS feed are further adapters. */
+    /** Where fixtures come from: TheSportsDB (SportsDb, the default), API-Football (ApiFootball, optional key) or the Home Assistant calendar. */
     interface FixtureSource {
         String id();
         /** The source's upcoming and current fixtures for the household's team; empty when there are none. */

@@ -11,9 +11,11 @@ import android.os.*;
  */
 public final class LiveTvGuard extends Service {
     private ConnectivityManager.NetworkCallback callback;private final Handler main=new Handler(Looper.getMainLooper());private boolean fired;
+    /** Live TV is playing behind this guard: "Open Unified TV when the TV turns on" (TurnOn) stays out of the way. */
+    static volatile boolean running;
     static void start(Context c){try{c.startForegroundService(new Intent(c,LiveTvGuard.class));}catch(RuntimeException ignored){}}
     static void stop(Context c){c.stopService(new Intent(c,LiveTvGuard.class));}
-    @Override public void onCreate(){super.onCreate();
+    @Override public void onCreate(){super.onCreate();running=true;
         NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);manager.createNotificationChannel(new NotificationChannel("livetv","Live TV",NotificationManager.IMPORTANCE_LOW));
         startForeground(43,new Notification.Builder(this,"livetv").setContentTitle("Live TV").setContentText("Watching for NordVPN disconnecting").setSmallIcon(android.R.drawable.ic_lock_lock).setOngoing(true).build());
         ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
@@ -30,6 +32,6 @@ public final class LiveTvGuard extends Service {
         ((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(44,new Notification.Builder(this,"livetv").setContentTitle("Live TV paused").setContentText("NordVPN disconnected").setSmallIcon(android.R.drawable.ic_lock_lock).setContentIntent(open).setAutoCancel(true).build());
     }
     @Override public int onStartCommand(Intent i,int flags,int id){return START_NOT_STICKY;}
-    @Override public void onDestroy(){main.removeCallbacksAndMessages(null);if(callback!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(callback);}catch(RuntimeException ignored){}super.onDestroy();}
+    @Override public void onDestroy(){running=false;main.removeCallbacksAndMessages(null);if(callback!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(callback);}catch(RuntimeException ignored){}super.onDestroy();}
     @Override public IBinder onBind(Intent i){return null;}
 }

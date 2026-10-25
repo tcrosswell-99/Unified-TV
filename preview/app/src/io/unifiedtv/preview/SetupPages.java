@@ -12,8 +12,8 @@ import java.util.concurrent.*;
 
 /**
  * Settings pages for setting things up (owner feedback, 25 October 2026): Smart Home with Home Assistant status first in
- * one plain line and one action, "Set up on your phone"; football with the key added on the phone and the team picked
- * from a list; film posters; and phone setup itself (QR code, short address, 6-digit code, live progress). Everything is
+ * one plain line and one action, "Set up on your phone"; football with the team picked from a list (TheSportsDB, no
+ * account) and an optional API-Football key added on the phone; film posters; and phone setup itself (QR code, short address, 6-digit code, live progress). Everything is
  * drawn inside the Settings glass sheet with its own rows; nothing here opens a full-screen page. Technical details
  * (address, connection type, pasting a token on the TV) live only under Advanced.
  */
@@ -50,7 +50,7 @@ final class SetupPages {
     static String title(String task) {
         switch (task) {
             case SettingsActivity.PHONE_HA: return "Home Assistant";
-            case SettingsActivity.PHONE_FOOTBALL: return "Football fixtures";
+            case SettingsActivity.PHONE_FOOTBALL: return "More football detail";
             case SettingsActivity.PHONE_TMDB: return "Film posters";
             case SettingsActivity.HA_ADVANCED: return "Home Assistant: Advanced";
             case SettingsActivity.TEAM: return "Your team";
@@ -290,49 +290,62 @@ final class SetupPages {
     }
 
     // ------------------------------------------------------------------ Football
+    static final String MORE_DETAIL = "More detail (optional)", ADD_KEY = "Add your own API-Football key on your phone",
+        NO_ACCOUNT = "Fixtures come from TheSportsDB, free and with no account, key or phone step.";
+    /**
+     * Owner decision OD-22: choosing a team is all it takes (TheSportsDB). API-Football is an optional extra below, with
+     * the household's own key added on a phone (OD-17); a calendar in Home Assistant stays the other alternative.
+     */
     private void football(boolean kids) {
         a.section("Football");
         boolean api = FixtureFeed.apiConfigured(a); Fixtures.Team team = FixtureFeed.team(a);
-        if (!api) {
-            a.text("Football fixtures: not set up", 19).setFocusable(false);
-            if (!kids) { a.button("Set up on your phone", () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.PHONE_FOOTBALL))); a.text("You'll need a free API-Football key. Your phone shows how to get one.", 15); }
-        } else {
-            ApiFootball.Budget b = FixtureFeed.budget(a);
-            a.text("Football fixtures: ready · " + b.used + " of " + ApiFootball.DAILY_LIMIT + " requests used today", 19).setFocusable(false);
-            String refused = FixtureFeed.problem(a); if (refused != null) a.text(refused, 16);
-        }
+        boolean listed = team != null && team.listed();
         boolean calendar = false; try { calendar = !new Vault(a).read("household").optString("calendar").isEmpty(); } catch (Exception ignored) {}
-        if (api) a.button("Your team: " + (team == null ? "choose from a list" : team.displayName), () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.TEAM)));
-        else if (calendar || team != null) a.button("Your team: " + (team == null ? "none" : team.displayName), () -> EditLock.ask(a, this::calendarTeam));
+        a.text(team == null ? "Football fixtures: choose your team" : listed ? "Football fixtures: " + team.displayName : "Football fixtures: " + team.displayName + ", from your calendar", 19).setFocusable(false);
+        a.chevron(a.button("Your team: " + (listed ? team.displayName : "choose from the UK teams"), () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.TEAM))));
+        if (calendar || (team != null && !listed)) a.button("Use your calendar instead" + (team != null && !listed ? ": " + team.displayName : ""), () -> EditLock.ask(a, this::calendarTeam));
         if (team != null) {
             a.button("Badge: " + team.shortName + " on " + Fixtures.colourName(team.primary) + " and " + Fixtures.colourName(team.secondary), () -> badgeColours(team));
-            if (!team.id.startsWith("api:")) a.button("Other names in the calendar: " + (team.aliases.isEmpty() ? "none" : String.join(", ", team.aliases)), () -> aliases(team));
+            if (!listed) a.button("Other names in the calendar: " + (team.aliases.isEmpty() ? "none" : String.join(", ", team.aliases)), () -> aliases(team));
             a.button("No team", () -> { FixtureFeed.saveTeam(a, null); a.refresh(); });
         }
-        a.text("On matchday, Home shows the match and the kick-off time, or \"Live\". Scores are never shown. The badge is drawn from your team's short name and colours; no club crest is used.", 15);
-        if (api && !kids) a.button("Remove the football key", () -> EditLock.ask(a, () -> new AlertDialog.Builder(a).setTitle("Remove the football key?").setMessage("The key and the fixtures kept on this TV are deleted.")
-            .setPositiveButton("Remove", (d, w) -> { FixtureFeed.forgetKey(a); a.refresh(); }).setNegativeButton("Cancel", null).show()));
+        a.text(NO_ACCOUNT + " On matchday, Home shows the match and the kick-off time, or \"Live\". Scores are never shown. The badge is drawn from your team's short name and colours; no club crest is used.", 15);
+        a.group(MORE_DETAIL);
+        if (!api) {
+            if (kids) a.text("An adult can add an API-Football key in Adults.", 15);
+            else { a.chevron(a.button(ADD_KEY, () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.PHONE_FOOTBALL)))); a.text("Not needed: without a key, fixtures come from TheSportsDB. With your own free key, API-Football is asked first.", 15); }
+        } else {
+            ApiFootball.Budget b = FixtureFeed.budget(a);
+            String via = FixtureFeed.lastSource(a);
+            a.text("API-Football: key saved · " + b.used + " of " + ApiFootball.DAILY_LIMIT + " requests used today", 17).setFocusable(false);
+            if (team != null && listed && team.at("api") == null) a.text("TheSportsDB doesn't give API-Football's number for " + team.displayName + ", so its fixtures come from TheSportsDB.", 15);
+            else if (SportsDb.SOURCE.equals(via) && listed) a.text("API-Football didn't answer last time, so fixtures came from TheSportsDB.", 15);
+            String refused = FixtureFeed.problem(a); if (refused != null) a.text(refused, 16);
+            if (!kids) a.button("Remove the football key", () -> EditLock.ask(a, () -> new AlertDialog.Builder(a).setTitle("Remove the football key?").setMessage("The key and the fixtures kept on this TV are deleted. Fixtures carry on from TheSportsDB.")
+                .setPositiveButton("Remove", (d, w) -> { FixtureFeed.forgetKey(a); a.refresh(); }).setNegativeButton("Cancel", null).show()));
+        }
     }
-    /** Without API-Football: the name of the team as the household's fixtures calendar writes it. */
+    /** The calendar alternative: the name of the team as the household's fixtures calendar writes it. */
     private void calendarTeam() {
-        Fixtures.Team t = FixtureFeed.team(a); EditText f = field("Your team's name, as you'd like it shown", false); if (t != null) f.setText(t.displayName);
-        new AlertDialog.Builder(a).setTitle("Your team").setMessage("Used with the fixtures calendar chosen in Doorbell, alarms & this TV.").setView(f).setPositiveButton("Save", (d, w) -> { String name = f.getText().toString().trim();
-            FixtureFeed.saveTeam(a, name.isEmpty() ? null : new Fixtures.Team("calendar", name, "", t == null ? Fixtures.COLOURS[0] : t.primary, t == null ? Fixtures.COLOURS[1] : t.secondary, Fixtures.Sport.FOOTBALL, t == null ? null : t.aliases)); a.refresh(); })
+        Fixtures.Team t = FixtureFeed.team(a); boolean listed = t != null && t.listed();
+        EditText f = field("Your team's name, as you'd like it shown", false); if (t != null) f.setText(t.displayName);
+        new AlertDialog.Builder(a).setTitle("Your team, from your calendar").setMessage("Used with the fixtures calendar chosen in Doorbell, alarms & this TV, instead of TheSportsDB.").setView(f).setPositiveButton("Save", (d, w) -> { String name = f.getText().toString().trim();
+            FixtureFeed.saveTeam(a, name.isEmpty() ? null : new Fixtures.Team("calendar", name, "", t == null ? Fixtures.COLOURS[0] : t.primary, t == null ? Fixtures.COLOURS[1] : t.secondary, Fixtures.Sport.FOOTBALL, t == null || listed ? null : t.aliases)); a.refresh(); })
             .setNegativeButton("Cancel", null).show();
     }
     private void badgeColours(Fixtures.Team t) {
         new AlertDialog.Builder(a).setTitle("Badge: main colour").setItems(Fixtures.COLOUR_NAMES, (d, x) -> new AlertDialog.Builder(a).setTitle("Badge: second colour").setItems(Fixtures.COLOUR_NAMES, (d2, y) -> {
-            FixtureFeed.saveTeam(a, new Fixtures.Team(t.id, t.displayName, t.shortName, Fixtures.COLOURS[x], Fixtures.COLOURS[y], t.sport, t.aliases)); a.refresh(); }).show()).show();
+            FixtureFeed.saveTeam(a, t.with(Fixtures.COLOURS[x], Fixtures.COLOURS[y], t.aliases)); a.refresh(); }).show()).show();
     }
     private void aliases(Fixtures.Team t) {
         EditText f = field("Other names, separated by commas", false); f.setText(String.join(", ", t.aliases));
         new AlertDialog.Builder(a).setTitle("Other names in the calendar").setView(f).setPositiveButton("Save", (d, w) -> { List<String> names = new ArrayList<>(); for (String x : f.getText().toString().split(",")) if (!x.trim().isEmpty()) names.add(x.trim());
-            FixtureFeed.saveTeam(a, new Fixtures.Team(t.id, t.displayName, t.shortName, t.primary, t.secondary, t.sport, names)); a.refresh(); }).setNegativeButton("Cancel", null).show();
+            FixtureFeed.saveTeam(a, t.with(t.primary, t.secondary, names)); a.refresh(); }).setNegativeButton("Cancel", null).show();
     }
 
     // ------------------------------------------------------------------ Team picker (a task in the sheet)
+    /** By league (country, then league, then team) or by a few letters; no account or key needed (TheSportsDB). */
     private void teams() {
-        if (!FixtureFeed.apiConfigured(a)) { a.text("Set up football fixtures first.", 16); a.button("Set up on your phone", () -> a.expandTask(SettingsActivity.PHONE_FOOTBALL)); return; }
         TeamList.ensure(a);
         JSONObject cat = FixtureFeed.catalogue(a); List<JSONObject> leagues = TeamList.leagues(cat); teamReady = leagues.size();
         Fixtures.Team current = FixtureFeed.team(a);
@@ -341,7 +354,7 @@ final class SetupPages {
         if (teamLeague != 0) {
             JSONObject league = null; for (JSONObject l : leagues) if (l.optInt("id") == teamLeague) league = l;
             if (league == null) { teamLeague = 0; } else {
-                a.group(league.optString("name"));
+                a.group(league.optString("country") + ": " + league.optString("name"));
                 for (TeamList.Entry e : TeamList.teams(league)) a.button(e.name, () -> pick(e));
                 return;
             }
@@ -354,21 +367,22 @@ final class SetupPages {
             a.button("Show all leagues", () -> { teamQuery = null; a.redraw(); });
             return;
         }
-        for (String country : ApiFootball.COUNTRIES) {
+        for (String country : SportsDb.COUNTRIES) {
             boolean header = false;
             for (JSONObject l : leagues) {
-                if (!country.equalsIgnoreCase(l.optString("country").replace(' ', '-'))) continue;
-                if (!header) { a.group(country.replace('-', ' ')); header = true; }
+                if (!country.equalsIgnoreCase(l.optString("country"))) continue;
+                if (!header) { a.group(country); header = true; }
                 int id = l.optInt("id"), n = l.optJSONArray("teams").length();
-                a.button(l.optString("name") + " · " + n + " teams", () -> { teamLeague = id; a.redraw(); });
+                a.button(l.optString("name") + " · " + n + (n == 1 ? " team" : " teams"), () -> { teamLeague = id; a.redraw(); });
             }
         }
+        a.text(SportsDb.ATTRIBUTION, 14).setFocusable(false);
     }
     private String progress(JSONObject cat) {
         if (teamProblem != null) return teamProblem;
         if (cat.optLong("fetchedAt") > 0) return "All UK leagues are ready.";
-        int[] p = ApiFootball.progress(cat);
-        return p[1] == 0 ? "Reading the list of UK teams. This takes a few minutes the first time and is kept for a week." : "Reading the list of UK teams: " + p[0] + " of " + p[1] + " leagues so far.";
+        int[] p = SportsDb.progress(cat);
+        return p[0] == 0 ? "Reading the list of UK teams from TheSportsDB. This takes about a minute the first time and is kept for a week." : "Reading the list of UK teams: " + p[0] + " of " + p[1] + " leagues so far.";
     }
     private void teamsChanged(JSONObject cat, String problem) {
         teamProblem = problem;
@@ -381,11 +395,16 @@ final class SetupPages {
         new AlertDialog.Builder(a).setTitle("Search for your team").setView(f).setNegativeButton("Cancel", null)
             .setPositiveButton("Search", (d, w) -> { String q = f.getText().toString().trim(); teamQuery = q.isEmpty() ? null : q; a.redraw(); }).show();
     }
+    /** The team, with its API-Football number when TheSportsDB knows it, and its own colours unless the household chose some. */
     private void pick(TeamList.Entry e) {
         Fixtures.Team old = FixtureFeed.team(a);
-        FixtureFeed.saveTeam(a, new Fixtures.Team("api:" + e.id, e.name, e.code, old == null ? Fixtures.COLOURS[0] : old.primary, old == null ? Fixtures.COLOURS[1] : old.secondary, Fixtures.Sport.FOOTBALL, null));
+        boolean keep = old != null && old.id.equals("sdb:" + e.id);
+        int c1 = keep ? old.primary : e.c1 != 0 ? e.c1 : old == null ? Fixtures.COLOURS[0] : old.primary;
+        // The second colour: the club's own when it differs from the first, else lettering that reads on the first.
+        int c2 = keep ? old.secondary : e.c1 == 0 ? (old == null ? Fixtures.COLOURS[1] : old.secondary) : e.c2 != 0 && e.c2 != e.c1 ? e.c2 : Fixtures.ink(e.c1);
+        FixtureFeed.saveTeam(a, new Fixtures.Team("sdb:" + e.id, e.name, e.code, c1, c2, Fixtures.Sport.FOOTBALL, null, e.api > 0 ? "api:" + e.api : ""));
         teamLeague = 0; teamQuery = null;
-        a.note("Your team: " + e.name + ". You can change the badge colours in Smart Home.");
+        a.note("Your team: " + e.name + ". Fixtures appear on Home on matchday. You can change the badge colours in Smart Home.");
         a.back();
     }
 }

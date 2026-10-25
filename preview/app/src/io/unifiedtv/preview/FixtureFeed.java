@@ -9,12 +9,16 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * Where Home's matchday card gets its fixtures (spec 7; owner, 25 October 2026). The source is chosen by what the
- * household set up: API-Football when a key is saved and a team was picked from its list; otherwise the Home Assistant
- * calendar chosen in household setup (earlier installs keep working this way). Nothing is fetched without either.
+ * Where Home's matchday card gets its fixtures (spec 7; owner decision OD-22, 25 October 2026). The source follows what the
+ * household set up:
+ *   a team picked from the list: TheSportsDB (SportsDb), no account or key; when the household also added its own
+ *     API-Football key on a phone and the team has an API-Football number, API-Football is asked first and TheSportsDB
+ *     answers whenever API-Football refuses or can't be reached;
+ *   otherwise the Home Assistant calendar chosen in household setup (earlier installs keep working this way).
+ * Nothing is fetched without a team or a calendar.
  *
- * Kept on this TV (no backup): the fixtures last read and when, the team list, and the day's request count; the change
- * record lives in preferences. Every network read runs off the main thread and is bounded by ApiFootball's budget.
+ * Kept on this TV (no backup): the fixtures last read and when, the team list, and API-Football's daily request count; the
+ * change record lives in preferences. Every network read runs off the main thread.
  */
 final class FixtureFeed {
     private FixtureFeed(){}
@@ -30,6 +34,8 @@ final class FixtureFeed {
     static Fixtures.Team team(Context c){return Fixtures.Team.read(prefs(c).getString(TEAM,""));}
     static void saveTeam(Context c,Fixtures.Team t){prefs(c).edit().putString(TEAM,t==null?"":t.json().toString()).remove(TRACK).apply();forget(c,"fixtures.json");}
     static String key(Context c){try{return new Vault(c).read(ApiFootball.VAULT).optString("key");}catch(Exception e){return "";}}
+    /** A team picked from a list (TheSportsDB, or API-Football's on an earlier install), rather than named for a calendar. */
+    static boolean listed(Context c){Fixtures.Team t=team(c);return t!=null&&t.listed();}
     static boolean apiConfigured(Context c){return !key(c).isEmpty();}
     static void saveKey(Context c,String key)throws Exception{new Vault(c).save(ApiFootball.VAULT,new JSONObject().put("key",key.trim()));}
     static void forgetKey(Context c){new Vault(c).forget(ApiFootball.VAULT);forget(c,"fixtures.json");}
@@ -50,9 +56,9 @@ final class FixtureFeed {
 
     // --- budget
     static ApiFootball.Budget budget(Context c){return ApiFootball.Budget.read(prefs(c).getString(BUDGET,""),System.currentTimeMillis());}
-    /** Takes one request from today's budget, or false when the day's share is spent. */
-    static boolean take(Context c,boolean catalogue){
-        synchronized(LOCK){ApiFootball.Budget b=budget(c);if(!b.allows(catalogue))return false;prefs(c).edit().putString(BUDGET,b.spend().write()).commit();return true;}
+    /** Takes one API-Football request from today's budget, or false when the day's requests are spent. */
+    static boolean take(Context c){
+        synchronized(LOCK){ApiFootball.Budget b=budget(c);if(!b.allows())return false;prefs(c).edit().putString(BUDGET,b.spend().write()).commit();return true;}
     }
     /** API-Football's own count for today (from a key check): the local count never goes below it. */
     static void noteUsed(Context c,int used){
@@ -71,19 +77,25 @@ final class FixtureFeed {
         Fixtures.FixtureSource source=source(c,team);
         if(source==null)return new ArrayList<>();
         if(!source.id().equals(cache.optString("source")))cached=new ArrayList<>();
-        boolean due=source.id().equals("api-football")?ApiFootball.fixturesDue(cache.optLong("fetchedAt"),cached,now,HouseholdSettings.zone(c))
-            :now-cache.optLong("fetchedAt")>=ApiFootball.QUARTER_MS||now<cache.optLong("fetchedAt");
-        if(!due)return cached;
+        if(!due(source.id(),cache.optLong("fetchedAt"),cached,now,HouseholdSettings.zone(c)))return cached;
         try{
             List<Fixtures.Fixture> fresh=source.fetch(Instant.ofEpochMilli(now));
             JSONArray all=new JSONArray();for(Fixtures.Fixture f:fresh)all.put(f.json());
             store(c,"fixtures.json",new JSONObject().put("source",source.id()).put("fetchedAt",now).put("fixtures",all));
             JSONObject track;try{track=new JSONObject(prefs(c).getString(TRACK,"{}"));}catch(Exception e){track=new JSONObject();}
             prefs(c).edit().putString(TRACK,Fixtures.track(track,fresh).toString()).apply();
-            vpnRefused(c,false);
             return fresh;
-        }catch(ApiFootball.Refused r){if(r.quota())exhausted(c);vpnRefused(c,r.vpn(VpnGate.routed(c)));return cached;}
-        catch(Exception e){return cached;}
+        }catch(Exception e){return cached;}
+    }
+    /** Whether the source's fixtures are due a read: each source keeps its own pace. */
+    static boolean due(String source,long fetchedAt,List<Fixtures.Fixture> cached,long now,java.time.ZoneId zone){
+        if(ApiFootball.SOURCE.equals(source))return ApiFootball.fixturesDue(fetchedAt,cached,now,zone);
+        if(SportsDb.SOURCE.equals(source))return SportsDb.fixturesDue(fetchedAt,cached,now);
+        return now-fetchedAt>=ApiFootball.QUARTER_MS||now<fetchedAt;
+    }
+    /** Where the fixtures last shown came from ("sportsdb", "api-football", "calendar"), or "" before the first read. */
+    static String lastSource(Context c){
+        JSONObject cache=load(c,"fixtures.json");List<Fixtures.Fixture> f=read(cache);return f.isEmpty()?cache.optString("source"):f.get(0).source;
     }
     static List<Fixtures.Fixture> read(JSONObject cache){
         List<Fixtures.Fixture> out=new ArrayList<>();JSONArray a=cache.optJSONArray("fixtures");
@@ -93,47 +105,72 @@ final class FixtureFeed {
     static JSONObject track(Context c){try{return new JSONObject(prefs(c).getString(TRACK,"{}"));}catch(Exception e){return new JSONObject();}}
     /** The household's source, or null when none is set up. */
     static Fixtures.FixtureSource source(Context c,Fixtures.Team team){
-        if(team!=null&&team.id.startsWith("api:")){String key=key(c);if(!key.isEmpty())return api(c,key,team.id.substring(4));}
+        if(team!=null&&team.listed()){
+            String sdb=team.at("sdb"),api=team.at("api"),key=api==null?"":key(c);
+            Fixtures.FixtureSource free=sdb==null?null:sportsDb(sdb);
+            if(api!=null&&!key.isEmpty())return api(c,key,api,free);
+            if(free!=null)return free;
+            // An API-Football team whose key was removed: the calendar, if any, as before.
+        }
         String calendar;JSONObject ha;
         try{calendar=new Vault(c).read("household").optString("calendar");ha=new Vault(c).read("ha");}catch(Exception e){return null;}
         if(!calendar.matches("calendar\\.[a-z0-9_]+"))return null;
         return new Fixtures.HaCalendar(calendar,HouseholdSettings.zone(c),entity->LocalApi.get(ha,"/api/states/"+LocalApi.segment(entity)).getJSONObject("attributes"));
     }
-    private static Fixtures.FixtureSource api(Context c,String key,String teamId){
+    /** TheSportsDB: no key, nothing about the household sent but the team's number. */
+    static Fixtures.FixtureSource sportsDb(String teamId){
         return new Fixtures.FixtureSource(){
-            @Override public String id(){return "api-football";}
+            @Override public String id(){return SportsDb.SOURCE;}
+            @Override public List<Fixtures.Fixture> fetch(Instant now)throws Exception{return SportsDb.read(teamId,now.toEpochMilli());}
+        };
+    }
+    /**
+     * API-Football with the household's key, then TheSportsDB (fallback, may be null) whenever API-Football refuses, has no
+     * requests left today or can't be reached. A refusal is still recorded (the day's quota, a VPN) for Settings.
+     */
+    static Fixtures.FixtureSource api(Context c,String key,String teamId,Fixtures.FixtureSource fallback){
+        return new Fixtures.FixtureSource(){
+            @Override public String id(){return ApiFootball.SOURCE;}
             @Override public List<Fixtures.Fixture> fetch(Instant now)throws Exception{
-                if(!teamId.matches("[0-9]+"))return new ArrayList<>();
-                if(!take(c,false))throw new IOException("Today's API-Football requests are used up");
-                return ApiFootball.fixtures(ApiFootball.get(key,"/fixtures?team="+teamId+"&next="+ApiFootball.NEXT),now.toEpochMilli());
+                try{
+                    if(!teamId.matches("[0-9]+"))throw new IOException("No API-Football team");
+                    if(!take(c))throw new IOException("Today's API-Football requests are used up");
+                    List<Fixtures.Fixture> got=ApiFootball.fixtures(ApiFootball.http.get(key,"/fixtures?team="+teamId+"&next="+ApiFootball.NEXT),now.toEpochMilli());
+                    vpnRefused(c,false);return got;
+                }catch(Exception e){
+                    if(e instanceof ApiFootball.Refused){ApiFootball.Refused r=(ApiFootball.Refused)e;if(r.quota())exhausted(c);vpnRefused(c,r.vpn(VpnGate.routed(c)));}
+                    if(fallback==null)throw e;
+                    return fallback.fetch(now);
+                }
             }
         };
     }
 
-    // --- the team list
+    // --- the team list (TheSportsDB: no key, so it is read as soon as the picker opens)
     interface Progress{void update(JSONObject catalogue,String problem);}
+    static final String TEAMS="teams-sdb.json",TEAMS_NEXT="teams-sdb-next.json";
+    static final String UNREACHABLE="TheSportsDB couldn't be reached. The list carries on next time you open this page.";
     /** The saved team list (possibly partial). */
-    static JSONObject catalogue(Context c){return load(c,"teams.json");}
+    static JSONObject catalogue(Context c){return load(c,TEAMS);}
     /**
-     * Worker thread only: continues building the team list, a paced request at a time, until it is complete, today's
-     * catalogue share is spent, the API refuses, or the thread is interrupted (the screen closed). A complete list is
-     * kept for a week before it is read again.
+     * Worker thread only: continues building the team list, one paced request at a time, until it is complete, TheSportsDB
+     * can't be reached, or the thread is interrupted (the screen closed). A complete list is kept for a week; the weekly
+     * re-read is built beside it, and the old list stays in use until the new one is complete.
      */
     static void build(Context c,Progress progress){
-        String key=key(c);if(key.isEmpty()){progress.update(catalogue(c),"Add your API-Football key first.");return;}
+        // The API-Football team list of earlier installs is no longer used.
+        forget(c,"teams.json");forget(c,"teams-next.json");
         JSONObject current=catalogue(c);long now=System.currentTimeMillis();boolean refreshing=current.optLong("fetchedAt")>0;
-        if(refreshing&&!ApiFootball.catalogueDue(current.optLong("fetchedAt"),now)){progress.update(current,null);return;}
-        // A week-old list is rebuilt beside the old one, which stays in use until the new one is complete.
-        String name=refreshing?"teams-next.json":"teams.json";JSONObject cat=load(c,name);
+        if(refreshing&&!SportsDb.catalogueDue(current.optLong("fetchedAt"),now)){progress.update(current,null);return;}
+        String name=refreshing?TEAMS_NEXT:TEAMS;JSONObject cat=load(c,name);
         while(!Thread.currentThread().isInterrupted()){
-            String request=ApiFootball.next(cat);
-            if(request==null){if(refreshing){store(c,"teams.json",cat);forget(c,"teams-next.json");}progress.update(cat,null);return;}
+            String request=SportsDb.next(cat);
+            if(request==null){if(refreshing){store(c,TEAMS,cat);forget(c,TEAMS_NEXT);}progress.update(cat,null);return;}
             JSONObject shown=refreshing?current:cat;
-            if(!take(c,true)){progress.update(shown,"Today's share of API-Football requests is used. The list continues tomorrow.");return;}
-            try{ApiFootball.apply(cat,request,ApiFootball.get(key,request),System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
-            catch(ApiFootball.Refused r){if(r.quota())exhausted(c);boolean vpn=r.vpn(VpnGate.routed(c));vpnRefused(c,vpn);progress.update(shown,vpn?ApiFootball.VPN_WORDS:r.key()?"API-Football didn't accept the key. Check it in Settings > Smart Home.":"API-Football has no more requests for today. The list continues tomorrow.");return;}
-            catch(Exception e){progress.update(shown,"API-Football couldn't be reached. Try again later.");return;}
-            try{Thread.sleep(ApiFootball.PACE_MS);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
+            try{SportsDb.apply(cat,request,SportsDb.http.get(request),System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
+            catch(Exception e){progress.update(shown,UNREACHABLE);return;}
+            long pace=SportsDb.paceMs;
+            if(pace>0)try{Thread.sleep(pace);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
         }
     }
 }
