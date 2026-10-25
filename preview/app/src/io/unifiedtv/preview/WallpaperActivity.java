@@ -86,6 +86,9 @@ public final class WallpaperActivity extends Activity {
         if (waiting && scene.empty()) timer.postDelayed(advance, FIRST_WAIT_MS); else timer.post(advance);
     }
     @Override protected void onPause() { active = false; ticket++; timer.removeCallbacksAndMessages(null); if (scene != null) scene.animate().cancel(); super.onPause(); }
+    /** Out of sight (another app, the TV's own screensaver, standby): the Wallpaper ends and gives its memory back. */
+    @Override protected void onStop() { super.onStop(); if (scene != null) scene.clear(); if (!isFinishing()) finish(); }
+    @Override public void onTrimMemory(int level) { super.onTrimMemory(level); if (scene != null && level >= TRIM_MEMORY_RUNNING_LOW) scene.trim(); }
     @Override protected void onDestroy() { timer.removeCallbacksAndMessages(null); loader.shutdownNow(); fetcher.shutdownNow(); finder.shutdownNow(); super.onDestroy(); }
 
     /** Any key closes the Wallpaper and reveals Home; the press is used for that alone (spec 33.5, WP-07). */
@@ -152,7 +155,9 @@ public final class WallpaperActivity extends Activity {
         });
     }
     private void present(int mine, Slide s, String kind) {
-        if (!active || mine != ticket || s == null) return;
+        if (s == null) return;
+        // A late picture (the slideshow moved on, or the Wallpaper is closing) is freed at once, never left for the collector.
+        if (!active || mine != ticket) { s.release(); return; }
         showing = kind; timer.removeCallbacks(rescue); scene.show(s, !prefs.getBoolean("reduceMotion", false), slideMs());
     }
     /** Starts the slideshow again now, for when photos become available while artwork (or nothing) is showing. */
@@ -198,7 +203,7 @@ public final class WallpaperActivity extends Activity {
         if (f == null || !f.isFile()) return null;
         BitmapFactory.Options o = new BitmapFactory.Options(); o.inJustDecodeBounds = true; BitmapFactory.decodeFile(f.getPath(), o);
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
-        o.inJustDecodeBounds = false; o.inSampleSize = PhotoSource.sampleSize(o.outWidth, o.outHeight); o.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        o.inJustDecodeBounds = false; o.inSampleSize = PhotoSource.sampleSize(o.outWidth, o.outHeight); o.inPreferredConfig = Bitmap.Config.RGB_565;
         Bitmap b = BitmapFactory.decodeFile(f.getPath(), o); if (b == null) return null;
         int tag = 1; try { tag = new android.media.ExifInterface(f.getPath()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1); } catch (Exception ignored) { }
         int[] turn = PhotoSource.orientation(tag); if (turn[0] == 0 && turn[1] == 0) return b;
@@ -209,6 +214,8 @@ public final class WallpaperActivity extends Activity {
     /** One decoded picture with everything measured once: where the clock goes, and the cut-out for the depth clock. */
     static final class Slide {
         Bitmap image, foreground, fill; String clock; int[] spot; boolean shade, fit;
+        /** Frees the pixels now rather than whenever the collector runs: the TCL has little memory to spare. */
+        void release() { for (Bitmap b : new Bitmap[]{image, foreground, fill}) if (b != null && !b.isRecycled()) b.recycle(); image = foreground = fill = null; }
         /**
          * One of the owner's photos: no prepared mask, so the simple clock (or none) in the calmest part of what is on screen.
          * A portrait photo is shown whole over a soft, dimmed fill made from itself: a tiny copy stretched by the GPU.
@@ -242,16 +249,17 @@ public final class WallpaperActivity extends Activity {
         static Slide decode(Context c, JSONObject p, int slide, String clockSetting) {
             try {
                 Slide s = new Slide();
-                s.image = read(c, p.getString("file"), Bitmap.Config.ARGB_8888);
+                s.image = read(c, p.getString("file"), Bitmap.Config.RGB_565);
                 if (s.image == null) return null;
                 float[] lum = grid(s.image, false);
                 float[] mask = null; Bitmap maskImage = null;
                 if (!p.optString("mask").isEmpty()) {
-                    maskImage = read(c, p.getString("mask"), Bitmap.Config.ARGB_8888);
-                    if (maskImage != null) { maskImage = Bitmap.createScaledBitmap(maskImage, s.image.getWidth(), s.image.getHeight(), true); mask = grid(maskImage, true); }
+                    maskImage = read(c, p.getString("mask"), Bitmap.Config.RGB_565);
+                    if (maskImage != null) { Bitmap scaled = Bitmap.createScaledBitmap(maskImage, s.image.getWidth(), s.image.getHeight(), true); if (scaled != maskImage) maskImage.recycle(); maskImage = scaled; mask = grid(maskImage, true); }
                 }
                 s.clock = WallpaperPolicy.clockFor(clockSetting, mask);
                 if ("depth".equals(s.clock)) s.foreground = cutOut(s.image, maskImage);
+                if (maskImage != null) maskImage.recycle();
                 s.spot = WallpaperPolicy.spot(lum, slide);
                 s.shade = WallpaperPolicy.needsShade(lum, s.spot);
                 return s;
@@ -268,7 +276,7 @@ public final class WallpaperActivity extends Activity {
         /** GW × GH averages: brightness of the picture, or how much of each cell the mask's subject covers. */
         static float[] grid(Bitmap b, boolean mask) {
             Bitmap small = Bitmap.createScaledBitmap(b, WallpaperPolicy.GW, WallpaperPolicy.GH, true);
-            int[] px = new int[WallpaperPolicy.GW * WallpaperPolicy.GH]; small.getPixels(px, 0, WallpaperPolicy.GW, 0, 0, WallpaperPolicy.GW, WallpaperPolicy.GH);
+            int[] px = new int[WallpaperPolicy.GW * WallpaperPolicy.GH]; small.getPixels(px, 0, WallpaperPolicy.GW, 0, 0, WallpaperPolicy.GW, WallpaperPolicy.GH); if (small != b) small.recycle();
             float[] out = new float[px.length];
             for (int i = 0; i < px.length; i++) {
                 int r = (px[i] >> 16) & 255, g = (px[i] >> 8) & 255, bl = px[i] & 255;
@@ -299,8 +307,14 @@ public final class WallpaperActivity extends Activity {
         private Slide current, previous; private long fadeAt; private final long started = SystemClock.uptimeMillis();
         Scene(Context c) { super(c); setBackgroundColor(Color.BLACK); type.setColor(Color.WHITE); type.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL)); }
         boolean empty() { return current == null; }
+        /** Drops every picture (leaving, or Android asking for memory back). */
+        void clear() { Slide a = previous, b = current; previous = null; current = null; invalidate(); post(() -> { if (a != null) a.release(); if (b != null) b.release(); }); }
+        /** Drops only the picture fading out. */
+        void trim() { Slide a = previous; previous = null; if (a != null) post(a::release); invalidate(); }
         void show(Slide s, boolean motion, long slideMs) {
-            previous = current; current = s; fadeAt = SystemClock.uptimeMillis(); invalidate();
+            // A slide replaced mid-fade is never drawn again; free it once this frame is done with it.
+            Slide dropped = previous; previous = current; current = s; fadeAt = SystemClock.uptimeMillis(); invalidate();
+            if (dropped != null && dropped != previous && dropped != current) post(dropped::release);
             // A slow drift in scale, in and out on alternate slides so it never jumps back; run by the system's animator,
             // not by redrawing the picture. Off with Reduce motion.
             animate().cancel();
@@ -315,7 +329,7 @@ public final class WallpaperActivity extends Activity {
             float t = Math.min(1f, (now - fadeAt) / (float) FADE_MS);
             if (previous != null && t < 1) draw(c, previous, 255);
             draw(c, current, Math.round(255 * t));
-            if (t < 1) postInvalidateDelayed(16); else if (previous != null) previous = null;
+            if (t < 1) postInvalidateDelayed(16); else if (previous != null) { Slide done = previous; previous = null; post(done::release); }
         }
         private void cover(Bitmap b) { Slide.place(dst, b, getWidth(), getHeight(), false); }
         private void draw(Canvas c, Slide s, int alpha) {
