@@ -14,7 +14,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Settings > TV & performance > Owner diagnostics (owner, 25 October 2026): one scrolling page of read-only checks, Adults
+ * Settings > Updates & About > Advanced > Owner diagnostics (owner, 25 October 2026): one scrolling page of read-only checks, Adults
  * only and behind the PIN, never on Home. Nothing is changed, saved or sent. No token or secret is shown; addresses only
  * after "Show advanced details".
  */
@@ -52,7 +52,7 @@ public final class OwnerDiagnosticsActivity extends Screen {
             out.append("Home Assistant: ").append(status).append(". ").append(HaStatus.explain(status));
             JSONObject names=house.optJSONObject("names");
             out.append("\nDoorbell: ").append(name(names,"door",house.optString("door"))).append("\nPerson sensor: ").append(name(names,"person",house.optString("person"))).append("\nCamera: ").append(name(names,"camera",house.optString("camera")));
-            out.append("\nLast doorbell event on this TV: ").append(prefs.getString("householdLastEvent","none")).append(", ").append(OwnerChecks.when(prefs.getLong("householdLastEventAt",0)));
+            out.append("\nLast doorbell event on this TV: ").append(prefs.getString("householdLastEvent","none")).append(", ").append(OwnerChecks.when(this,prefs.getLong("householdLastEventAt",0)));
             out.append("\nPerson alerts in Kids: ").append(prefs.getBoolean(AlertPolicy.KIDS_PERSON_PREF,true)?"shown":"not shown");
             if(!config.optString("base").isEmpty())addresses.add("Home Assistant: "+OwnerChecks.host(config.optString("base")));
             post(ha,out.toString());});
@@ -72,7 +72,7 @@ public final class OwnerDiagnosticsActivity extends Screen {
         kids.append("\nKids app guard: ").append(prefs.getBoolean(KidsGuard.PREF,false)?"switched on in Unified TV":"switched off in Unified TV").append("; TV permission ").append(KidsGuard.enabledIn(setting,getPackageName(),KidsGuardService.class.getName())?"allowed.":"not allowed.");
         try{JSONArray log=new JSONArray(prefs.getString(KidsGuard.LOG,"[]"));
             if(log.length()==0)kids.append("\nGuard decisions: none yet.");
-            for(int i=0;i<log.length();i++){JSONObject e=log.optJSONObject(i);if(e!=null)kids.append("\n").append(OwnerChecks.when(e.optLong("at"))).append("  ").append(e.optString("pkg")).append(": ").append(e.optString("did"));}
+            for(int i=0;i<log.length();i++){JSONObject e=log.optJSONObject(i);if(e!=null)kids.append("\n").append(OwnerChecks.when(this,e.optLong("at"))).append("  ").append(e.optString("pkg")).append(": ").append(e.optString("did"));}
         }catch(Exception ignored){}
         text(kids.toString(),17);
         if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));

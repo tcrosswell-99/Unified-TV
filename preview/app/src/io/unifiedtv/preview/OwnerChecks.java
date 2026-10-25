@@ -1,7 +1,6 @@
 package io.unifiedtv.preview;
 import java.net.URI;
 import java.security.MessageDigest;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
@@ -54,16 +53,17 @@ final class OwnerChecks {
         return who+": description read; the top level couldn't be browsed. Not offered.";
     }
     /** Live TV's fail-closed state in plain words: "can open" only with a recorded passed check that still holds. */
-    static String liveTv(String vpnLabel,boolean routed,LiveTvProtection.Decision decision){
+    static String liveTv(String vpnLabel,boolean routed,LiveTvProtection.State state){
         String vpn=vpnLabel+(routed?"; this app's traffic uses the VPN.":"; this app's traffic does not use a VPN.");
-        if(decision==LiveTvProtection.Decision.ALLOW)return vpn+" Live TV can open: a passed protection check is recorded and nothing it depended on has changed. This is that record, not a new test of the kill switch.";
-        return vpn+" Live TV stays locked: "+LiveTvProtection.message(decision);
+        if(LiveTvProtection.opens(state))return vpn+" Live TV: verified. The automatic check confirmed just now that Live TV can only connect through NordVPN.";
+        return vpn+" Live TV: "+LiveTvProtection.word(state)+". "+LiveTvProtection.message(state);
     }
     /** For "advanced details" only: the host of a saved or found address, nothing else of it. */
     static String host(String url){try{String h=URI.create(url).getHost();return h==null?"":h;}catch(RuntimeException e){return "";}}
-    /** A time on the household's clock (Europe/London), or "none yet". */
-    static String when(long at){
+    /** A time on the household's clock (its zone, the TV's language and 12/24-hour choice), or "none yet". */
+    static String when(long at,java.time.ZoneId zone,Locale locale,boolean twentyFour){
         if(at<=0)return "none yet";
-        SimpleDateFormat f=new SimpleDateFormat("d MMM HH:mm",Locale.UK);f.setTimeZone(TimeZone.getTimeZone("Europe/London"));return f.format(new Date(at));
+        return java.time.Instant.ofEpochMilli(at).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM "+HouseholdSettings.clockPattern(twentyFour),locale));
     }
+    static String when(android.content.Context c,long at){return when(at,HouseholdSettings.zone(c),Locale.getDefault(),HouseholdSettings.twentyFour(c));}
 }

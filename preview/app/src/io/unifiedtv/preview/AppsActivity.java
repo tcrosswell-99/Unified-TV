@@ -14,8 +14,8 @@ import java.util.*;
  */
 public final class AppsActivity extends Screen {
     private SharedPreferences prefs;private String room;
-    @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("unified-tv-preview",0);room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl");show(null);}
-    private List<String> dock(){return DockPolicy.order(room,prefs.contains("dock")?prefs.getString("dock",""):null);}
+    @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("unified-tv-preview",0);room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");show(null);}
+    private List<String> dock(){return HouseholdSettings.dock(this,room);}
     private void show(String focus){
         boolean kids=Profiles.kids(prefs);java.util.Set<String> approved=KidsPolicy.apps(prefs.getString(KidsPolicy.APPS_PREF,""));
         page("Apps");text(kids?"Apps an adult has allowed for Kids. Ask an adult to add more.":"Hold OK on an app to add it to Home or remove it.",17);
@@ -24,8 +24,8 @@ public final class AppsActivity extends Screen {
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=String.valueOf(r.loadLabel(pm));if(!apps.containsKey(label+"\u0000"+r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r);}
         List<String> home=dock();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;Button target=null;
         // Unified TV's own shortcuts (no app of their own) come first, so a removed one can always be put back.
-        List<String> own=new ArrayList<>(DockPolicy.defaults(room));own.add(0,DockPolicy.LIBRARY);
-        for(String id:own){if(DockPolicy.packages(id).length>0||id.equals("music"))continue;String label=SHORTCUTS.getOrDefault(id,id);
+        List<String> own=DockPolicy.shortcuts(room);
+        for(String id:own){String label=SHORTCUTS.getOrDefault(id,id);
             if(kids&&!id.equals(DockPolicy.LIBRARY)&&!(id.equals("live")?approved.contains(LiveTvProtection.livePackage(this)):approved.contains(id)))continue;
             if(n++%5==0){row=new LinearLayout(this);column.addView(row);}
             boolean onHome=home.contains(id);Button open=styled(label+(onHome?"  ·  On Home":""),()->shortcut(id));open.setTextSize(16);open.setOnLongClickListener(v->{menu(id,label);return true;});

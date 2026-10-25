@@ -84,7 +84,7 @@ final class NowPlaying {
     static String clock(long ms) {
         if (ms < 0) return "";
         long s = ms / 1000, h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
-        return h > 0 ? String.format(Locale.UK, "%d:%02d:%02d", h, m, sec) : String.format(Locale.UK, "%d:%02d", m, sec);
+        return h > 0 ? String.format(Locale.ROOT, "%d:%02d:%02d", h, m, sec) : String.format(Locale.ROOT, "%d:%02d", m, sec);
     }
 
     /** True when the app declares the action, or declares none at all (many apps leave the mask empty). */

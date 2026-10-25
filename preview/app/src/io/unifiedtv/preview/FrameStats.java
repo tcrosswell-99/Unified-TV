@@ -68,7 +68,7 @@ final class FrameStats {
         return percentile(d, p);
     }
 
-    private static String ms(double v) { return String.format(Locale.UK, "%.1f ms", v); }
+    private static String ms(double v) { return String.format(Locale.ROOT, "%.1f ms", v); }
 
     /**
      * The report block for the owner. header: app and TV lines (model, Android version, build; no identifiers).
@@ -78,20 +78,20 @@ final class FrameStats {
                          long pssBeforeKb, long pssAfterKb, long heapUsedKb, long heapMaxKb) {
         StringBuilder s = new StringBuilder("Home measurement (AM-07, spec section 14)\n");
         if (header != null && !header.isEmpty()) s.append(header.trim()).append('\n');
-        s.append(String.format(Locale.UK, "Duration: %.1f s\n", seconds));
+        s.append(String.format(Locale.ROOT, "Duration: %.1f s\n", seconds));
         if (f == null || f.frames() == 0) s.append("Frames: none were measured. Open Home and try again.\n");
         else {
-            s.append("Frames: ").append(f.frames()).append(String.format(Locale.UK, " (%.1f per second)\n", seconds > 0 ? f.frames() / seconds : 0));
+            s.append("Frames: ").append(f.frames()).append(String.format(Locale.ROOT, " (%.1f per second)\n", seconds > 0 ? f.frames() / seconds : 0));
             s.append("Frame time: median ").append(ms(f.medianMs())).append(", 95th percentile ").append(ms(f.percentileMs(95)))
                     .append(", worst ").append(ms(f.worstMs())).append('\n');
             int jank = f.janky();
             s.append("Janky frames (over ").append((int) JANK_MS).append(" ms): ").append(jank)
-                    .append(String.format(Locale.UK, " (%.1f%%)\n", 100.0 * jank / f.frames()));
+                    .append(String.format(Locale.ROOT, " (%.1f%%)\n", 100.0 * jank / f.frames()));
         }
         if (inputMs == null || inputMs.length == 0)
             s.append("Focus: no button presses reached Home during the run. Move along the dock while it measures.\n");
         else {
-            s.append(String.format(Locale.UK, "Focus (button press to next Home frame): median %.0f ms, 95th percentile %.0f ms, worst %.0f ms (%d %s)\n",
+            s.append(String.format(Locale.ROOT, "Focus (button press to next Home frame): median %.0f ms, 95th percentile %.0f ms, worst %.0f ms (%d %s)\n",
                     percentile(inputMs, 50), percentile(inputMs, 95), percentile(inputMs, 100), inputMs.length, inputMs.length == 1 ? "press" : "presses"));
             if (inputMs.length < 100) s.append("Spec target: 95th percentile under 100 ms over 100 rapid presses. This run had fewer; repeat it or add runs together.\n");
         }

@@ -42,7 +42,7 @@ public final class LibraryActivity extends Screen {
         content.setBackgroundColor(0xb5101827);scene.addView(content);setContentView(scene);
         text(shelf?"Recently added · choose a title or View All":"Films, series and episodes from your own library",20);
         try {config=new Vault(this).read(Vault.mediaKey(this));}catch(Exception e){unavailable("Unlock your media connection again in Settings.");return;}
-        if(!config.optBoolean("enabled")){unavailable("Connect your library in Settings > Connections.");return;}
+        if(!config.optBoolean("enabled")){unavailable("Connect your library in Settings > Library & Media.");return;}
         if(request.isEmpty()){
             button(shelf?"View All":"Films",()->navigate(rootQuery("Movie","")));
             button("Series",()->navigate(rootQuery("Series","")));

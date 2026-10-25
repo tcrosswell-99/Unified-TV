@@ -39,7 +39,7 @@ public final class DlnaLibraryActivity extends Screen {
         // Kids never reach setup, whatever asked for it: only an adult in Adults chooses folders.
         setup=!kids&&(kidsSetup||getIntent().getBooleanExtra("setup",false));
         try{source=new Vault(this).read(store);}catch(Exception e){source=new JSONObject();}
-        if(kids&&!KidsPolicy.ready(source)){page("Your Films & TV");text(KidsPolicy.ASK_ADULT,24);text("An adult chooses which folders on the media server Kids can watch, in Settings > Profiles > Kids settings.",18);button("Back",this::finish);return;}
+        if(kids&&!KidsPolicy.ready(source)){page("Your Films & TV");text(KidsPolicy.ASK_ADULT,24);text("An adult chooses which folders on the media server Kids can watch, in Settings > Profiles & Family > Kids settings.",18);button("Back",this::finish);return;}
         if(kidsSetup){startKidsSetup();return;}
         if(setup||!source.optBoolean("enabled")||source.optJSONArray("roots")==null){discover();return;}
         JSONArray roots=source.optJSONArray("roots");
@@ -141,7 +141,7 @@ public final class DlnaLibraryActivity extends Screen {
     private void render(int ticket,TextView state,DlnaScope.Frame frame,DlnaClient.Page page){
         List<DlnaClient.Item> entries=page.items;int offset=frame.offset;
         // Kids: the walls are the Kids folders (the trail never climbs above one) and the rating table; refused titles never appear.
-        if(kids)entries=HomeShelf.kidsOnly(entries,source.optString("udn"),trail.rootId(),KidsPolicy.roots(source));
+        if(kids)entries=HomeShelf.kidsOnly(entries,source.optString("udn"),trail.rootId(),KidsPolicy.roots(source),HouseholdSettings.scheme(this));
         state.setText(entries.isEmpty()?(page.more(offset)?"Nothing to show here yet.":"No supported videos or folders found."):setup?(kidsSetup?"Open a folder, then add it. Kids see only the folders you add, and only titles whose rating suits Kids.":"Open a folder, then add it. Only selected folders will appear in your library."):"");
         LinearLayout row=null;Button again=null;String root=trail.rootId();
         for(int i=0;i<entries.size();i++){DlnaClient.Item item=entries.get(i);if(i%4==0){row=new LinearLayout(this);column.addView(row);}

@@ -83,7 +83,7 @@ public final class PlayerActivity extends Screen {
         DlnaClient.Item self=DlnaClient.metadata(kids,item);
         if(self==null||self.folder||!stream.equals(self.url))throw new KidsRefused();
         String udn=kids.optString("udn");
-        if(!KidsPolicy.playable(item,roots,id->{DlnaClient.Item i=id.equals(item)?self:DlnaClient.metadata(kids,id);return i==null?null:CatalogueItem.fromDlna(i,udn,root);}))throw new KidsRefused();
+        if(!KidsPolicy.playable(item,roots,id->{DlnaClient.Item i=id.equals(item)?self:DlnaClient.metadata(kids,id);return i==null?null:CatalogueItem.fromDlna(i,udn,root);},HouseholdSettings.scheme(this)))throw new KidsRefused();
     }
     /** This profile's own places (Adults and Kids are kept apart). */
     private ResumeStore resumeStore(){return ResumeStore.load(this);}

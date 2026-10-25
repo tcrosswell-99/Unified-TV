@@ -14,8 +14,8 @@ final class Launch {
         if(pkg==null||pkg.isEmpty())return label+" is not installed on this TV";
         String kids=kidsRefusal(a,pkg,label);if(kids!=null)return kids;
         if(Endpoint.protectedApp(pkg,label,a.getSharedPreferences("unified-tv-preview",0).getString("livePackage",""))){
-            LiveTvProtection.Decision d=LiveTvProtection.now(a,pkg);
-            if(d!=LiveTvProtection.Decision.ALLOW){VpnGate.show(a,LiveTvProtection.message(d));return "";}
+            LiveTvProtection.State d=LiveTvProtection.now(a,pkg);
+            if(!LiveTvProtection.opens(d)){VpnGate.show(a,LiveTvProtection.message(d));return "";}
         }
         PackageManager pm=a.getPackageManager();Intent intent=pm.getLeanbackLaunchIntentForPackage(pkg);if(intent==null)intent=pm.getLaunchIntentForPackage(pkg);
         if(intent==null)return label+" can't be opened from here";

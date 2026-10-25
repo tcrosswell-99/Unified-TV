@@ -35,17 +35,18 @@ final class HomeShelf {
         started.addAll(rest);return started;
     }
     /** Kids: only what KidsPolicy allows inside the Kids folder it came from. */
-    static List<DlnaClient.Item> kidsOnly(List<DlnaClient.Item> items,String udn,String root,Set<String> kidsRoots){
-        List<DlnaClient.Item> out=new ArrayList<>();for(DlnaClient.Item i:items)if(KidsPolicy.allows(CatalogueItem.fromDlna(i,udn,root),kidsRoots))out.add(i);return out;
+    static List<DlnaClient.Item> kidsOnly(List<DlnaClient.Item> items,String udn,String root,Set<String> kidsRoots){return kidsOnly(items,udn,root,kidsRoots,KidsPolicy.Scheme.UK_AND_US);}
+    static List<DlnaClient.Item> kidsOnly(List<DlnaClient.Item> items,String udn,String root,Set<String> kidsRoots,KidsPolicy.Scheme scheme){
+        List<DlnaClient.Item> out=new ArrayList<>();for(DlnaClient.Item i:items)if(KidsPolicy.allows(CatalogueItem.fromDlna(i,udn,root),kidsRoots,scheme))out.add(i);return out;
     }
     /** The saved collections of this profile only; nothing is shown from folders the household didn't choose. */
     static List<Poster> load(Context c)throws Exception{
         boolean kids=Profiles.kids(c);
         JSONObject source=new Vault(c).read(kids?KidsPolicy.STORE:"dlna");JSONArray roots=source.optJSONArray("roots");if(!source.optBoolean("enabled")||roots==null)return new ArrayList<>();
-        Set<String> kidsRoots=KidsPolicy.roots(source);
+        Set<String> kidsRoots=KidsPolicy.roots(source);KidsPolicy.Scheme scheme=HouseholdSettings.scheme(c);
         DlnaClient.lan=LocalDiscovery.lan(c);List<List<DlnaClient.Item>> pages=new ArrayList<>();List<String> ids=new ArrayList<>();
         for(int i=0;i<Math.min(ROOTS,roots.length());i++){JSONObject root=roots.optJSONObject(i);if(root==null)continue;String id=root.optString("id");
-            try{List<DlnaClient.Item> items=DlnaClient.browse(source,id,0).items;pages.add(kids?kidsOnly(items,source.optString("udn"),id,kidsRoots):items);ids.add(id);}catch(Exception ignored){}}
+            try{List<DlnaClient.Item> items=DlnaClient.browse(source,id,0).items;pages.add(kids?kidsOnly(items,source.optString("udn"),id,kidsRoots,scheme):items);ids.add(id);}catch(Exception ignored){}}
         return resumeFirst(pick(pages,ids,MAX),ResumeStore.load(c),System.currentTimeMillis());
     }
     /** A library is set up for whoever is watching: Kids folders (or a Kids media account) for Kids, the household's for Adults. */

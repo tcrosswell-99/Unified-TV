@@ -26,7 +26,6 @@ import android.view.KeyEvent;
 import android.view.View;
 
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -34,7 +33,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.TimeZone;
 
 /**
  * Unified TV visual preview, deliberately NOT registered as Android's HOME activity.
@@ -78,6 +76,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        HouseholdSettings.ensure(this);   // before Home writes anything: an earlier install keeps exactly what it had
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
@@ -131,11 +130,30 @@ public final class UnifiedPreviewActivity extends Activity {
         private int index = -1, appIndex = 0, menuIndex = 0, lifted = -1;
         private boolean apps = false, menu = false, moving = false;
         /**
-         * The top row (owner, 25 October 2026): Up from the dock moves into it, onto the controls (gear) as before; Left
-         * reaches the profile name ("Adults" or "Kids"), where OK opens Who's watching. Down or Back returns to the same tile.
+         * The utility pill (owner, 25 October 2026; v3.4.4 UX-UTILITY, NAV-02): a single Up from the dock focuses its first
+         * icon; Left/Right move across it; OK opens the focused utility directly (no menu); Down or Back returns to the same
+         * tile. Which icons, in what order: HomeUtilities, from the household's Navigation & Shortcuts setting.
          */
-        private boolean header = false; private int headerIndex = 1;
-        static final int HEADER_PROFILE = 0, HEADER_CONTROLS = 1;
+        private boolean header = false; private int headerIndex = 0;
+        private List<String> pill = HomeUtilities.DEFAULT;
+        /** Read on refresh, not per frame: AirPin LITE's package (null if absent) and whether NordVPN is installed. */
+        private String airPin; private boolean nordVpn;
+        /** The household's clock and the alarm switch, refreshed each minute and on return to Home. */
+        private java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        private java.time.format.DateTimeFormatter clockFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+        private boolean alarmsOff;
+        private void household() {
+            zone = HouseholdSettings.zone(activity); clockFormat = HouseholdSettings.clock(activity);
+            alarmsOff = AlarmWatch.homeNotice(prefs.getBoolean(AlarmWatch.SHOWN, true), prefs.getBoolean(AlarmWatch.STOPPED, false));
+            team = FixtureFeed.team(activity); track = FixtureFeed.track(activity);
+        }
+        private void utilities() {
+            airPin = AirPlayReceiver.installed(activity);
+            nordVpn = false; for (Item x : installed) if (LiveTvProtection.NORDVPN.equals(x.pkg)) nordVpn = true;
+            List<String> next = HomeUtilities.items(HomeUtilities.order(prefs.getString(HomeUtilities.PREF, "")), airPin != null, nordVpn);
+            headerIndex = HomeUtilities.keep(pill, headerIndex, next); pill = next;
+        }
+        private String labels() { return DockLabels.value(prefs.getString(DockLabels.key(Profiles.current(prefs)), DockLabels.FOCUSED_ONLY)); }
         private boolean okDown, held;
         private long focusAt, fadeAt;
         // Spec 32: an app's scene follows focus at once and crossfades in 400 ms; a title's poster scene waits for a short
@@ -163,23 +181,21 @@ public final class UnifiedPreviewActivity extends Activity {
         private String message = "";
         private long messageUntil = 0;
         private long inputEvent;
-        /** Spec 7: the fixture read from the household's calendar; the card itself is worked out each minute. */
-        private FixturePolicy.Fixture fixture;
-        private FixturePolicy.Card matchday() { return FixturePolicy.card(fixture, java.time.Instant.now()); }
+        /**
+         * Spec 7: the household team's fixtures (FixtureFeed: API-Football or the Home Assistant calendar, each with its own
+         * refresh rules); the card itself is worked out each minute from them. No team and no calendar: no card.
+         */
+        private List<Fixtures.Fixture> fixtures = new ArrayList<>();
+        private Fixtures.Team team; private org.json.JSONObject track = new org.json.JSONObject();
+        private FixturePolicy.Card matchday() { return FixturePolicy.first(fixtures, java.time.Instant.now(), zone, clockFormat, team, track); }
         private long fixtureFetched;
         private final java.util.concurrent.ExecutorService fixtureWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
         private void fixture(){
-            long now=System.currentTimeMillis();if(now-fixtureFetched<900000)return;fixtureFetched=now;
-            fixtureWorker.execute(()->{
-                FixturePolicy.Fixture found=null;try{
-                    org.json.JSONObject house=new Vault(activity).read("household"),ha=new Vault(activity).read("ha");String calendar=house.optString("calendar");
-                    if(calendar.matches("calendar\\.[a-z0-9_]+")){
-                        org.json.JSONObject attrs=LocalApi.get(ha,"/api/states/"+LocalApi.segment(calendar)).getJSONObject("attributes");
-                        found=FixturePolicy.fixture(attrs.optString("message"),attrs.optString("start_time"),attrs.optString("end_time"));
-                    }
-                }catch(Exception ignored){}   // unreachable or stale: no card rather than a wrong one (spec 7)
-                final FixturePolicy.Fixture result=found;handler.post(()->{fixture=result;invalidate();});
-            });
+            long now=System.currentTimeMillis();if(now-fixtureFetched<300000)return;fixtureFetched=now;
+            try{fixtureWorker.execute(()->{
+                List<Fixtures.Fixture> found;try{found=FixtureFeed.refresh(activity.getApplicationContext());}catch(Exception e){found=new ArrayList<>();}   // unreachable: the last read, never a guess
+                final List<Fixtures.Fixture> result=found;final org.json.JSONObject moved=FixtureFeed.track(activity);handler.post(()->{fixtures=result;track=moved;invalidate();});
+            });}catch(java.util.concurrent.RejectedExecutionException ignored){}
         }
         private final Runnable hold = () -> {
             if (okDown && !held) {
@@ -189,6 +205,7 @@ public final class UnifiedPreviewActivity extends Activity {
         };
         private final Runnable clockTick = new Runnable() {
             @Override public void run() {
+                household();
                 invalidate();
                 fixture();
                 AirPlayReceiver.refresh(activity, Preview.this::postInvalidate);
@@ -228,7 +245,7 @@ public final class UnifiedPreviewActivity extends Activity {
             android.view.accessibility.AccessibilityManager am = (android.view.accessibility.AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
             String words = title;
-            if (header) words = headerIndex == HEADER_PROFILE ? "Profile: " + Profiles.label(Profiles.current(prefs)) + ". Press OK to switch." : "Controls: apps, settings and more. Press OK.";
+            if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), VpnGate.statusLabel(VpnGate.current()), AirPlayReceiver.ready) + ". Press OK.";
             else if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
             else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
             if (words.equals(spoken)) return;
@@ -237,7 +254,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private boolean calm() { return prefs.getBoolean("reduceMotion", false); }
         private long lastKey = SystemClock.uptimeMillis();
         /** OLED care applies in the Sony room (spec 2, TV-SONY). */
-        private boolean oledRoom() { return "sony".equals(prefs.getString("room", Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony") ? "sony" : "tcl")); }
+        private boolean oledRoom() { return "sony".equals(prefs.getString("room", Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony") ? "sony" : "tcl")); }
         private float oledDim(long now) { return oledRoom() ? DayMood.oledDim(now - lastKey) : 0; }
         private boolean light() { return prefs.getBoolean("lightweight", false); }
         private long fadeMs() { return calm() ? 0 : light() ? 200 : BG_FADE_MS; }
@@ -258,6 +275,7 @@ public final class UnifiedPreviewActivity extends Activity {
             setFocusableInTouchMode(true);
             scanInstalled();
             loadDock();
+            household(); utilities();
             handler.postDelayed(clockTick, 60_000L);
             try (InputStream in = a.getAssets().open("unified-preview-coast.png")) {
                 BitmapFactory.Options opt = new BitmapFactory.Options();
@@ -269,7 +287,7 @@ public final class UnifiedPreviewActivity extends Activity {
             index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
             if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
             prefs.edit().putString("scene",scene).apply();
-            setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the profile and controls. Down reveals your films and TV. Hold OK to edit.");
+            setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the utilities and Settings. Down reveals your films and TV. Hold OK to edit.");
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(2);
         }
@@ -278,7 +296,7 @@ public final class UnifiedPreviewActivity extends Activity {
             handler.removeCallbacks(clockTick);handler.postDelayed(clockTick,60000);
             fixtureFetched=0;fixture();
             if(moving)goBack();
-            installed.clear();dock.clear();scanInstalled();loadDock();
+            installed.clear();dock.clear();scanInstalled();loadDock();household();utilities();
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
@@ -327,10 +345,11 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (label.trim().isEmpty()) label = pkg;
                 installed.add(new Item(pkg, label, pkg, 0xFF323E53, 0xFF161D2D, icon));
             }
-            Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.UK)));
+            Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.ROOT)));
             List<Item> defaults=new ArrayList<>();
-            for(String id:new String[]{"smartutube","netflix","disney","bbc","live","music",DockPolicy.LIBRARY}) defaults.add(defaultItem(id));
-            if(Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")) defaults.add(defaultItem("xbox"));
+            for(String id:DockPolicy.KNOWN) defaults.add(defaultItem(id));
+            defaults.add(defaultItem(DockPolicy.LIBRARY));
+            if(Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")) defaults.add(defaultItem("xbox"));
             if(prefs.getString("room","").equals("frame")) defaults.add(defaultItem("tvplus"));
             Set<String> canonical=new HashSet<>();for(Item item:defaults)if(item.pkg!=null)canonical.add(item.pkg);
             installed.removeIf(item->canonical.contains(item.pkg));installed.addAll(0,defaults);
@@ -338,7 +357,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private Item installedMatch(String[] exact, String query) {
             for (String pkg : exact) for (Item x : installed) if (pkg.equals(x.pkg)) return x;
-            for (Item x : installed) if (x.name.toLowerCase(Locale.UK).contains(query)) return x;
+            for (Item x : installed) if (x.name.toLowerCase(Locale.ROOT).contains(query)) return x;
             return null;
         }
 
@@ -374,9 +393,11 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void loadDock() {
-            String room = prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl");
-            // Never edited: the curated defaults. Edited: exactly the owner's list (an app no longer installed is skipped).
-            for(String id:DockPolicy.order(room,prefs.contains("dock")?prefs.getString("dock",""):null)) {
+            String room = prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");
+            // Never edited: suggestions from the apps on this TV (SET-011). Edited: exactly the household's list.
+            String saved=prefs.contains("dock")?prefs.getString("dock",""):null;List<String> suggested=new ArrayList<>();
+            if(saved==null){Set<String> pkgs=new HashSet<>();for(Item x:installed)if(x.pkg!=null)pkgs.add(x.pkg);suggested=DockPolicy.suggest(room,pkgs,!LiveTvProtection.livePackage(activity).isEmpty());}
+            for(String id:DockPolicy.order(room,saved,suggested)) {
                 Item item=defaultItem(id);if(item!=null)dock.add(item);
             }
         }
@@ -418,19 +439,21 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) closeShelf();
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     int next = Math.max(0, Math.min(posters.size(), posterIndex + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));
-                    if (next != posterIndex) { posterIndex = next; moved(); announceForAccessibility(posterIndex < posters.size() ? posters.get(posterIndex).title : "View all"); }
+                    if (next != posterIndex) { posterIndex = next; shelfMoved = true; moved(); announceForAccessibility(posterIndex < posters.size() ? posters.get(posterIndex).title : "View all"); }
                 }
                 invalidate(); return true;
             }
             if (header) {
                 if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_DOWN) { header = false; moved(); }
-                else if (code == KeyEvent.KEYCODE_DPAD_LEFT && headerIndex != HEADER_PROFILE) { headerIndex = HEADER_PROFILE; speak(sceneTitle); }
-                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && headerIndex != HEADER_CONTROLS) { headerIndex = HEADER_CONTROLS; speak(sceneTitle); }
-                else if (code == KeyEvent.KEYCODE_MENU) controls();
+                else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    int next = HomeUtilities.step(headerIndex, code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1, pill.size());
+                    if (next != headerIndex) { headerIndex = next; speak(sceneTitle); }
+                }
                 invalidate(); return true;
             }
             if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
-            if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) controls(); return true; }
+            // Menu opens every app directly (there is no Home menu any more: NAV-02).
+            if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) activity.startActivity(new Intent(activity, AppsActivity.class)); return true; }
             if (menu) { int n = MENU.length;
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + n - 1) % n;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % n;
@@ -440,7 +463,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) shift(1);
                 return true;
             }
-            if (code == KeyEvent.KEYCODE_DPAD_UP) { header = true; headerIndex = HEADER_CONTROLS; speak(sceneTitle); }
+            if (code == KeyEvent.KEYCODE_DPAD_UP) { if (!pill.isEmpty()) { header = true; headerIndex = HomeUtilities.landing(pill); speak(sceneTitle); } }
             else if (code == KeyEvent.KEYCODE_DPAD_DOWN) openShelf();
             else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (!dock.isEmpty()) {
@@ -456,7 +479,7 @@ public final class UnifiedPreviewActivity extends Activity {
 
         private void confirm() {
             if (shelf) { openEntry(); return; }
-            if (header) { if (headerIndex == HEADER_PROFILE) Profiles.choose(activity); else controls(); invalidate(); return; }
+            if (header) { if (headerIndex >= 0 && headerIndex < pill.size()) utility(pill.get(headerIndex)); invalidate(); return; }
             if (menu) {
                 menu = false;
                 if (menuIndex == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
@@ -472,7 +495,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
 
             } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
-            else info("Use Left or Right to choose an app, or Up then OK to find apps");
+            else info("Add apps to Home from Settings > Apps & Shortcuts");
             invalidate();
         }
 
@@ -503,23 +526,14 @@ public final class UnifiedPreviewActivity extends Activity {
             invalidate();
         }
 
-        private void controls() {
-            java.util.List<String> actions=new ArrayList<>(java.util.Arrays.asList("Apps", "Settings", "Who's watching?", "Gallery", "Ask your TV"));
-            if(matchday()!=null)actions.add("Matchday: Live TV");
-            final String airPin=AirPlayReceiver.installed(activity);
-            if(airPin!=null)actions.add("AirPlay from iPhone");
-            new android.app.AlertDialog.Builder(activity).setTitle("Home").setItems(
-                actions.toArray(new String[0]), (dialog,which) -> {
-                if(which==0) activity.startActivity(new Intent(activity,AppsActivity.class));
-                if(which==1) EditLock.ask(activity,()->activity.startActivity(new Intent(activity,SettingsActivity.class)));
-                if(which==2) Profiles.choose(activity);
-                if(which==3) activity.startActivity(new Intent(activity,GalleryActivity.class));
-                if(which==4) activity.startActivity(new Intent(activity,VoiceActivity.class));
-                String picked=actions.get(which);
-                // The same Live TV route and protection check as the dock (spec 7, 11).
-                if(picked.startsWith("Matchday")){String live=LiveTvProtection.livePackage(activity);String why=live==null?null:Launch.open(activity,live,"Live TV");if(live==null)VpnGate.show(activity);else if(why!=null&&!why.isEmpty())info(why);}
-                if(picked.equals("AirPlay from iPhone")){String error=Launch.open(activity,airPin,"AirPin LITE");if(error!=null&&!error.isEmpty())info(error);}
-            }).show();
+        /** OK on a pill icon opens it directly (UX-UTILITY-03): AirPin LITE, NordVPN, voice, or Settings. */
+        private void utility(String id) {
+            switch (id) {
+                case HomeUtilities.AIRPLAY: { String error = Launch.open(activity, airPin, "AirPin LITE"); if (error != null && !error.isEmpty()) info(error); break; }
+                case HomeUtilities.VPN: VpnGate.connect(activity); break;
+                case HomeUtilities.VOICE: activity.startActivity(new Intent(activity, VoiceActivity.class)); break;
+                default: EditLock.ask(activity, () -> activity.startActivity(new Intent(activity, SettingsActivity.class))); break;
+            }
         }
         private void launch(Item item) {
             if(DockPolicy.LIBRARY.equals(item.id)){Launch.library(activity);return;}
@@ -548,8 +562,8 @@ public final class UnifiedPreviewActivity extends Activity {
             drawBackground(c, now);
             // Spec 4.8: a faint time-of-day wash over the light; the app's own colours stay the source.
             if (!prefs.getBoolean("highContrast", false)) {
-                java.util.Calendar clock = java.util.Calendar.getInstance(TimeZone.getTimeZone("Europe/London"));
-                int wash = DayMood.wash(clock.get(java.util.Calendar.HOUR_OF_DAY) * 60 + clock.get(java.util.Calendar.MINUTE));
+                java.time.ZonedDateTime clock = java.time.ZonedDateTime.now(zone);   // the household's clock (HouseholdSettings)
+                int wash = DayMood.wash(clock.getHour() * 60 + clock.getMinute());
                 if ((wash >>> 24) > 0) { paint.setShader(null); paint.setColor(wash); c.drawRect(0, 0, W, H, paint); }
             }
             // OLED care on the Sony: everything in front of the background orbits by two pixels every three minutes.
@@ -573,6 +587,9 @@ public final class UnifiedPreviewActivity extends Activity {
             if (messageUntil > now && !message.isEmpty()) drawNotice(c, message);
             float dim = oledDim(now);
             if (dim > 0) { paint.setShader(null); paint.setColor(Color.argb(Math.round(255 * dim), 0, 0, 0)); c.drawRect(-4, -4, W + 4, H + 4, paint); }
+            // Owner exception to SET-053: while an adult has alarms off on this TV, a small notice stays, drawn last so
+            // nothing on Home covers it, and never focusable.
+            if (alarmsOff) alarmsOffNotice(c);
             c.restore();
             if (dim > 0 && dim < .45f) postInvalidateDelayed(33);   // the 10-second fade
             boolean animating = (fadeAt != 0 && now - fadeAt < fadeMs()) || (titleAt > now - TITLE_MS) || (shelfAt != 0 && now - shelfAt < SHELF_MS);
@@ -624,7 +641,9 @@ public final class UnifiedPreviewActivity extends Activity {
 
         /** The focused item's name, faded in once its scene has settled; hidden while focus is still moving. */
         private void drawTitle(Canvas c, long now, float reveal) {
-            if (titleHidden || sceneTitle.isEmpty() || menu || moving) return;
+            if (titleHidden || sceneTitle.isEmpty() || menu || moving || header) return;
+            // No label twice (DockLabels): on the dock, the name sits above it only when tiles show no label of their own.
+            if (!shelf && app(scene) && !DockLabels.titleAbove(labels())) return;
             int alpha = titleAt <= now - TITLE_MS ? 255 : titleAt > now ? 0 : Math.round(255 * (now - titleAt) / (float) TITLE_MS);
             if (alpha <= 0) { postInvalidateDelayed(16); return; }
             float y = 714 - 60 * reveal;
@@ -665,48 +684,81 @@ public final class UnifiedPreviewActivity extends Activity {
             paint.setAlpha(255); paint.setShader(null);
         }
 
+        /** The clock (household zone, the TV's 12/24-hour choice) and the utility pill (UX-UTILITY-01): text-free glyphs. */
         private void drawHeader(Canvas c) {
-            SimpleDateFormat df = new SimpleDateFormat("HH:mm", Locale.UK);
-            df.setTimeZone(TimeZone.getTimeZone("Europe/London"));
-            text(c, df.format(System.currentTimeMillis()), 96, 142, 66, WHITE, false, Paint.Align.LEFT);
-            // One glass group, laid out from the right: Settings, voice, VPN, and AirPlay only while it is really ready.
-            String vpn = VpnGate.label(activity);
-            type.setTextSize(22); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-            float vpnRight = 1650, vpnLeft = vpnRight - type.measureText(vpn);
-            boolean airplay = AirPlayReceiver.ready;
-            // The profile name sits first in the group: always visible, and focusable from the top row.
-            String who = Profiles.label(Profiles.current(prefs));
-            type.setTextSize(24); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            float whoRight = (airplay ? vpnLeft - 64 : vpnLeft) - 34, whoLeft = whoRight - type.measureText(who) - 30;
-            float left = whoLeft - 26;
-            glass(c, left, 62, 1817, 145, 30, 0x6A2B303B, 0x44FFFFFF);
-            person(c, whoLeft + 10, 104);
-            text(c, who, whoLeft + 30, 114, 24, WHITE, true, Paint.Align.LEFT);
-            if (airplay) airPlay(c, vpnLeft - 38, 104);
-            text(c, vpn, vpnLeft, 114, 22, WHITE, false, Paint.Align.LEFT);
-            microphone(c, 1696, 104);
-            gear(c, 1773, 104);
-            if (header) {
-                // One lifted lens on the focused item of the top row, with a crisp outline (stronger with high contrast).
-                if (headerIndex == HEADER_PROFILE) rect.set(whoLeft - 12, 74, whoRight + 12, 134); else rect.set(1743, 74, 1803, 134);
-                paint.setShader(null); paint.setColor(0x3DFFFFFF); c.drawRoundRect(rect, 24, 24, paint);
-                boolean strong = prefs.getBoolean("highContrast", false);
-                outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3); c.drawRoundRect(rect, 24, 24, outline); outline.setStrokeWidth(2);
+            text(c, java.time.ZonedDateTime.now(zone).format(clockFormat), 96, 142, 66, WHITE, false, Paint.Align.LEFT);
+            String vpnLabel = nordVpn ? VpnGate.label(activity) : "";   // keeps the VPN state fresh (sampled off the main thread)
+            int n = pill.size(); if (n == 0) return;
+            float right = 1817, left = right - (n * 96 + 32);
+            glass(c, left, 62, right, 145, 30, 0x6A2B303B, 0x44FFFFFF);
+            for (int i = 0; i < n; i++) {
+                float cx = left + 64 + i * 96, cy = 104; String id = pill.get(i);
+                if (header && i == headerIndex) {
+                    // One restrained lens on the focused icon, with a crisp outline (stronger with high contrast); never a pulse.
+                    rect.set(cx - 38, 70, cx + 38, 138);
+                    paint.setShader(null); paint.setColor(0x3DFFFFFF); c.drawRoundRect(rect, 24, 24, paint);
+                    boolean strong = prefs.getBoolean("highContrast", false);
+                    outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3); c.drawRoundRect(rect, 24, 24, outline); outline.setStrokeWidth(2);
+                }
+                switch (id) {
+                    case HomeUtilities.AIRPLAY: airPlay(c, cx, cy); break;
+                    case HomeUtilities.VPN: shield(c, cx, cy, VpnGate.current()); break;
+                    case HomeUtilities.VOICE: microphone(c, cx, cy); break;
+                    default: gear(c, cx, cy); break;
+                }
+            }
+            if (header && headerIndex >= 0 && headerIndex < n) {
+                // The short label sits outside the icon, under the pill, only while it has focus.
+                String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel, AirPlayReceiver.ready);
+                float cx = Math.min(left + 64 + headerIndex * 96, W - 80 - 6.5f * words.length());
+                text(c, words, cx, 186, 23, WHITE, false, Paint.Align.CENTER);
             }
         }
-        private void person(Canvas c, float cx, float cy) {
-            iconPaint(235, false);
-            c.drawCircle(cx, cy - 7, 6, icon);
-            rect.set(cx - 11, cy + 3, cx + 11, cy + 25); c.drawArc(rect, 180, 180, false, icon);
+        /**
+         * The VPN shield (UX-UTILITY-02): monochrome, with a subtle mark for each state. A check only while Android reports
+         * a connected VPN; a slash when disconnected; a dot while checking; nothing inside when unknown. It never says
+         * Live TV is protected: that takes the automatic check (LiveTvProtection), which this TV cannot make.
+         */
+        private void shield(Canvas c, float cx, float cy, VpnGate.State state) {
+            iconPaint(state == VpnGate.State.CONNECTED ? 245 : 200, false);
+            glyph.reset(); glyph.moveTo(cx, cy - 20); glyph.lineTo(cx + 16, cy - 14); glyph.lineTo(cx + 16, cy - 1);
+            glyph.quadTo(cx + 15, cy + 14, cx, cy + 21); glyph.quadTo(cx - 15, cy + 14, cx - 16, cy - 1); glyph.lineTo(cx - 16, cy - 14); glyph.close();
+            c.drawPath(glyph, icon);
+            if (state == VpnGate.State.CONNECTED) { glyph.reset(); glyph.moveTo(cx - 7, cy); glyph.lineTo(cx - 2, cy + 6); glyph.lineTo(cx + 8, cy - 6); c.drawPath(glyph, icon); }
+            else if (state == VpnGate.State.DISCONNECTED) c.drawLine(cx - 9, cy + 9, cx + 9, cy - 9, icon);
+            else if (state == VpnGate.State.CHECKING) { iconPaint(200, true); c.drawCircle(cx, cy, 3, icon); }
         }
-        /** Spec 7: a small glass card under the clock: the match, then "Kick-off 19:45" or a red-dot "Live". Never a score. */
+        /** Owner exception to SET-053: the permanent "Alarms off on this TV" notice, top centre. */
+        private void alarmsOffNotice(Canvas c) {
+            type.setTextSize(24); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            float w = type.measureText(AlarmWatch.OFF_NOTICE) + 70;
+            rect.set(960 - w / 2, 70, 960 + w / 2, 132); paint.setShader(null); paint.setColor(0xE0402018); c.drawRoundRect(rect, 31, 31, paint);
+            outline.setColor(0xCCFFC9A8); outline.setStrokeWidth(2); c.drawRoundRect(rect, 31, 31, outline);
+            paint.setColor(0xFFFFB37A); c.drawCircle(960 - w / 2 + 28, 101, 7, paint);
+            text(c, AlarmWatch.OFF_NOTICE, 960 + 12, 110, 24, WHITE, true, Paint.Align.CENTER);
+        }
+        /**
+         * Spec 7: a small glass card under the clock: the team's generated badge (its short name on its two colours; never a
+         * crest), the match, then "Kick-off 19:45", "Kick-off moved to 19:45", "Moved to Sunday 3 November" or a red-dot
+         * "Live". Never a score.
+         */
         private void drawMatchday(Canvas c, FixturePolicy.Card m) {
             type.setTextSize(28); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            float w = Math.max(300, Math.min(720, type.measureText(m.match) + 64));
+            boolean badge = m.team != null && !m.team.shortName.isEmpty();
+            float x = badge ? 186 : 116, w = Math.max(300, Math.min(780, type.measureText(m.match) + (x - 84) + 32));
             glass(c, 84, 178, 84 + w, 288, 24, 0x6A2B303B, 0x44FFFFFF);
-            text(c, m.match, 116, 224, 28, WHITE, true, Paint.Align.LEFT);
-            if (m.live) { paint.setShader(null); paint.setColor(0xFFE5484D); c.drawCircle(124, 257, 7, paint); text(c, "Live", 140, 266, 24, WHITE, false, Paint.Align.LEFT); }
-            else text(c, m.when, 116, 266, 24, MUTED, false, Paint.Align.LEFT);
+            if (badge) badge(c, m.team, 140, 233);
+            text(c, m.match, x, 224, 28, WHITE, true, Paint.Align.LEFT);
+            if (m.live) { paint.setShader(null); paint.setColor(0xFFE5484D); c.drawCircle(x + 8, 257, 7, paint); text(c, "Live", x + 24, 266, 24, WHITE, false, Paint.Align.LEFT); }
+            else text(c, m.when, x, 266, 24, MUTED, false, Paint.Align.LEFT);
+        }
+        /** The generated badge: a disc split into the team's two colours, its short name on top. Drawn here; nothing downloaded. */
+        private void badge(Canvas c, Fixtures.Team t, float cx, float cy) {
+            paint.setShader(null); paint.setColor(t.primary); c.drawCircle(cx, cy, 34, paint);
+            rect.set(cx - 34, cy - 34, cx + 34, cy + 34); paint.setColor(t.secondary); c.drawArc(rect, 0, 180, true, paint);
+            outline.setColor(0x80FFFFFF); outline.setStrokeWidth(2); c.drawCircle(cx, cy, 34, outline);
+            rect.set(cx - 30, cy - 15, cx + 30, cy + 15); paint.setColor(t.primary); c.drawRoundRect(rect, 10, 10, paint);
+            text(c, t.shortName, cx, cy + 8, t.shortName.length() > 3 ? 18 : 22, Fixtures.ink(t.primary), true, Paint.Align.CENTER);
         }
         private final Paint icon = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path glyph = new Path();
@@ -734,8 +786,9 @@ public final class UnifiedPreviewActivity extends Activity {
             t.setDaemon(true); t.start();
         }
         private void airPlay(Canvas c, float cx, float cy) {
-            if (casting) { iconPaint(90, false); icon.setShadowLayer(14, 0, 0, 0x8CFFFFFF); airPlayShape(c, cx, cy); }
-            int alpha = casting ? 255 : 179;
+            // Installed but not offering AirPlay: dimmed, and its focus label says why (UX-UTILITY-02).
+            if (casting && AirPlayReceiver.ready) { iconPaint(90, false); icon.setShadowLayer(14, 0, 0, 0x8CFFFFFF); airPlayShape(c, cx, cy); }
+            int alpha = !AirPlayReceiver.ready ? 90 : casting ? 255 : 179;
             iconPaint(alpha, false);
             airPlayShape(c, cx, cy, alpha);
         }
@@ -769,7 +822,7 @@ public final class UnifiedPreviewActivity extends Activity {
             final int count = dock.size();
             if (count == 0) {
                 glass(c, 230, 795, 1690, 1000, 36, 0x92434B57, 0x70FFFFFF);
-                text(c, "No Home apps. Press Up, then OK, to choose some.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
+                text(c, "No apps on Home yet. Add them in Settings > Apps & Shortcuts.", 960, 900, 38, WHITE, false, Paint.Align.CENTER);
                 return;
             }
             int visible = Math.min(6,count);
@@ -804,23 +857,10 @@ public final class UnifiedPreviewActivity extends Activity {
                     paint.setShader(new android.graphics.RadialGradient(0,0,155,new int[]{0x68000000,0x00000000},null,Shader.TileMode.CLAMP));
                     c.drawCircle(0,0,155,paint);c.restore();paint.setShader(null);c.translate(0,-12);
                 }
-                card(c, x, y, x + cellWidth, y + 161, 27, item.top, item.bottom);
+                // UX-ICON-01..03: one neutral glass tile for every app, a simple white glyph on it; never text or a full-colour icon.
+                card(c, x, y, x + cellWidth, y + 161, 27, 0x40FFFFFF, 0x1FFFFFFF);
                 if(selected)glass(c,x,y,x+cellWidth,y+161,27,0,0);
-
-                if (DockPolicy.LIBRARY.equals(item.id)) libraryGlyph(c, x + cellWidth / 2, y + 80);
-                else if (item.icon != null && item.pkg != null) {
-                    int size = Math.round(Math.min(98, cellWidth - 60));
-                    int cx = Math.round(x + cellWidth / 2), cy = Math.round(y + 82);
-                    item.icon.setBounds(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
-                    item.icon.draw(c);
-                } else {
-                    String symbol = item.id.equals("smartutube") ? "▶" : item.id.equals("netflix") ? "N" :
-                            item.id.equals("disney") ? "D+" : item.id.equals("bbc") ? "BBC" :
-                            item.id.equals("live") ? "TV" : item.id.equals("music") ? "♫" :
-                            item.id.equals("xbox") ? "X" : item.name.substring(0, Math.min(2, item.name.length()));
-                    text(c, symbol, x + cellWidth / 2, y + 105, symbol.length() > 2 ? 53 : 80,
-                            WHITE, true, Paint.Align.CENTER);
-                }
+                tileGlyph(c, item, x + cellWidth / 2, y + 80);
                 if (selected) {
                     // A crisp, luminous outline on the focused tile, brighter still with high contrast.
                     boolean strong = prefs.getBoolean("highContrast",false);
@@ -829,13 +869,61 @@ public final class UnifiedPreviewActivity extends Activity {
                     outline.setStrokeWidth(2);
                 }
                 c.restore();
-                text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
+                // UX-ICON-05: labels outside the tiles, as the profile chose (Focused only by default); the tiles never move.
+                if (DockLabels.shows(labels(), i, header || shelf ? -1 : index)) text(c, item.name, x + cellWidth / 2, 982, 27, WHITE, false, Paint.Align.CENTER);
             }
             if (!resting) return;
             Path down=new Path();down.moveTo(947,1035);down.lineTo(960,1046);down.lineTo(973,1035);
             outline.setColor(0x9acbd8e7);outline.setStrokeWidth(2);c.drawPath(down,outline);
         }
 
+        /**
+         * The tile's glyph (DockLabels.glyph): original, simple vector symbols drawn here in white; no brand artwork is copied.
+         * An app without one of its own shows its installed icon small and in greyscale, so it never reads as a full-colour square.
+         */
+        private final android.graphics.ColorMatrixColorFilter grey = new android.graphics.ColorMatrixColorFilter(new android.graphics.ColorMatrix(new float[]{
+                .30f,.59f,.11f,0,20, .30f,.59f,.11f,0,20, .30f,.59f,.11f,0,20, 0,0,0,.9f,0}));
+        private void tileGlyph(Canvas c, Item item, float cx, float cy) {
+            String g = DockLabels.glyph(item.pkg != null && !DockPolicy.canonical(item.pkg).equals(item.id) ? item.pkg : item.id);
+            if ("mono".equals(g) && item.pkg != null) g = DockLabels.glyph(item.pkg);
+            iconPaint(240, false); icon.setStrokeWidth(5);
+            switch (g) {
+                case "shelf": libraryGlyph(c, cx, cy); break;
+                case "play":   // a screen with a play triangle
+                    rect.set(cx - 44, cy - 32, cx + 44, cy + 28); c.drawRoundRect(rect, 12, 12, icon); c.drawLine(cx - 18, cy + 40, cx + 18, cy + 40, icon);
+                    iconPaint(240, true); glyph.reset(); glyph.moveTo(cx - 10, cy - 16); glyph.lineTo(cx + 16, cy - 2); glyph.lineTo(cx - 10, cy + 12); glyph.close(); c.drawPath(glyph, icon); break;
+                case "n":   // a plain geometric N
+                    icon.setStrokeWidth(13); icon.setStrokeCap(Paint.Cap.SQUARE); glyph.reset(); glyph.moveTo(cx - 20, cy + 38); glyph.lineTo(cx - 20, cy - 38); glyph.lineTo(cx + 20, cy + 38); glyph.lineTo(cx + 20, cy - 38); c.drawPath(glyph, icon); break;
+                case "arcplus":   // an arc over a plus
+                    rect.set(cx - 46, cy - 30, cx + 46, cy + 50); c.drawArc(rect, 200, 140, false, icon);
+                    c.drawLine(cx, cy - 4, cx, cy + 32, icon); c.drawLine(cx - 18, cy + 14, cx + 18, cy + 14, icon); break;
+                case "blocks":   // three square blocks
+                    iconPaint(240, true); for (int k = -1; k <= 1; k++) { rect.set(cx + k * 32 - 13, cy - 13, cx + k * 32 + 13, cy + 13); c.drawRoundRect(rect, 3, 3, icon); } break;
+                case "broadcast":   // a mast with waves
+                    iconPaint(240, true); c.drawCircle(cx, cy - 6, 8, icon); iconPaint(240, false); icon.setStrokeWidth(5);
+                    rect.set(cx - 26, cy - 32, cx + 26, cy + 20); c.drawArc(rect, 200, 140, false, icon); rect.set(cx - 42, cy - 48, cx + 42, cy + 36); c.drawArc(rect, 205, 130, false, icon);
+                    c.drawLine(cx, cy + 2, cx - 16, cy + 40, icon); c.drawLine(cx, cy + 2, cx + 16, cy + 40, icon); break;
+                case "note":   // a beamed pair of notes
+                    iconPaint(240, true); c.drawCircle(cx - 20, cy + 26, 11, icon); c.drawCircle(cx + 22, cy + 18, 11, icon);
+                    iconPaint(240, false); icon.setStrokeWidth(6); c.drawLine(cx - 10, cy + 26, cx - 10, cy - 30, icon); c.drawLine(cx + 32, cy + 18, cx + 32, cy - 38, icon); c.drawLine(cx - 10, cy - 30, cx + 32, cy - 38, icon); break;
+                case "controller":   // a game pad
+                    rect.set(cx - 46, cy - 22, cx + 46, cy + 26); c.drawRoundRect(rect, 22, 22, icon);
+                    c.drawLine(cx - 28, cy + 2, cx - 12, cy + 2, icon); c.drawLine(cx - 20, cy - 6, cx - 20, cy + 10, icon);
+                    iconPaint(240, true); c.drawCircle(cx + 18, cy - 2, 5, icon); c.drawCircle(cx + 30, cy + 8, 5, icon); break;
+                case "screen":   // a TV
+                    rect.set(cx - 44, cy - 32, cx + 44, cy + 26); c.drawRoundRect(rect, 10, 10, icon); c.drawLine(cx - 20, cy + 40, cx + 20, cy + 40, icon); break;
+                case "playcircle":
+                    c.drawCircle(cx, cy, 40, icon); iconPaint(240, true); glyph.reset(); glyph.moveTo(cx - 12, cy - 18); glyph.lineTo(cx + 20, cy); glyph.lineTo(cx - 12, cy + 18); glyph.close(); c.drawPath(glyph, icon); break;
+                case "chevron":
+                    icon.setStrokeWidth(10); glyph.reset(); glyph.moveTo(cx - 14, cy - 34); glyph.lineTo(cx + 18, cy); glyph.lineTo(cx - 14, cy + 34); c.drawPath(glyph, icon); break;
+                default:
+                    if (item.icon != null) {
+                        Drawable d = item.icon.mutate(); d.setColorFilter(grey);
+                        d.setBounds(Math.round(cx - 34), Math.round(cy - 34), Math.round(cx + 34), Math.round(cy + 34)); d.draw(c);
+                    } else { c.drawCircle(cx, cy, 30, icon); }   // nothing to show yet: a plain ring, never letters
+            }
+            icon.setStrokeWidth(3); icon.setStrokeCap(Paint.Cap.ROUND);
+        }
         /** Library: three posters on a shelf, drawn (no font glyph that a TV might lack). */
         private void libraryGlyph(Canvas c, float cx, float cy) {
             iconPaint(240, false); icon.setStrokeWidth(5);
@@ -876,6 +964,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 c.restore();
             }
             if (posters.isEmpty() && postersLoading) text(c, "Finding your films and TV…", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
+            // NAV-05: an unreachable or empty library is a friendly state, never an address prompt; OK on the card reconnects.
+            else if (posters.isEmpty() && libraryReady && postersAt > 0) text(c, Profiles.kids(prefs) ? "Nothing in the Kids folders yet. Ask an adult to add some." : "Your films and TV aren't answering right now. OK opens the Library to reconnect.", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
         }
 
         /** A title's own server artwork, or a plain titled card: never another title's picture. */
@@ -898,11 +988,17 @@ public final class UnifiedPreviewActivity extends Activity {
             c.restore();
         }
 
+        /** NAV-03: the first meaningful title (Continue Watching when there is one, by default), else the Library card. */
+        private boolean shelfMoved;
+        private int landingPoster() {
+            long[] resume = new long[posters.size()]; for (int i = 0; i < resume.length; i++) resume[i] = posters.get(i).resume;
+            return HomeUtilities.libraryLanding(resume, prefs.getString(HomeUtilities.LANDING, "continue"));
+        }
         private void openShelf() {
             if (menu || moving) return;
-            shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis();
+            shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis(); shelfMoved = false;
             libraryReady = HomeShelf.configured(activity);   // once per opening, never per frame (it reads the encrypted store)
-            posterIndex = Math.min(posterIndex, posters.size());
+            posterIndex = landingPoster();
             moved(); loadPosters(); invalidate();
         }
         private void closeShelf() {
@@ -919,7 +1015,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 try { found = HomeShelf.load(activity); } catch (Exception e) { found = new ArrayList<>(); }
                 final List<HomeShelf.Poster> ready = found;
                 handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis();
-                    posterIndex = Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate(); });
+                    posterIndex = shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate(); });
                 for (HomeShelf.Poster p : ready) {
                     if (p.art.isEmpty() || posterArt.containsKey(p.id) || Thread.currentThread().isInterrupted()) continue;
                     try {

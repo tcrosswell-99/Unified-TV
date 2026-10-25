@@ -53,6 +53,11 @@
     <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- SET-043: an adult resets a forgotten PIN from a computer (PinReset says why this is safe). Only a sender holding
+         WRITE_SECURE_SETTINGS (the ADB shell; never a store app) can reach it. -->
+    <receiver android:name=".PinReset" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">
+      <intent-filter><action android:name="io.unifiedtv.RESET_PIN"/></intent-filter>
+    </receiver>
     <service android:name=".HouseholdService" android:exported="false" android:foregroundServiceType="dataSync"/>
     <activity android:name=".UnifiedPreviewActivity" android:exported="true" android:launchMode="singleTask"
         android:screenOrientation="landscape" android:label="@string/app_name">

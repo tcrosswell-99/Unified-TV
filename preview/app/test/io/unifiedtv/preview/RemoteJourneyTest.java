@@ -1,6 +1,5 @@
 package io.unifiedtv.preview;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.view.*;
@@ -18,8 +17,10 @@ import java.time.Duration;
 @Config(sdk=30)
 public class RemoteJourneyTest {
     private ActivityController<UnifiedPreviewActivity> controller;private UnifiedPreviewActivity activity;private View home;private Method key;
+    /** An earlier install's dock (HouseholdSettings migration keeps it exactly); a fresh one has none until apps are installed. */
+    static final String SEEDED="smartutube,netflix,disney,bbc,live,music";
     @Before public void start()throws Exception{
-        Context c=RuntimeEnvironment.getApplication();c.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();
+        Context c=RuntimeEnvironment.getApplication();c.getSharedPreferences("unified-tv-preview",0).edit().clear().putString("dock",SEEDED).commit();
         controller=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup();activity=controller.get();
         home=homeIn(activity);
         key=home.getClass().getDeclaredMethod("key",KeyEvent.class);key.setAccessible(true);
@@ -34,7 +35,7 @@ public class RemoteJourneyTest {
     @Test public void downRevealsMediaWithoutChangingDock()throws Exception{
         press(KeyEvent.KEYCODE_DPAD_DOWN);
         assertNull("no separate screen",Shadows.shadowOf(activity).getNextStartedActivity());assertEquals(true,field("shelf"));
-        assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));
+        assertEquals(SEEDED,activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));
     }
     @Test public void upFromFilmsReturnsToTheSameApp()throws Exception{
         press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_RIGHT);int before=(Integer)field("index");
@@ -52,7 +53,7 @@ public class RemoteJourneyTest {
     }
     @Test public void moveCancelDoesNotPersistPartialOrder()throws Exception{
         hold();press(KeyEvent.KEYCODE_DPAD_CENTER);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_BACK);
-        assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));
+        assertEquals(SEEDED,activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));
     }
     // Spec 3.3 / v2.3: Home is owner-editable. Removing saves the owner's choice; Cancel changes nothing.
     @Test public void removeFromHomeIsSavedAndNeverUninstalls()throws Exception{
@@ -63,25 +64,40 @@ public class RemoteJourneyTest {
     }
     @Test public void cancelInTheEditMenuChangesNothing()throws Exception{
         hold();for(int i=0;i<3;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
-        assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));assertEquals(6,((java.util.List<?>)field("dock")).size());
+        assertEquals(SEEDED,activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));assertEquals(6,((java.util.List<?>)field("dock")).size());
     }
-    // Owner, 25 October 2026: Up moves into the top row, onto the controls (as before, one OK away); Left reaches the profile.
-    @Test public void appsIsReachableFromTheControls()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);assertEquals(true,field("header"));press(KeyEvent.KEYCODE_DPAD_CENTER);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();
-        assertEquals("Apps",d.getListView().getAdapter().getItem(0));
+    // Owner, 25 October 2026 and v3.4.4 UX-UTILITY-03: a single Up focuses the utility pill directly; no menu opens.
+    @Test public void upFocusesThePillDirectlyWithNoMenu()throws Exception{
+        press(KeyEvent.KEYCODE_DPAD_UP);assertEquals(true,field("header"));assertEquals(0,field("headerIndex"));
+        assertNull("no intermediate menu",ShadowAlertDialog.getLatestAlertDialog());assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
-    @Test public void profileIsOneStepLeftInTheTopRowAndNeverMovesTheDock()throws Exception{
+    @Test public void thePillHoldsNoProfileAndOkOpensTheFocusedUtility()throws Exception{
+        java.util.List<?> pill=(java.util.List<?>)field("pill");assertFalse(pill.contains("profile"));
+        assertEquals("no AirPin or NordVPN on this test TV: voice and Settings only",java.util.Arrays.asList("voice","settings"),pill);
         press(KeyEvent.KEYCODE_DPAD_RIGHT);int before=(Integer)field("index");
         press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_LEFT);press(KeyEvent.KEYCODE_DPAD_CENTER);
-        AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);
-        assertTrue(String.valueOf(d.getListView().getAdapter().getItem(0)).startsWith("Adults"));assertTrue(String.valueOf(d.getListView().getAdapter().getItem(1)).startsWith("Kids"));
-        d.dismiss();press(KeyEvent.KEYCODE_DPAD_DOWN);
-        assertEquals(false,field("header"));assertEquals("the dock keeps its tile",before,field("index"));assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);assertEquals(VoiceActivity.class.getName(),started.getComponent().getClassName());
+        press(KeyEvent.KEYCODE_DPAD_DOWN);assertEquals(false,field("header"));assertEquals("the dock keeps its tile",before,field("index"));
     }
-    @Test public void kidsNeedsAPinFirstAndNothingChangesWithoutOne()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_LEFT);press(KeyEvent.KEYCODE_DPAD_CENTER);
-        AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();Shadows.shadowOf(d).clickOnItem(1);
-        assertEquals("adult",activity.getSharedPreferences("unified-tv-preview",0).getString("profile","adult"));
+    @Test public void theGearOpensSettingsDirectly()throws Exception{
+        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_RIGHT);assertEquals("clamped at the end",1,field("headerIndex"));
+        press(KeyEvent.KEYCODE_DPAD_CENTER);
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);assertEquals(SettingsActivity.class.getName(),started.getComponent().getClassName());
+    }
+    @Test public void freshInstallWithNothingInstalledHasAnEmptyDockNotPlaceholders()throws Exception{
+        activity.getSharedPreferences("unified-tv-preview",0).edit().clear().commit();controller.pause().resume();
+        assertEquals(0,((java.util.List<?>)field("dock")).size());assertFalse(activity.getSharedPreferences("unified-tv-preview",0).contains("dock"));
+        press(KeyEvent.KEYCODE_DPAD_UP);assertEquals("Settings stays reachable",true,field("header"));
+    }
+    @Test public void labelsAreFocusedOnlyByDefaultPerProfile()throws Exception{
+        Method labels=home.getClass().getDeclaredMethod("labels");labels.setAccessible(true);assertEquals("focused_only",labels.invoke(home));
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putString("dock.labelVisibility.adult","always").putString("dock.labelVisibility.child","hidden").commit();
+        assertEquals("always",labels.invoke(home));
+    }
+    @Test public void alarmsOffShowsTheNoticeOnHome()throws Exception{
+        assertEquals(false,field("alarmsOff"));
+        activity.getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.SHOWN,false).commit();controller.pause().resume();
+        assertEquals(true,field("alarmsOff"));
     }
     @Test public void libraryTileOpensSetupAndHomeKeepsItsPlace()throws Exception{
         activity.getSharedPreferences("unified-tv-preview",0).edit().putString("dock","netflix,library").commit();
@@ -108,8 +124,9 @@ public class RemoteJourneyTest {
         for(int i=0;i<4;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
-    @Test public void upThenOkOpensNativeControls()throws Exception{
-        press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_DPAD_CENTER);AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull(d);assertTrue(d.isShowing());assertEquals(5,d.getListView().getCount());
+    @Test public void menuOpensAllAppsDirectly()throws Exception{
+        press(KeyEvent.KEYCODE_MENU);assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);assertEquals(AppsActivity.class.getName(),started.getComponent().getClassName());
     }
     @Test public void backLeavesTheTopRowForTheSameTile()throws Exception{
         int before=(Integer)field("index");press(KeyEvent.KEYCODE_DPAD_UP);press(KeyEvent.KEYCODE_BACK);

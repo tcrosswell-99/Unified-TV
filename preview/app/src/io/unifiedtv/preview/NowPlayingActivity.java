@@ -28,10 +28,8 @@ import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
-import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -275,8 +273,7 @@ public final class NowPlayingActivity extends Screen {
 
         /** Clock top-left, as on Home; "Music" and Settings in one glass group top-right. */
         private void header(Canvas c) {
-            SimpleDateFormat df = new SimpleDateFormat("HH:mm", Locale.UK); df.setTimeZone(TimeZone.getTimeZone("Europe/London"));
-            text(c, df.format(System.currentTimeMillis()), 96, 142, 66, WHITE, false, Paint.Align.LEFT, W);
+            text(c, HouseholdSettings.time(getContext(), System.currentTimeMillis()), 96, 142, 66, WHITE, false, Paint.Align.LEFT, W);
             type.setTextSize(24); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             float right = 1730, left = right - type.measureText("Music");
             glass(c, left - 32, 62, 1817, 145, 30);

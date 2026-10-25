@@ -1,32 +1,35 @@
 package io.unifiedtv.preview;
 import org.junit.Test;
 import static org.junit.Assert.*;
-import org.json.JSONObject;
-import static io.unifiedtv.preview.LiveTvProtection.Decision.*;
+import static io.unifiedtv.preview.LiveTvProtection.State.*;
+/** SET-063 (owner, 25 October 2026): automatic verification only; no attestation; fail closed. */
 public class LiveTvProtectionTest {
-    static final String LIVE="tv.example.live";
-    static JSONObject checked()throws Exception{return LiveTvProtection.record(LIVE,"3.1","9.15.2-tv",1000);}
-    @Test public void vpnAppearanceAloneNeverOpensLiveTv(){
-        assertEquals(NOT_CHECKED,LiveTvProtection.decide(null,true,true,"9.15.2-tv",LIVE,"3.1"));
-        assertEquals(NOT_CHECKED,LiveTvProtection.decide(new JSONObject(),true,true,"9.15.2-tv",LIVE,"3.1"));
+    @Test public void withoutAnAutomaticCheckLiveTvStaysLockedEvenWithTheVpnUp(){
+        assertEquals(LOCKED,LiveTvProtection.decide(true,false,null,false));
+        assertEquals("a result without a verifier is ignored",LOCKED,LiveTvProtection.decide(true,false,true,false));
+        assertFalse(LiveTvProtection.opens(LiveTvProtection.decide(true,false,true,false)));
     }
-    @Test public void aPassedCheckOpensItOnlyWhileTheVpnCoversThisTv()throws Exception{
-        assertEquals(ALLOW,LiveTvProtection.decide(checked(),true,true,"9.15.2-tv",LIVE,"3.1"));
-        assertEquals(VPN_OFF,LiveTvProtection.decide(checked(),false,false,"9.15.2-tv",LIVE,"3.1"));
-        assertEquals(NOT_COVERED,LiveTvProtection.decide(checked(),true,false,"9.15.2-tv",LIVE,"3.1"));
+    @Test public void androidHasNoVerifierSoNothingCanEverBeVerified(){
+        assertNull("no route verifier exists for a third-party Android app",LiveTvProtection.VERIFIER);
+        for(boolean tunnel:new boolean[]{false,true})for(Boolean r:new Boolean[]{null,false,true})for(boolean failed:new boolean[]{false,true})
+            assertNotEquals(VERIFIED,LiveTvProtection.decide(tunnel,LiveTvProtection.VERIFIER!=null,r,failed));
     }
-    @Test public void anUpdateOrADifferentLiveAppNeedsANewCheck()throws Exception{
-        assertEquals(CHANGED,LiveTvProtection.decide(checked(),true,true,"9.16.0-tv",LIVE,"3.1"));
-        assertEquals(CHANGED,LiveTvProtection.decide(checked(),true,true,"9.15.2-tv",LIVE,"3.2"));
-        assertEquals(CHANGED,LiveTvProtection.decide(checked(),true,true,"9.15.2-tv","tv.other.live","3.1"));
-        assertEquals("NordVPN uninstalled",CHANGED,LiveTvProtection.decide(checked(),true,true,"",LIVE,"3.1"));
+    @Test public void onlyAnAutomaticPassOpensAndUnknownDisconnectedOrFailedLock(){
+        assertEquals(VERIFIED,LiveTvProtection.decide(true,true,true,false));assertTrue(LiveTvProtection.opens(VERIFIED));
+        assertEquals(VERIFYING,LiveTvProtection.decide(true,true,null,false));
+        assertEquals(LOCKED,LiveTvProtection.decide(true,true,false,false));
+        assertEquals(DISCONNECTED,LiveTvProtection.decide(false,true,true,false));
+        assertEquals(ERROR,LiveTvProtection.decide(true,true,true,true));
+        for(LiveTvProtection.State s:LiveTvProtection.State.values())if(s!=VERIFIED)assertFalse(s.name(),LiveTvProtection.opens(s));
     }
-    @Test public void aCheckCannotBeRecordedWithoutBothApps(){
-        assertThrows(IllegalArgumentException.class,()->LiveTvProtection.record("","3.1","9.15.2-tv",1));
-        assertThrows(IllegalArgumentException.class,()->LiveTvProtection.record(LIVE,"3.1","",1));
+    @Test public void theStateWordsAreSet063s(){
+        java.util.List<String> words=new java.util.ArrayList<>();for(LiveTvProtection.State s:LiveTvProtection.State.values())words.add(LiveTvProtection.word(s));
+        assertEquals(java.util.Arrays.asList("locked","verifying","verified","disconnected","error"),words);
     }
     @Test public void everyLockedStateExplainsItselfPlainly(){
-        for(LiveTvProtection.Decision d:LiveTvProtection.Decision.values()){if(d==ALLOW)continue;String s=LiveTvProtection.message(d);assertFalse(s,s.isEmpty());
+        for(LiveTvProtection.State d:LiveTvProtection.State.values()){if(d==VERIFIED)continue;String s=LiveTvProtection.message(d);assertFalse(s,s.isEmpty());
+            assertFalse(s,s.toLowerCase().contains("verified"));
             for(String jargon:new String[]{"tunnel","routing","lockdown","uid","socket"})assertFalse(s,s.toLowerCase().contains(jargon));}
+        assertTrue(LiveTvProtection.message(LOCKED).contains("stays locked on every route"));
     }
 }

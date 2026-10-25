@@ -10,7 +10,6 @@ import org.json.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -330,7 +329,7 @@ public final class WallpaperActivity extends Activity {
             paint.setAlpha(255);
         }
         private void clock(Canvas c, Slide s, int alpha) {
-            String time = new SimpleDateFormat("HH:mm", Locale.UK).format(new Date());
+            String time = HouseholdSettings.time(getContext(), System.currentTimeMillis());
             float w = getWidth(), h = getHeight(), cellW = w / WallpaperPolicy.GW, cellH = h / WallpaperPolicy.GH;
             // Long idle sessions dim the clock (OLED; spec 33.6).
             boolean late = SystemClock.uptimeMillis() - started > 30 * 60_000L;

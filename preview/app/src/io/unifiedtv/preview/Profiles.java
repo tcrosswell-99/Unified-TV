@@ -10,8 +10,8 @@ import android.content.SharedPreferences;
  * none, but Kids can only be switched on once a PIN exists. The stored values stay "adult" and "child" so earlier
  * settings (media accounts "media-adult"/"media-child", Wallpaper) keep working; only the words on screen changed.
  *
- * Quick switch: on Home, Up moves into the top row and Left reaches the profile name; OK opens this chooser. The same
- * chooser is in Settings > Profiles and in Home's controls ("Who's watching?").
+ * Quick switch (v3.4.4: not on Home's utility pill): the
+ * first row of Settings > Profiles & Family opens this chooser, and so does the voice command "switch profile".
  */
 final class Profiles {
     static final String ADULT="adult",CHILD="child",PREF="profile";
@@ -47,7 +47,7 @@ final class Profiles {
         switch(rule(current(p),to,!p.getString("pin","").isEmpty())){
             case NEEDS_PIN:EditLock.ask(a,change);break;
             case ALLOWED:change.run();break;
-            case PIN_FIRST:new AlertDialog.Builder(a).setTitle("Kids").setMessage("Set an adult PIN first (Settings > Profiles), so that only an adult can leave Kids.").setPositiveButton("OK",null).show();break;
+            case PIN_FIRST:new AlertDialog.Builder(a).setTitle("Kids").setMessage("Set an adult PIN first (Settings > Profiles & Family), so that only an adult can leave Kids.").setPositiveButton("OK",null).show();break;
             default:break;
         }
     }

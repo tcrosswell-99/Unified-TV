@@ -11,7 +11,7 @@ import android.widget.CheckBox;
 import java.util.*;
 
 /**
- * Settings > Profiles > Kids settings (behind the adult PIN). One page: the Kids folders on the NAS, the apps Kids may
+ * Settings > Profiles & Family > Kids settings (behind the adult PIN). One page: the Kids folders on the NAS, the apps Kids may
  * open, the optional Kids app guard, and where the TV's own parental controls are. It says plainly what each one can and
  * can't do; none of it has been tried on the household's TVs yet.
  */
@@ -30,12 +30,12 @@ public final class KidsActivity extends Screen {
         if(kids)text("Switch to Adults to choose Kids folders.",16);
         else button(chosen==0?"Choose Kids folders":"Choose Kids folders again",()->startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("kidsSetup",true)));
         if(chosen>0)button("Stop showing Kids folders",()->{new Vault(this).forget(KidsPolicy.STORE);note("Kids folders cleared");show();});
-        text("In Kids, browsing, the Home row, resume and playback stay inside these folders; the player checks with the media server again before every Kids title. Where the server sends a rating, Kids gets only UK U, Uc and PG, US G and PG, and TV-Y, TV-Y7, TV-G and TV-PG. Anything else rated (12, 15, PG-13, TV-14, NR and the rest) is left out. A title with no rating is shown only because it is inside a Kids folder.",16);
+        text("In Kids, browsing, the Home row, resume and playback stay inside these folders; the player checks with the media server again before every Kids title. Ratings: "+HouseholdSettings.scheme(this).label+" (Settings > Profiles & Family). Where the server sends a rating, Kids gets only "+HouseholdSettings.scheme(this).allowedWords()+". Anything else rated (12, 15, PG-13, TV-14, NR and the rest) is left out. A title with no rating is shown only because it is inside a Kids folder.",16);
 
         text("Apps for Kids",24);
         text("In Kids, Unified TV opens only the apps ticked here, from Home, Apps, voice and everywhere else. Netflix, Disney+ and others have their own kids profiles: choose those inside each app.",16);
         Set<String> approved=KidsPolicy.apps(prefs.getString(KidsPolicy.APPS_PREF,""));
-        String room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl");
+        String room=prefs.getString("room",Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");
         if("sony".equals(room))app("Xbox (HDMI)","xbox",approved);
         if("frame".equals(room))app("Samsung TV Plus","tvplus",approved);
         PackageManager pm=getPackageManager();Map<String,String> apps=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);

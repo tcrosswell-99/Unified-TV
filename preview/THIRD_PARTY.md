@@ -14,3 +14,6 @@ The Preview 0.3 ambient mesh, cached blur, material, dock migration and VPN hand
 
 
 Preview 0.4 includes five AI-generated gallery JPGs supplied by the owner, who expressly authorised public inclusion as example artwork on 24 October 2026. They are preserved unedited at `preview/app/src/main/assets/gallery/example-1.jpg` through `example-5.jpg`; they are not third-party film stills or private household photographs. Source filenames identify Gemini-generated images, as supplied by the owner. Original gallery/discovery/settings code follows the project licence; no new runtime dependency was added.
+
+
+Team fixtures (25 October 2026) can come from **API-Football** (api-sports.io) using the household's own API key, entered on the TV and stored encrypted; no key is in the source and nothing else is sent to that service. API-Football data is used under the household's own account and its terms. Team badges are drawn by the app from a team's short name and colours; no club crest or logo is bundled or downloaded. The dock's service symbols are original simple vector drawings, not copies of brand artwork.

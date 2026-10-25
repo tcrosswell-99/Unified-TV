@@ -3,8 +3,9 @@ package io.unifiedtv.preview;
 /**
  * Spec 4.8: Home's mood follows the time of day without ever switching palettes. The app's own light stays the colour
  * source; only a faint wash over it changes: none by morning and day, a slight warm dimming at dusk, deeper and softer at
- * night. Phases blend over 20 minutes, so nothing ever flashes at a boundary. Europe/London fixed times are used because
- * no authorised sunrise/sunset provider is configured (spec 4.8 fallback).
+ * night. Phases blend over 20 minutes, so nothing ever flashes at a boundary. Fixed times on the household's clock (its
+ * time zone setting, HouseholdSettings) are used because no authorised sunrise/sunset provider is configured (spec 4.8
+ * fallback).
  *
  * Also spec 2/14 OLED care for the Sony: after two minutes without a key, Home dims gently; any key restores it at once.
  */

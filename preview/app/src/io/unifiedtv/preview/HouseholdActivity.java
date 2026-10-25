@@ -29,7 +29,7 @@ public final class HouseholdActivity extends Screen {
     /** Plain names for each household record key, in screen order. */
     private static final String[][] LABELS={
         {"door","Doorbell","your doorbell"},{"person","Person detection","person detection"},{"camera","Doorbell camera","your doorbell camera"},
-        {"calendar","Tottenham fixtures calendar","your fixtures calendar"},{"xbox","Xbox power and HDMI script","your Xbox script"},
+        {"calendar","Fixtures calendar (your team)","your fixtures calendar"},{"xbox","Xbox power and HDMI script","your Xbox script"},
         {"tvplus","Samsung TV Plus script","your Samsung TV Plus script"},{"art","Art Mode return script","your Art Mode script"},
         {"ringEnter","Doorbell entry script","your doorbell entry script"},{"ringExit","Doorbell return script","your doorbell return script"}};
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -48,7 +48,7 @@ public final class HouseholdActivity extends Screen {
     private JSONObject config(){try{return new Vault(this).read("household");}catch(Exception e){return new JSONObject();}}
     private String room(){
         String saved=getSharedPreferences("unified-tv-preview",0).getString("room","");
-        return HaEntities.room(saved)?saved:Build.MANUFACTURER.toLowerCase(Locale.UK).contains("sony")?"sony":"tcl";
+        return HaEntities.room(saved)?saved:Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl";
     }
 
     /** One bounded read of Home Assistant, off the UI thread; then fill what has exactly one clear answer. */
@@ -96,19 +96,28 @@ public final class HouseholdActivity extends Screen {
             text("Home Assistant also shows "+waiting.get(0)+" as a newer kind of doorbell event. This preview can't listen to that kind yet, so choose a doorbell sensor if you have one.",17);
 
         // On unless the household turns it off: found from Home Assistant's own smoke and carbon monoxide sensors, nothing to type.
+        // Owner exception to SET-053: switching alarms off takes the adult PIN and a confirmation; switching them on never does.
+        // While off, Home and Settings say "Alarms off on this TV" (AlarmWatch).
         CheckBox alarms=new CheckBox(this);alarms.setText("Show smoke and carbon monoxide alarms on this TV, above the doorbell");alarms.setTextColor(-1);alarms.setChecked(config.optBoolean("alarms",true));column.addView(alarms);
-        alarms.setOnCheckedChangeListener((v,on)->saveFlag("alarms",on));
+        alarms.setOnCheckedChangeListener((v,on)->{
+            if(on){saveFlag("alarms",true);return;}
+            alarms.setChecked(true);   // stays on until the adult has confirmed (this re-enters with on=true and saves on)
+            EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle("Switch alarms off on this TV?").setMessage("Smoke and carbon monoxide alarms will not appear on this TV. Home will show \""+AlarmWatch.OFF_NOTICE+"\" until an adult switches them back on. Your detectors and their own alarms are not affected.")
+                .setPositiveButton("Switch off",(d,w)->{focusKey="alarms";saveFlag("alarms",false);show();}).setNegativeButton("Keep them on",null).show());
+        });
+        if(!config.optBoolean("alarms",true))text(AlarmWatch.OFF_NOTICE+".",18);
         CheckBox reminders=new CheckBox(this);reminders.setText("Allow private reminder events from Home Assistant");reminders.setTextColor(-1);reminders.setChecked(config.optBoolean("reminders"));column.addView(reminders);
         reminders.setOnCheckedChangeListener((v,on)->saveFlag("reminders",on));
         button("Grant optional alert overlay permission",()->{
             Launch.unlocked(this,new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:"+getPackageName())),"Open this TV's special app access settings manually");
         });
-        button("Start household alerts",()->{
+        button("Start household alerts",()->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.STOPPED,false).apply();
             if(!Settings.canDrawOverlays(this)){note("Grant overlay permission first. No alert service started.");return;}
             if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},8);return;}
             startForegroundService(new Intent(this,HouseholdService.class));note("Alert service requested. Check its notification for actual connection state.");
         });
-        button("Stop household alerts",()->{stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");});
+        button("Stop household alerts",()->EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle("Stop household alerts?").setMessage("Smoke and carbon monoxide alarms and the doorbell will not appear on this TV until alerts are started again.")
+            .setPositiveButton("Stop alerts",(d,w)->{getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.STOPPED,true).apply();stopService(new Intent(this,HouseholdService.class));note("Household alerts stopped");}).setNegativeButton("Keep alerts on",null).show()));
         // OD-07: no detectors are assumed. These test events are labelled TEST on screen and never reach Home Assistant.
         text("Test the alarm screen. Each step shows exactly what a real alarm would, marked TEST.",17);
         button("Test: smoke alarm in the kitchen",()->simulate("smoke","on","Kitchen"));
@@ -117,7 +126,8 @@ public final class HouseholdActivity extends Screen {
         button("Test: someone rings the doorbell",()->simulate("door",null,null));
         button("Test: a person at the door (toast only)",()->simulate("person",null,null));
         button("End the alarm test",()->simulate("end",null,null));
-        button("Request native Frame Art Mode",()->{if(getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))action(this,"art");else note("This action belongs to the Frame room profile");});
+        // SET-003: Frame-only actions appear only in the Frame room; nothing is offered that can't work on this TV.
+        if(room.equals("frame"))button("Request native Frame Art Mode",()->action(this,"art"));
         button("Forget household setup",()->{stopService(new Intent(this,HouseholdService.class));new Vault(this).forget("household");found.clear();show();});
         button("Back",this::finish);
     }
@@ -199,7 +209,9 @@ public final class HouseholdActivity extends Screen {
         }).show();
     }
     private void saveFlag(String key,boolean on){
-        try{JSONObject config=config();config.put(key,on);new Vault(this).save("household",config);}catch(Exception e){note("Couldn't save on this TV. Nothing was changed.");}
+        try{JSONObject config=config();config.put(key,on);new Vault(this).save("household",config);
+            if(key.equals("alarms"))getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.SHOWN,on).apply();   // Home's notice reads this
+        }catch(Exception e){note("Couldn't save on this TV. Nothing was changed.");}
     }
     /** The household record keeps the ID HouseholdService reads, its friendly name for display, and which roles were decided. */
     private static void put(JSONObject config,String key,String id,String name)throws Exception{

@@ -14,6 +14,15 @@ Nothing in a release has been tested on a television unless the entry says so. P
   - Limits: the NAS address is typed once under Advanced (web apps cannot discover it; awaiting the owner's acceptance), the Ring card has no live camera, private NAS playback and a Content-Security-Policy are not built, and Samsung TV Plus is found by name because its app id is unconfirmed.
 - **Samsung Home-button proposal** ([SAMSUNG_HOME_PROPOSAL.md](docs/SAMSUNG_HOME_PROPOSAL.md)) and the Frame capability table ([samsung-frame-2021.md](docs/devices/samsung-frame-2021.md), every value `unknown`). A proposal only: nothing was run on the TV.
 
+- **Home, Settings and household choices for v3.4.4** (Android TCL/Sony):
+  - **Home:** Up goes straight to the top-right pill (AirPlay, VPN, voice, Settings), with OK opening the focused item and no menu between. Down lands on Continue Watching, otherwise the first title. Dock tiles use original monochrome symbols, with app labels "Focused only" by default (per profile; Always or Hidden selectable). The profile switch moved to Settings → Profiles & Family.
+  - **Settings:** ten categories in the v3.4 order, with "Set up" entries for services not yet connected, Navigation & Shortcuts (preview, then apply; reset), and licences and artwork credits under Updates & About.
+  - **Doorbell:** the camera closes after 30 s by default (60 s or Back only selectable), as an overlay or full screen. Test events say TEST.
+  - **Alarms:** turning alarms off or stopping alerts needs the PIN and leaves "Alarms off on this TV" on Home; with no detector, Settings says "Not configured — no live monitoring".
+  - **Live TV:** unlocks only by the app's own automatic check, which Android TV can't make, so it stays locked everywhere with the reason shown; the adult "passed check" record is removed.
+  - **PIN:** an adult can reset a forgotten PIN from a computer over ADB.
+  - **Household settings replace hardcoding:** the TV's own time zone, clock format and language; dock suggestions from installed apps; a rating scheme by region; any UK team with fixtures from API-Football (the household's own key) or a Home Assistant calendar, a drawn badge, and "Kick-off moved" notices. Existing setups keep their dock and choices.
+  - Unit-tested only; nothing tried on a TV.
 - **Samsung Frame: Ring rules and Adults/Kids** (parity with Android): motion ignored, a 5-second person toast, a doorbell card with the press time (the Frame has no live camera yet, and says so); Adults/Kids with a PIN (hashed, kept only in Samsung's Key Manager), the last-used profile kept, a Home switch; Kids limited to adult-chosen NAS folders with ratings re-checked before playback and to approved apps launched from Unified TV (apps opened through Smart Hub are outside its reach, and Settings says so); separate resume places per profile. Node tests only; not run on the Frame.
 - **Adults and Kids, Library and owner diagnostics** (Android TCL/Sony; owner direction 25 October 2026: Home → Library → Apps → Settings):
   - **Library** can be placed in the dock like an app; Back returns to the same tile.

@@ -1,38 +1,49 @@
 package io.unifiedtv.preview;
 import android.content.*;
 import android.content.pm.*;
-import org.json.JSONObject;
 import java.util.*;
 
 /**
- * Protection, not appearance. Android's always-on VPN with "block connections without VPN" is what stops Live TV
- * traffic when NordVPN drops; this app cannot. Live TV opens only after that has been proven on this TV at network
- * level (preview/tools/vpn_check.py, docs/VPN_PROTECTION.md) and recorded by an adult, and only while nothing the
- * proof depended on has changed. Everything else keeps it locked.
+ * Protection, not appearance (SET-063; owner, 25 October 2026: automatic verification only). Live TV opens only when
+ * Unified TV itself has verified, automatically and just now, that Live TV's connection can only go through NordVPN.
+ * No adult statement, recorded check or status icon can unlock it. Unknown, disconnected and failed checks always lock.
+ *
+ * On Android a third-party app has no way to make that check: it cannot see another app's routing, and the always-on
+ * VPN "block connections without VPN" setting is readable only by a device or profile owner
+ * (DevicePolicyManager.isAlwaysOnVpnLockdownEnabled). So there is no Verifier on Android, every Live TV route stays
+ * locked (fail closed), and the screen says why in plain words. A future verifier plugs in below; nothing else changes.
+ *
+ * States, in SET-063's words: locked, verifying, verified, disconnected, error.
  */
 final class LiveTvProtection {
-    enum Decision {ALLOW,NOT_CHECKED,VPN_OFF,NOT_COVERED,CHANGED}
+    enum State {LOCKED,VERIFYING,VERIFIED,DISCONNECTED,ERROR}
     static final String NORDVPN="com.nordvpn.android";
-    /** Pure: the record of a passed check against what is true now. */
-    static Decision decide(JSONObject record,boolean tunnel,boolean routed,String nordNow,String livePackage,String liveNow){
-        if(record==null||record.optString("live").isEmpty())return Decision.NOT_CHECKED;
-        if(!record.optString("live").equals(livePackage)||!record.optString("nordVersion").equals(nordNow)||!record.optString("liveVersion").equals(liveNow)||nordNow.isEmpty()||liveNow.isEmpty())return Decision.CHANGED;
-        if(!tunnel)return Decision.VPN_OFF;
-        // Under the proven lockdown every app's traffic uses the VPN: if ours doesn't, the setup is no longer the one tested.
-        if(!routed)return Decision.NOT_COVERED;
-        return Decision.ALLOW;
+    /** An automatic check of the protected route for one Live TV app: true only when verified now. */
+    interface Verifier {boolean verify(String livePackage)throws Exception;}
+    /** None on Android (see above). Never set from a setting, a file or a user action. */
+    static final Verifier VERIFIER=null;
+
+    /**
+     * Pure. tunnel: a VPN is up; verifier: an automatic check exists; result: its answer (null while it runs); failed: it
+     * could not run. Only an automatic "verified" opens Live TV.
+     */
+    static State decide(boolean tunnel,boolean verifier,Boolean result,boolean failed){
+        if(failed)return State.ERROR;
+        if(!tunnel)return State.DISCONNECTED;
+        if(!verifier)return State.LOCKED;
+        if(result==null)return State.VERIFYING;
+        return result?State.VERIFIED:State.LOCKED;
     }
-    static String message(Decision d){switch(d){
-        case NOT_CHECKED:return "Live TV stays locked until its protection has been checked on this TV.";
-        case VPN_OFF:return "Connect NordVPN to watch Live TV.";
-        case NOT_COVERED:return "NordVPN isn't covering this TV the way it was checked. Live TV stays locked until it's checked again.";
-        case CHANGED:return "NordVPN or Live TV has been updated since protection was checked. Live TV stays locked until it's checked again.";
-        default:return "";
+    static boolean opens(State s){return s==State.VERIFIED;}
+    /** The state's word, as SET-063 names it. */
+    static String word(State s){return s.name().toLowerCase(java.util.Locale.ROOT);}
+    static String message(State s){switch(s){
+        case LOCKED:return VERIFIER==null?"Live TV is locked. This TV doesn't let Unified TV check by itself that Live TV can only connect through NordVPN, so it stays locked on every route.":"Live TV is locked. The automatic check didn't confirm that Live TV can only connect through NordVPN.";
+        case VERIFYING:return "Checking that Live TV can only connect through NordVPN…";
+        case DISCONNECTED:return "Live TV is locked. Connect NordVPN first.";
+        case ERROR:return "Live TV is locked. The protection check couldn't run.";
+        default:return "Verified just now: Live TV can only connect through NordVPN.";
     }}
-    static JSONObject record(String livePackage,String liveVersion,String nordVersion,long now)throws Exception{
-        if(livePackage.isEmpty()||liveVersion.isEmpty()||nordVersion.isEmpty())throw new IllegalArgumentException("Live TV and NordVPN must both be installed");
-        return new JSONObject().put("live",livePackage).put("liveVersion",liveVersion).put("nordVersion",nordVersion).put("checkedAt",now);
-    }
     // --- Android
     static String version(Context c,String pkg){if(pkg==null||pkg.isEmpty())return "";try{String v=c.getPackageManager().getPackageInfo(pkg,0).versionName;return v==null?"":v;}catch(Exception e){return "";}}
     /** The configured Live TV app, else the one installed app the protected-app rule recognises; never a guess between several. */
@@ -43,8 +54,10 @@ final class LiveTvProtection {
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){String pkg=r.activityInfo.packageName;if(Endpoint.protectedApp(pkg,String.valueOf(r.loadLabel(pm)),""))found.add(pkg);}
         return found.size()==1?found.iterator().next():"";
     }
-    static JSONObject saved(Context c){try{return new JSONObject(c.getSharedPreferences("unified-tv-preview",0).getString("liveProtection",""));}catch(Exception e){return null;}}
-    static void save(Context c,JSONObject record){c.getSharedPreferences("unified-tv-preview",0).edit().putString("liveProtection",record==null?"":record.toString()).apply();}
-    /** For the app actually being opened: a different Live TV app than the one checked is not covered by the check. */
-    static Decision now(Context c,String target){return decide(saved(c),VpnGate.tunnel(c),VpnGate.routed(c),version(c,NORDVPN),target,version(c,target));}
+    /** For the app actually being opened: automatic verification only. On Android there is no verifier, so never VERIFIED. */
+    static State now(Context c,String target){
+        boolean tunnel;try{tunnel=VpnGate.tunnel(c);}catch(RuntimeException e){return decide(false,false,null,true);}
+        if(VERIFIER==null||target==null||target.isEmpty())return decide(tunnel,false,null,false);
+        try{return decide(tunnel,true,VERIFIER.verify(target),false);}catch(Exception e){return decide(tunnel,true,null,true);}
+    }
 }
