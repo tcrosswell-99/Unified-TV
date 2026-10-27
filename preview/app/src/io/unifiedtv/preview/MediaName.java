@@ -44,10 +44,15 @@ final class MediaName {
     private static final Pattern WEB=Pattern.compile("(?i)^\\s*[\\[(]?\\s*www\\.[^\\s\\])]+\\s*[\\])]?\\s*[-–:]?\\s*");
     /** "Director's Cut", "Extended Edition"...: an edition, never part of the title (cut there like a release tag). */
     private static final Pattern EDITION=Pattern.compile("(?i)(?<=\\s)(?:director'?s|directors|extended|theatrical|ultimate|special|collector'?s|collectors|anniversary|uncut|unrated|remastered|criterion|imax)\\s+(?:cut|edition|version)(?=$|[\\s)\\]])");
-    private static final Pattern SAMPLE=Pattern.compile("(?i)(?:^|[^\\p{L}\\p{N}])samples?(?:$|[^\\p{L}\\p{N}])");
-    private static final Pattern EXTRA=Pattern.compile("(?i)(?:^|[^\\p{L}\\p{N}])(?:trailers?|featurettes?|extras)(?:$|[^\\p{L}\\p{N}])");
+    /** A sample tag at the very end of the name ("sample", "Title-sample", "Title.sample", "Title sample", "[Sample]"). */
+    private static final Pattern SAMPLE=Pattern.compile("(?i)(?:^|[-._\\s(\\[])samples?\\s*\\d*[)\\]]?$");
+    /** An extras tag at the very end, after a separator: "Title - Trailer", "Title.Featurette.2", "Title (Behind the Scenes)". */
+    private static final Pattern EXTRA_TAG=Pattern.compile("(?i)(?:\\s[-–]\\s|[-._(\\[])\\s*(?:official\\s+)?(?:trailers?|featurettes?|extras|behind[ ._-]the[ ._-]scenes|deleted[ ._-]scenes)\\s*\\d*[)\\]]?$");
+    /** "Title 2019 Trailer" (a file name with its dots made spaces): trailer and featurette only, never "Hollywood Extras". */
+    private static final Pattern EXTRA_WORD=Pattern.compile("(?i)\\S\\s+(?:official\\s+)?(?:trailer|featurette)\\s*\\d*$");
+    private static final Set<String> EXTRA_NAMES=new HashSet<>(Arrays.asList("trailer","trailers","featurette","featurettes","extra","extras"));
     private static final Set<String> EXTRAS_FOLDERS=new HashSet<>(Arrays.asList("sample","samples","extra","extras","trailer","trailers","featurette","featurettes",
-        "behind the scenes","deleted scenes","interviews","bonus","bonus features","special features"));
+        "behind the scenes","deleted scenes","interviews","bonus features","special features"));
     private static final Pattern FILM_FOLDER=Pattern.compile("(?i)^(?:my |our |the )?(?:films?|movies?|cinema|feature films?)$");
     private static final Set<String> GENERIC=new HashSet<>(Arrays.asList("movie","film","video","main","feature","sample","trailer","title","episode","disc","dvd","bluray"));
 
@@ -140,24 +145,36 @@ final class MediaName {
         m=Pattern.compile("(?i)(?:^|\\s)(?:episode|ep)\\s*(\\d{1,3})(?=$|\\s)").matcher(s);
         return m.find()?num(m.group(1)):-1;
     }
-    /** A sample: "sample" (or "samples") as a word anywhere in the name, in any case ("sample.mkv", "Film-sample.mkv"). */
-    static boolean sample(String name){return name!=null&&SAMPLE.matcher(name).find();}
+    private static String stem(String name){String s=name.trim();Matcher ext=EXT.matcher(s);if(ext.find()&&ext.start()>0)s=s.substring(0,ext.start());return s.trim();}
     /**
-     * A trailer, featurette or extras clip by its name: the word after the start of the name, or the whole name
-     * ("Title - Trailer.mkv", "trailer.mkv"). A name that starts with it is a title ("Trailer Park Boys"), and an episode
-     * (S01E02) never counts, so a programme called "Extras" stays.
+     * A sample: the whole name is "sample", or it ends with a sample tag ("Film-sample.mkv", "Some.Film.sample.mkv",
+     * "Some Film sample"), in any case. "Free Samples (2012)" and "Sample People" are titles.
+     */
+    static boolean sample(String name){return name!=null&&SAMPLE.matcher(stem(name)).find();}
+    /**
+     * A trailer, featurette or extras clip by its name: the whole name ("trailer.mkv"), or a tag at its very end after a
+     * separator ("Title - Trailer.mkv", "Some.Film.2019.Featurette.mkv", "Title (Behind the Scenes)"), or "... Trailer" /
+     * "... Featurette" after a space. "Trailer Park Boys", "The Extras (2020)" and "Hollywood Extras" are titles, and an
+     * episode (S01E02) never counts, so a programme called "Extras" stays.
      */
     static boolean extra(String name){
-        if(name==null)return false;String s=name.trim();Matcher ext=EXT.matcher(s);if(ext.find()&&ext.start()>0)s=s.substring(0,ext.start());
-        s=spaces(s);if(s.isEmpty())return false;
-        boolean hit=EXTRAS_FOLDERS.contains(s.toLowerCase(Locale.ROOT));
-        for(Matcher m=EXTRA.matcher(s);!hit&&m.find();)hit=s.substring(0,m.start()).replaceAll("[^\\p{L}\\p{N}]","").length()>0;
+        if(name==null)return false;String s=stem(name);if(s.isEmpty())return false;
+        boolean hit=EXTRA_NAMES.contains(spaces(s).toLowerCase(Locale.ROOT))||EXTRA_TAG.matcher(s).find()||EXTRA_WORD.matcher(spaces(s)).find();
         return hit&&!parse(name).episodic();
     }
     /** A folder that holds only extras or samples ("Sample", "Extras", "Featurettes", "Behind The Scenes"...), by its whole name. */
     static boolean extrasFolder(String name){return name!=null&&EXTRAS_FOLDERS.contains(spaces(name.trim()).replaceAll("\\s+"," ").toLowerCase(Locale.ROOT));}
     /** A folder named for films as a kind ("Films", "Movies", "My Films"): never one film's own name. */
     static boolean filmsFolder(String name){return name!=null&&FILM_FOLDER.matcher(spaces(name.trim())).matches();}
+    /** Words that only describe a copy, never a title: release tags, "3D", editions, resolutions. */
+    private static final Set<String> COPY_WORDS=new HashSet<>(Arrays.asList("3d","hsbs","sbs","hou","ou","dl","directors","director","cut","edition","extended",
+        "theatrical","version","special","ultimate","collectors","anniversary","criterion","open","matte","fullscreen","widescreen"));
+    /** Whether normalised words ({@link #normal}) only describe a copy ("3d", "extended edition", "1080p bluray"). */
+    static boolean copyWordsOnly(String words){
+        String w=words==null?"":words.trim();if(w.isEmpty())return false;
+        for(String x:w.split(" "))if(!(JUNK.contains(x)||COPY_WORDS.contains(x)||x.matches("\\d{3,4}[pi]")))return false;
+        return true;
+    }
     /** A generic word that tells nothing about the title ("movie.mkv" in a folder named after the film). */
     static boolean generic(String title){return title==null||title.trim().isEmpty()||GENERIC.contains(title.trim().toLowerCase(Locale.ROOT));}
 

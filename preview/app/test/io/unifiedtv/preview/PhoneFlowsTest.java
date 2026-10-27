@@ -340,6 +340,15 @@ public class PhoneFlowsTest {
         assertEquals("homeassistant.local:8123 (192.168.1.5:8123)", PhoneFlows.where("http://homeassistant.local:8123", "http://192.168.1.5:8123"));
         assertTrue(PhoneFlows.literal("http://192.168.1.5:8123")); assertTrue(PhoneFlows.literal("http://[fd00::5]:8123")); assertFalse(PhoneFlows.literal("http://homeassistant.local:8123"));
     }
+    @Test public void anAnnouncedHomeAssistantIsMatchedByThePortActuallyUsed() {
+        List<LocalDiscovery.Found> found = Arrays.asList(new LocalDiscovery.Found("Home Assistant", "http://192.168.1.7:8123"), new LocalDiscovery.Found("Home Assistant", "http://192.168.1.5:80"));
+        assertEquals("8123, as phone setup writes it when no scheme was typed", "http://192.168.1.7:8123", HaSignIn.announced("http://homeassistant.local:8123", found));
+        assertEquals("http:// with no port is port 80", "http://192.168.1.5:80", HaSignIn.announced("http://homeassistant.local", found));
+        assertEquals("http://192.168.1.5", HaSignIn.announced("http://homeassistant.local:80", Collections.singletonList(new LocalDiscovery.Found("Home Assistant", "http://192.168.1.5"))));
+        assertEquals("nothing on that port: unchanged", "http://homeassistant.local:9000", HaSignIn.announced("http://homeassistant.local:9000", found));
+        assertEquals(PhoneFlows.haBase("homeassistant.local"), HaSignIn.announced(PhoneFlows.haBase("homeassistant.local"), Collections.emptyList()));
+        assertEquals(443, HaSignIn.port(URI.create("https://ha.example.org")));
+    }
     @Test public void theWebSocketAddressFollowsTheScheme() {
         assertEquals("ws://192.168.1.5:8123/api/websocket", HaSignIn.socketUrl("http://192.168.1.5:8123"));
         assertEquals("wss://ha.example.org:443/api/websocket", HaSignIn.socketUrl("https://ha.example.org:443"));
@@ -383,6 +392,14 @@ public class PhoneFlowsTest {
             assertTrue(new JSONObject(heard.get(2)).getString("client_name").endsWith("(2)"));
             try { new HaSignIn(null).mint(ha.base(), "WRONG"); fail(); } catch (PhoneFlows.Refused expected) {}
         }
+        // The connection drops after auth_required and before any answer: not reached, so the TV says so (and a VPN
+        // refusal would get its retry), never "couldn't create the TV's key".
+        try (FakeSocket dropping = new FakeSocket(text -> FakeSocket.DROP)) {
+            try { new HaSignIn(null).mint(dropping.base(), "ACCESS"); fail(); }
+            catch (PhoneFlows.Refused e) { fail("dropped before any answer: not a refusal"); } catch (IOException expected) {}
+        }
+        HaSignIn.Mint early = new HaSignIn.Mint("ACCESS", "n"); early.on("{\"type\":\"auth_required\"}"); early.on("{\"type\":\"auth_ok\"}"); early.fail(new SocketException("reset"));
+        assertFalse("auth_required and auth_ok are not Home Assistant's answer", early.answered());
         try { new HaSignIn(null).mint("http://127.0.0.1:1", "ACCESS"); fail(); }
         catch (PhoneFlows.Refused e) { fail("nothing answered: not a refusal"); } catch (IOException expected) {}
     }
@@ -393,6 +410,8 @@ public class PhoneFlowsTest {
      */
     static final class FakeSocket implements Closeable {
         interface Reply { String to(String text) throws Exception; }
+        /** A reply that closes the connection instead of answering. */
+        static final String DROP = "\u0000drop";
         private final ServerSocket server = new ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"));
         volatile String path;
         FakeSocket(Reply reply) throws IOException {
@@ -417,6 +436,7 @@ public class PhoneFlowsTest {
                 byte[] data = new byte[(int) n]; for (int i = 0; i < n; i++) data[i] = (byte) (in.read() ^ mask[i % 4]);
                 int op = b0 & 0x0f; if (op == 8) return; if (op != 1) continue;
                 String answer = reply.to(new String(data, StandardCharsets.UTF_8));
+                if (DROP.equals(answer)) return;
                 if (answer != null) send(out, answer);
             }
         }

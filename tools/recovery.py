@@ -294,13 +294,19 @@ def query_packages(dev):
     return installed, disabled
 
 
+def is_chooser(component):
+    """Android's own chooser, which resolve-activity names when no Home is the default
+    (android/com.android.internal.app.ResolverActivity). It is not a Home to put back: set-home-activity refuses it."""
+    return bool(component) and (component.split("/", 1)[0] == "android" or component.endswith("ResolverActivity"))
+
+
 def query_home(dev):
     answer = shell(dev, "cmd package resolve-activity --brief -a android.intent.action.MAIN -c "
                         "android.intent.category.HOME")
     candidate = answer.splitlines()[-1].strip() if answer else ""
     # Android answers "android" (the chooser) when nothing handles HOME; that is not a component and
     # must never be written into a set-home-activity command.
-    return candidate if HOME_RE.fullmatch(candidate) else None
+    return candidate if HOME_RE.fullmatch(candidate) and not is_chooser(candidate) else None
 
 
 def connect():
@@ -450,6 +456,9 @@ def restore_commands(list_path, stock, raw_host):
         commands.append(f"pm enable {fallback}")
 
     home = record.get("home")
+    if is_chooser(home):
+        # A record taken while Android's chooser answered Home (written before query_home knew it): nothing to replay.
+        home = None
     if home and home.split("/", 1)[0] != CUSTOM_LAUNCHER:
         commands.append(f"cmd package set-home-activity --user 0 {home}")
     else:

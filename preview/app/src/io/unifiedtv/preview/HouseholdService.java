@@ -50,7 +50,7 @@ public final class HouseholdService extends Service {
         // Owner exception to SET-053: "Stop alerts" no longer stops anything by itself. It opens Unified TV's Settings,
         // which asks for the adult PIN and a confirmation first.
         Intent stop=new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).putExtra("stopAlerts",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent end=PendingIntent.getActivities(this,2,Launch.overHome(this,stop),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);   // Back from it: Home
+        PendingIntent end=PendingIntent.getActivity(this,2,Launch.viaHandOver(this,stop),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);   // never past Home, never closing what's open
         Notification notification=new Notification.Builder(this,"household").setContentTitle("Unified TV household alerts").setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).addAction(new Notification.Action.Builder(null,"Dismiss camera",close).build())
             .addAction(new Notification.Action.Builder(null,"Stop alerts",end).build()).build();startForeground(NOTIFICATION,notification);

@@ -97,6 +97,12 @@ public class SportsDbTest {
         assertEquals("searchteams.php?t=Brighton%20%26%20Hove%20Albion",SportsDb.searchTeams("Brighton & Hove Albion"));
         assertEquals("only letters, digits and a few marks; at most 40","searchteams.php?t=Spurs%20x%201",SportsDb.searchTeams("Spurs?x=1"));
         assertNull(SportsDb.searchTeams("  ?!  "));assertNull(SportsDb.searchTeams(null));
+        // Accented letters take six characters once encoded: a name that would pass searchName but not allowed() is never
+        // made into a request (it would fail as "couldn't be reached"); the picker says it is too long instead.
+        String accented=new String(new char[40]).replace('\0','é'),twenty=new String(new char[20]).replace('\0','é');
+        assertNotNull(SportsDb.searchName(accented));assertNull(SportsDb.searchTeams(accented));assertTrue(SportsDb.tooLong(accented));
+        assertTrue(SportsDb.allowed(SportsDb.searchTeams(twenty)));assertFalse(SportsDb.tooLong(twenty));assertFalse(SportsDb.tooLong("?!"));
+        String plain=new String(new char[60]).replace('\0','a');assertTrue("plain letters are cut to 40",SportsDb.allowed(SportsDb.searchTeams(plain)));
         for(String bad:new String[]{"searchteams.php?t=Spurs&x=1","eventsnext.php?id=1&x=2","eventsnext.php?id=abc","search_all_teams.php?l=a&s=Soccer","eventsround.php?id=1&r=1",
                 "eventsround.php?id=1&r=1&s=x","eventsseason.php?id=x&s=2026-2027","eventsnextleague.php?id=","../v2/json/x","https://example.invalid/x",null})
             assertFalse(bad,SportsDb.allowed(bad));

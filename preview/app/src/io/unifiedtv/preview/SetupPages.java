@@ -6,6 +6,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.*;
 import java.util.concurrent.*;
@@ -28,7 +29,7 @@ final class SetupPages {
     /** The Home Assistant phone setup found, as the household knows it (PhoneSetup.haName); null until looked. */
     private String haShown; private boolean haNaming;
     /** Team picker inside its task: a league opened, or the letters searched; Back clears them first. */
-    private int teamLeague; private String teamQuery, teamProblem; private int teamReady = -1;
+    private int teamLeague; private String teamQuery, teamProblem; private String teamRows = "";
     /** The last name looked up on TheSportsDB from the picker (only when an adult pressed for it) and what it found. */
     private String teamAsked; private List<TeamList.Entry> teamAnswer; private boolean teamAsking;
     private final TeamList.Listener teamListener;
@@ -348,6 +349,7 @@ final class SetupPages {
 
     // ------------------------------------------------------------------ Team picker (a task in the sheet)
     static String noFixtures(String club) { return "No fixtures found yet for " + club + "."; }
+    static final String TOO_LONG = "That name is too long to look up. Try the club's usual name.";
     static final String ASK_NOTE = "Sends the name you typed to TheSportsDB, which finds a club by its full name.";
     /**
      * By league (country, then league, then team) or by a few letters; no account or key needed (TheSportsDB). The
@@ -357,7 +359,9 @@ final class SetupPages {
      */
     private void teams() {
         TeamList.ensure(a);
-        JSONObject cat = FixtureFeed.catalogue(a), all = FixtureFeed.teams(a); List<JSONObject> leagues = TeamList.leagues(all); teamReady = leagues.size();
+        // Read once per drawing (not per step of the list); the merge is kept per version of the list (TeamList.mergedFor).
+        JSONObject cat = FixtureFeed.catalogue(a), all = TeamList.mergedFor(cat, TeamList.bundle(a));
+        List<JSONObject> leagues = TeamList.leagues(all); teamRows = rows(leagues);
         Fixtures.Team current = FixtureFeed.team(a);
         if (current != null) a.text("Now: " + current.displayName, 17).setFocusable(false);
         if (current != null && FixtureFeed.noneFound(a)) a.text(noFixtures(current.displayName), 15).setFocusable(false);
@@ -377,7 +381,8 @@ final class SetupPages {
             for (TeamList.Entry e : found) a.button(e.name + " · " + e.league, () -> pick(e));
             // A club the list lacks (or only half matches) can be asked for by its full name; one it has needs no asking.
             boolean exact = false; for (TeamList.Entry e : found) for (String n : e.names()) if (TeamList.key(n).equals(TeamList.key(teamQuery))) exact = true;
-            if (!exact && SportsDb.searchName(teamQuery) != null && !Profiles.kids(a)) {
+            if (!exact && SportsDb.tooLong(teamQuery) && !Profiles.kids(a)) a.text(TOO_LONG, 15);
+            else if (!exact && SportsDb.searchTeams(teamQuery) != null && !Profiles.kids(a)) {
                 if (teamQuery.equals(teamAsked) && teamAnswer != null) {
                     if (teamAnswer.isEmpty()) a.text("TheSportsDB has no club called \"" + teamQuery + "\". Try its full name, for example Hartlepool United.", 15);
                     for (TeamList.Entry e : teamAnswer) a.button(e.name + " · " + (e.league.isEmpty() ? "TheSportsDB" : e.league), () -> pick(e));
@@ -398,17 +403,37 @@ final class SetupPages {
         }
         a.text(SportsDb.ATTRIBUTION, 14).setFocusable(false);
     }
+    /** The league rows as the page shows them (league and team count), to tell whether a redraw would change them. */
+    static String rows(List<JSONObject> leagues) {
+        StringBuilder b = new StringBuilder();
+        for (JSONObject l : leagues) { JSONArray t = l.optJSONArray("teams"); b.append(l.optInt("id")).append(':').append(t == null ? 0 : t.length()).append(';'); }
+        return b.toString();
+    }
     private String progress(JSONObject cat) {
         if (teamProblem != null) return teamProblem;
         if (cat.optLong("fetchedAt") > 0) return "All UK leagues are ready.";
         int[] p = SportsDb.progress(cat);
         return p[0] == 0 ? "Reading the rest of the UK teams from TheSportsDB. This takes a minute or two the first time and is kept for a week." : "Reading the UK teams: " + p[0] + " of " + p[1] + " leagues so far.";
     }
+    /**
+     * Each step of the list as it is read (every few seconds): the merge is made on the worker and only the page's own
+     * update comes back to the main thread, so focus never waits on it.
+     */
     private void teamsChanged(JSONObject cat, String problem) {
         teamProblem = problem;
         if (!a.on(-1, SettingsActivity.TEAM)) return;
-        if (TeamList.leagues(FixtureFeed.teams(a)).size() != teamReady && teamLeague == 0 && teamQuery == null) a.refresh();
-        else if (teamProgress != null) teamProgress.setText(progress(cat));
+        android.content.Context app = a.getApplicationContext();
+        try {
+            worker.execute(() -> {
+                String rows = rows(TeamList.leagues(TeamList.mergedFor(cat, TeamList.bundle(app))));
+                a.runOnUiThread(() -> {
+                    if (a.isDestroyed() || !a.on(-1, SettingsActivity.TEAM)) return;
+                    // Redrawn only when a league row would read differently (a league added, a team count changed).
+                    if (!rows.equals(teamRows) && teamLeague == 0 && teamQuery == null) a.refresh();
+                    else if (teamProgress != null) teamProgress.setText(progress(cat));
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException closed) { /* the page has closed */ }
     }
     private void search() {
         EditText f = field("A few letters, for example spurs or hearts", false); if (teamQuery != null) f.setText(teamQuery);

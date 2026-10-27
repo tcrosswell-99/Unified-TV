@@ -96,12 +96,24 @@ final class Launch {
         return names.get(0);
     }
     /**
-     * A Unified TV screen opened from outside Home (a notification's action): Home first, then the screen on top, so Back
-     * from the screen lands on Unified TV's Home and never skips past it to the TV's own (HRC-03). Home is single-task:
-     * an open Home comes forward with whatever was over it closed. For PendingIntent.getActivities.
+     * A Unified TV screen opened from outside Unified TV (a notification's action), so that Back from it never skips past
+     * Home (HRC-03) and nothing already open is closed. The notification opens HouseholdActivity's hand-over with the
+     * screen as {@link #SCREEN}; at that moment route() decides, from whether Unified TV already had a task.
      */
-    static Intent[] overHome(Context c,Intent screen){
+    static final String SCREEN="screen";
+    static Intent viaHandOver(Context c,Intent screen){
         Intent top=new Intent(screen);top.setFlags(top.getFlags()&~Intent.FLAG_ACTIVITY_NEW_TASK);
+        return new Intent(c,HouseholdActivity.class).putExtra(SCREEN,top).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+    /**
+     * Pure: what the hand-over starts. {@code root}: it is the first screen of a new task (Unified TV wasn't open), so Home
+     * goes underneath, then the screen. Otherwise Unified TV's task is already there with whatever is open in it (a film
+     * playing, say): the screen goes on top of it, nothing is cleared, and Back returns to what was open. Home is
+     * single-task, so starting it would close everything above it; it is never started then.
+     */
+    static Intent[] route(boolean root,Context c,Intent screen){
+        Intent top=new Intent(screen);top.setFlags(top.getFlags()&~(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        if(!root)return new Intent[]{top};
         return new Intent[]{new Intent(c,UnifiedPreviewActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),top};
     }
     static void info(Activity a,String pkg){system(a,new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.fromParts("package",pkg,null)),"App information isn't available on this TV");}

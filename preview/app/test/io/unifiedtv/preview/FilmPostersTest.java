@@ -102,14 +102,14 @@ public class FilmPostersTest {
         LibraryFolders.save(app,FakeServer.source(),Collections.singletonList(new LibraryFolders.Folder("f","Films",null,false)));
         try(var c=Robolectric.buildActivity(DlnaLibraryActivity.class).setup()){DlnaLibraryActivity a=c.get();
             LibraryJourneyTest.until("rows",()->a.catalogue()!=null&&!LibraryJourneyTest.all(a.getWindow().getDecorView(),PosterView.class).isEmpty());
-            assertTrue(a.keyHintShown());assertTrue(LibraryJourneyTest.says(a,"Add your free TMDB key in Settings > Library & Media > Film posters to see posters"));
+            LibraryJourneyTest.until("the key is read off the main thread",a::keyHintShown);assertTrue(LibraryJourneyTest.says(a,"Add your free TMDB key in Settings > Library & Media > Film posters to see posters"));
             assertEquals("Heat",a.catalogue().titles.get(0).name);
             // The key is added on the phone while the library is away; coming back hides the hint and asks TMDB.
-            c.pause().stop();Posters.testKey=KEY;c.restart().start().resume();LibraryJourneyTest.idle();
-            assertFalse(a.keyHintShown());
+            c.pause().stop();Posters.testKey=KEY;c.restart().start().resume();
+            LibraryJourneyTest.until("the hint goes once the key is read",()->!a.keyHintShown());
         }
         Posters.reset();
-        try(var c=Robolectric.buildActivity(DlnaLibraryActivity.class).setup()){LibraryJourneyTest.until("rows",()->c.get().catalogue()!=null);assertFalse("with a key: no hint",c.get().keyHintShown());}
+        try(var c=Robolectric.buildActivity(DlnaLibraryActivity.class).setup()){LibraryJourneyTest.until("rows",()->c.get().catalogue()!=null);LibraryJourneyTest.idle();assertFalse("with a key: no hint",c.get().keyHintShown());}
     }
 
     /** A pretend NAS picture: 200 and the bytes. */

@@ -782,3 +782,12 @@ When you report how an app does on your TV, say how far it got, because each ste
 own: installed, opened, usable with the physical remote, signed in, and played a title with sound.
 Reaching the login screen is not playback. Quote the app's full error code (Netflix's `UI-800-3`,
 for example) rather than "doesn't work", since that is what the app's own help pages look up (#1008).
+
+## Unified TV: Home Assistant stopped connecting after it worked
+
+Phone setup saves Home Assistant by its number address on the home network (for example `192.168.1.5:8123`),
+even when it was found or typed as `homeassistant.local`, because many phones and Android 11 TVs can't look
+`.local` names up. If the router later gives Home Assistant a different address (DHCP), the TV keeps asking the
+old one and Settings says Home Assistant can't be reached. Either run phone setup again (Settings → Smart Home →
+Home Assistant), or, better, give Home Assistant a fixed address in the router (a DHCP reservation) so it never
+changes. Owner diagnostics (Updates & About → Advanced) shows the last phone setup step that failed.

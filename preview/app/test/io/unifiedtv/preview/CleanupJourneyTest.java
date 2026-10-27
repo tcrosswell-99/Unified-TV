@@ -14,6 +14,7 @@ import org.robolectric.*;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowAlertDialog;
+import java.io.Closeable;
 import java.io.File;
 import java.util.*;
 import static org.junit.Assert.*;
@@ -58,7 +59,7 @@ public class CleanupJourneyTest {
         CleanupLists.forTests = FakeTv.lists();
         CleanupActivity.fingerprintForTests = FakeTv.OWNER;
         CleanupActivity.backgroundForTests = Runnable::run;
-        CleanupActivity.openerForTests = (c, prompt) -> { opens++; prompt.showing(); return new CleanupActivity.Opened(tv, tv); };
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { opens++; prompt.showing(); return new CleanupActivity.Opened(tv, tv); };
         File f = recordFile(); if (f.exists()) assertTrue(f.delete());
     }
     @After public void tearDown() { CleanupLists.forTests = null; CleanupActivity.fingerprintForTests = null; CleanupActivity.backgroundForTests = null; CleanupActivity.openerForTests = null; }
@@ -187,7 +188,7 @@ public class CleanupJourneyTest {
     }
 
     @Test public void aTvThatSaysNoIsExplained() {
-        CleanupActivity.openerForTests = (c, prompt) -> { throw new AdbException(AdbException.Kind.NOT_ALLOWED, "no"); };
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { throw new AdbException(AdbException.Kind.NOT_ALLOWED, "no"); };
         try (ActivityController<CleanupActivity> c = open()) {
             CleanupActivity a = c.get();
             press(a, "Start the read-only check");
@@ -195,6 +196,97 @@ public class CleanupJourneyTest {
             assertNotNull(find(root(a), "Try again"));
         }
         assertFalse(recordFile().exists());
+    }
+
+    /** Two apps turned off earlier, as the record and the TV hold them. */
+    private void turnedOffEarlier() throws Exception {
+        Cleanup.Check check = Cleanup.check(tv, FakeTv.lists(), FakeTv.OWNER, app.getPackageName(), null);
+        Cleanup.apply(tv, recordFile(), check, Arrays.asList("com.tcl.bi", "com.tcl.esticker"), "2026-10-27T12:00:00+0000", null, null);
+        tv.commands.clear();
+    }
+
+    @Test public void afterAFirmwareUpdateUndoIsStillThere() throws Exception {
+        turnedOffEarlier();
+        CleanupActivity.fingerprintForTests = "TCL/BeyondTV6/BeyondTV4:12/SP1A.210812.016/AR20:user/release-keys";
+        tv.fingerprint = CleanupActivity.fingerprintForTests;
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = c.get();
+            String page = words(root(a));
+            assertTrue(page.contains("can still be turned back on below"));
+            assertFalse("it did change apps earlier", page.contains("and nothing has been"));
+            assertNull("no new changes on unknown firmware", find(root(a), "Start the read-only check"));
+            assertNotNull(find(root(a), "Save the undo files on your phone"));
+            press(a, "Turn apps back on");
+            assertTrue("titles from the lists, without a check", words(root(a)).contains("TCL analytics (com.tcl.bi): off"));
+            press(a, "Undo all (2)");
+            assertFalse(tv.disabled.contains("com.tcl.bi")); assertFalse(tv.disabled.contains("com.tcl.esticker"));
+        }
+    }
+
+    @Test public void aLateAllowAfterLeavingThePageClosesTheLink() {
+        Closeable[] pending = new Closeable[1]; boolean[] abandoned = {false};
+        CleanupActivity[] page = new CleanupActivity[1];
+        CleanupActivity.openerForTests = (c, prompt, opening) -> {
+            opening.accept(() -> abandoned[0] = true);   // the connection being opened, while the TV's prompt waits
+            prompt.showing();
+            page[0].onBackPressed(); idle();               // the owner goes back before answering
+            return new CleanupActivity.Opened(tv, tv);    // ...then presses Allow on the TV
+        };
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = page[0] = c.get();
+            press(a, "Start the read-only check");
+            assertTrue("Back aborted the pending connection", abandoned[0]);
+            assertTrue("the late link was closed at once", tv.closed);
+            assertTrue("nothing was read on it", tv.commands.isEmpty());
+            assertNotNull("back on the first page, not replaced by a late result", find(root(a), "Start the read-only check"));
+        }
+    }
+
+    @Test public void aLateAllowAfterTheScreenClosedClosesTheLink() {
+        CleanupActivity[] page = new CleanupActivity[1];
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { page[0].finish(); return new CleanupActivity.Opened(tv, tv); };
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = page[0] = c.get();
+            press(a, "Start the read-only check");
+            assertTrue(tv.closed);
+            assertTrue(tv.commands.isEmpty());
+        }
+    }
+
+    @Test public void backWorksWhileTheTvAsksEvenBeforeAChange() throws Exception {
+        turnedOffEarlier();
+        CleanupActivity[] page = new CleanupActivity[1]; int[] calls = {0};
+        CleanupActivity.openerForTests = (c, prompt, opening) -> {
+            if (++calls[0] == 2) { page[0].onBackPressed(); idle(); }   // the second link: Undo all, the TV asking again
+            return new CleanupActivity.Opened(tv, tv);
+        };
+        ActivityController<CleanupActivity> c = open();
+        CleanupActivity a = page[0] = c.get();
+        press(a, "Turn apps back on");
+        c.pause().stop(); idle(); c.start().resume(); idle();   // leaving closed the link
+        tv.closed = false;
+        org.robolectric.shadows.ShadowToast.reset();
+        press(a, "Undo all (2)");
+        assertNotEquals("Back wasn't refused", "Please wait: apps are being changed one at a time.", org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+        assertTrue("nothing was changed", tv.changes().isEmpty());
+        assertTrue(tv.disabled.contains("com.tcl.bi"));
+        assertTrue(tv.closed);
+        c.pause().stop().destroy();
+    }
+
+    @Test public void anAppThatCantBeChangedIsSaidPlainly() throws Exception {
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = c.get();
+            press(a, "Start the read-only check");
+            press(a, "Turn off: TCL analytics");
+            press(a, "Review my choices (1)");
+            java.lang.reflect.Field f = CleanupActivity.class.getDeclaredField("check"); f.setAccessible(true);
+            ((Cleanup.Check) f.get(a)).item("com.tcl.bi").blocked = "kept";   // what apply() refuses
+            press(a, "Turn off this app");
+            assertTrue(words(root(a)).contains(CleanupActivity.CANT_CHANGE));
+            assertFalse(words(root(a)).contains("stopped answering"));
+        }
+        assertTrue(tv.changes().isEmpty());
     }
 
     @Test public void leavingTheScreenClosesTheLink() {

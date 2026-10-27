@@ -11,9 +11,20 @@ import org.json.JSONObject;
 public final class HouseholdActivity extends android.app.Activity {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        startActivity(new android.content.Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).putExtra("task",SettingsActivity.HOUSEHOLD));
+        android.content.Intent screen=screen();
+        if(screen==null)screen=new android.content.Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).putExtra("task",SettingsActivity.HOUSEHOLD);
+        // HRC-03: Home underneath only when Unified TV wasn't open; otherwise on top of what is (Launch.route).
+        android.content.Intent[] go=Launch.route(isTaskRoot(),this,screen);
+        try{if(go.length>1)startActivities(go);else startActivity(go[0]);}catch(RuntimeException ignored){}
         finish();overridePendingTransition(0,0);
     }
+    /** A notification's screen (Launch.viaHandOver): only one of this app's own screens is ever opened from here. */
+    private android.content.Intent screen(){
+        android.content.Intent s;
+        try{s=android.os.Build.VERSION.SDK_INT>=android.os.Build.VERSION_CODES.TIRAMISU?getIntent().getParcelableExtra(Launch.SCREEN,android.content.Intent.class):legacyScreen();}catch(RuntimeException e){return null;}
+        return s!=null&&s.getComponent()!=null&&getPackageName().equals(s.getComponent().getPackageName())?s:null;
+    }
+    @SuppressWarnings("deprecation") private android.content.Intent legacyScreen(){return getIntent().getParcelableExtra(Launch.SCREEN);}
     static void action(android.app.Activity activity,String name){
         java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();executor.execute(()->{
             boolean ok=false;

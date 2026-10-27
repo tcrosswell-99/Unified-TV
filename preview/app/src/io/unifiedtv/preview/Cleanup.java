@@ -62,12 +62,23 @@ final class Cleanup {
         if (out != null) for (String line : out.split("\\r?\\n")) { line = line.trim(); int slash = line.indexOf('/'); if (slash > 0 && AdbCommands.isPackage(line.substring(0, slash))) s.add(line.substring(0, slash)); }
         return s;
     }
-    /** The component that owns Home (resolve-activity's last line), or null for the chooser ("android") or nothing. */
+    /**
+     * The component that owns Home (resolve-activity's last line), or null for nothing, a bare "android", or Android's
+     * chooser "android/com.android.internal.app.ResolverActivity" (no Home is the default).
+     */
     static String homeComponent(String out) {
         if (out == null) return null;
         String[] lines = out.trim().split("\\r?\\n");
         return CleanupRecord.home(lines[lines.length - 1].trim());
     }
+    /** Packages of the active screensaver(s): {@code screensaver_components} is a comma-separated list, or "null". */
+    static Set<String> screensavers(String out) {
+        Set<String> s = new LinkedHashSet<>();
+        if (out != null) for (String part : out.split("[,\\s]+")) { int slash = part.indexOf('/'); if (slash > 0 && AdbCommands.isPackage(part.substring(0, slash))) s.add(part.substring(0, slash)); }
+        return s;
+    }
+    /** Stock Home apps, whichever this TV has (the lists' own, and the Google ones). */
+    static final List<String> STOCK = Arrays.asList("com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx", "com.google.android.leanbacklauncher", "com.tcl.tvlauncher");
     static String versionName(String dumpsys) {
         if (dumpsys == null) return "";
         for (String line : dumpsys.split("\\r?\\n")) { String t = line.trim(); if (t.startsWith("versionName=")) return t.substring(12).trim(); }
@@ -99,6 +110,7 @@ final class Cleanup {
         if (!c.match.known()) return c;   // AT-32: read-only guidance, nothing about packages is even read
         facts(sh, c.facts, c.match, self, liveTv);
         Set<String> installed = packages(sh.run(AdbCommands.PACKAGES)), disabled = packages(sh.run(AdbCommands.DISABLED));
+        live(sh, c.facts, installed, disabled);
         for (CleanupLists.Entry e : c.match.items) {
             Item i = new Item(e);
             i.state = state(e.pkg, installed, disabled);
@@ -116,11 +128,20 @@ final class Cleanup {
 
     private static void facts(Shell sh, CleanupPolicy.Facts f, CleanupLists.Match m, String self, String liveTv) throws IOException {
         f.keep.addAll(m.keep); f.stockLaunchers.addAll(m.stockLaunchers); f.self = self; f.liveTv = liveTv;
+        f.channelApps.addAll(components(sh.run(AdbCommands.CHANNEL_APPS)));
+        f.settingsApps.addAll(components(sh.run(AdbCommands.SETTINGS_APPS)));
+    }
+
+    /** What can change between the check and the change: Home, its claimants, the screensaver, the stock launcher. Returns Home. */
+    private static String live(Shell sh, CleanupPolicy.Facts f, Set<String> installed, Set<String> disabled) throws IOException {
         String home = homeComponent(sh.run(AdbCommands.HOME));
         f.homeOwner = home == null ? null : home.substring(0, home.indexOf('/'));
         f.homeClaims.addAll(components(sh.run(AdbCommands.HOME_CLAIMS)));
-        f.channelApps.addAll(components(sh.run(AdbCommands.CHANNEL_APPS)));
-        f.settingsApps.addAll(components(sh.run(AdbCommands.SETTINGS_APPS)));
+        f.screensavers.clear(); f.screensavers.addAll(screensavers(sh.run(AdbCommands.SCREENSAVER)));
+        Set<String> stock = new LinkedHashSet<>(STOCK); stock.addAll(f.stockLaunchers);
+        f.stockLauncherOn = false;
+        for (String l : stock) if (installed.contains(l) && !disabled.contains(l)) f.stockLauncherOn = true;
+        return home;
     }
 
     static String state(String pkg, Set<String> installed, Set<String> disabled) {
@@ -144,12 +165,12 @@ final class Cleanup {
         List<String> batch = new ArrayList<>(new LinkedHashSet<>(chosen));
         if (batch.isEmpty()) throw new IllegalArgumentException("nothing chosen");
         for (String p : batch) { Item i = check.item(p); if (i == null || !i.canTurnOff()) throw new IllegalArgumentException("not offered: " + p); }
-        // Read again: Home could have moved, or a package changed, since the check.
+        // Read again: Home, the screensaver, the stock launcher or a package could have changed since the check.
         CleanupPolicy.Facts now = check.facts;
-        String home = homeComponent(sh.run(AdbCommands.HOME));
-        now.homeOwner = home == null ? null : home.substring(0, home.indexOf('/'));
-        now.homeClaims.addAll(components(sh.run(AdbCommands.HOME_CLAIMS)));
-        Map<String, String> before = states(sh, batch);
+        Set<String> installed = packages(sh.run(AdbCommands.PACKAGES)), disabled = packages(sh.run(AdbCommands.DISABLED));
+        String home = live(sh, now, installed, disabled);
+        Map<String, String> before = new LinkedHashMap<>();
+        for (String p : batch) before.put(p, state(p, installed, disabled));
         for (String p : batch)
             if (CleanupPolicy.blocked(p, now) != null || !CleanupRecord.ENABLED.equals(before.get(p))) throw new IllegalStateException("changed since the check: " + p);
         // The record goes to disk before the first change; a failed write stops here with the TV untouched.
@@ -157,17 +178,40 @@ final class Cleanup {
         if (record == null) record = snapshot(sh, check.fingerprint, home, created);
         // Only the chosen packages: Home is recorded as a component ("home") but never changed here, so its package is not
         // listed (tools/recovery.py lists it because a debloat list may disable it; this page never can).
-        record.add(before);
+        List<String> added = record.add(before);
         CleanupRecord.write(recordFile, record);
-        List<String> done = new ArrayList<>();
+        List<String> said = new ArrayList<>();
         for (int n = 0; n < batch.size(); n++) {
             String p = batch.get(n);
             if (progress != null) progress.step(n, batch.size(), p);
-            String out = sh.run(AdbCommands.disable(p));
-            if (out.contains("disabled")) { done.add(p); if (changed != null) changed.accept(p); }
+            if (said(sh.run(AdbCommands.disable(p)), p, "disabled-user")) said.add(p);
         }
         if (progress != null) progress.step(batch.size(), batch.size(), null);
+        // What actually changed is what the TV reports now, not what pm printed.
+        List<String> done = confirmed(sh, batch, said, CleanupRecord.DISABLED);
+        // A package this batch added to the record but couldn't turn off was never changed: it leaves the record (and the
+        // phone's undo list) again. Entries from earlier batches are never touched.
+        boolean pruned = false;
+        for (String p : added) if (!done.contains(p)) { record.packages.remove(p); pruned = true; }
+        if (pruned) CleanupRecord.write(recordFile, record);
+        if (changed != null) for (String p : done) changed.accept(p);
         return done;
+    }
+
+    /** pm's own success line, exactly: "Package <pkg> new state: <state>". */
+    static boolean said(String out, String pkg, String state) {
+        if (out == null) return false;
+        for (String line : out.split("\\r?\\n")) if (line.trim().equals("Package " + pkg + " new state: " + state)) return true;
+        return false;
+    }
+
+    /** The packages now in {@code state}, read again from the TV; if that read fails, what pm said. */
+    private static List<String> confirmed(Shell sh, List<String> batch, List<String> said, String state) {
+        try {
+            Map<String, String> now = states(sh, batch);
+            List<String> out = new ArrayList<>(); for (String p : batch) if (state.equals(now.get(p))) out.add(p);
+            return out;
+        } catch (IOException e) { return said; }
     }
 
     /** A new record: this TV's ids, Home and animation scales now, as tools/recovery.py --save reads them. */
@@ -187,14 +231,15 @@ final class Cleanup {
     static List<String> turnBackOn(Shell sh, CleanupRecord record, Collection<String> which, Progress progress, Consumer<String> changed) throws IOException {
         List<String> batch = new ArrayList<>();
         for (String p : which) if (record != null && CleanupRecord.ENABLED.equals(record.packages.get(p))) batch.add(p);
-        List<String> done = new ArrayList<>();
+        List<String> said = new ArrayList<>();
         for (int n = 0; n < batch.size(); n++) {
             String p = batch.get(n);
             if (progress != null) progress.step(n, batch.size(), p);
-            String out = sh.run(AdbCommands.enable(p));
-            if (out.contains("enabled")) { done.add(p); if (changed != null) changed.accept(p); }
+            if (said(sh.run(AdbCommands.enable(p)), p, "enabled")) said.add(p);
         }
         if (progress != null) progress.step(batch.size(), batch.size(), null);
+        List<String> done = batch.isEmpty() ? said : confirmed(sh, batch, said, CleanupRecord.ENABLED);
+        if (changed != null) for (String p : done) changed.accept(p);
         return done;
     }
 

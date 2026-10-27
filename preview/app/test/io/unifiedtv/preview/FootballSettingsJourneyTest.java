@@ -60,6 +60,7 @@ public class FootballSettingsJourneyTest {
             press(a,"Your team: choose from the UK teams");
             assertEquals(SettingsActivity.TEAM,a.overlay().task());assertEquals("inside the same sheet",standard,a.sheet().getLayoutParams().width);
             waitForList();
+            waitFor(a,"Premier League · 21 teams");waitFor(a,"Premiership · 1 team");   // each step's merge is made on the page's worker
             assertNotNull("TheSportsDB's three (its free key lists few) and Unified TV's own Premier League clubs",find(root(a),"Premier League · 21 teams"));
             assertNotNull("the Championship whole, even with nothing from TheSportsDB",find(root(a),"Championship · 24 teams"));
             assertNotNull(find(root(a),"League One · 24 teams"));
@@ -111,6 +112,16 @@ public class FootballSettingsJourneyTest {
             press(a,"Hartlepool United · English National League");
             Fixtures.Team t=FixtureFeed.team(a);assertEquals("sdb:134388",t.id);assertEquals("4719",t.league);assertEquals(0xFF0047AB,t.primary);
             checked();
+        }
+    }
+    @Test public void aNameTooLongToSendIsSaidPlainly()throws Exception{
+        try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){
+            SettingsActivity a=c.get();open(a,"Smart Home");press(a,"Your team: choose from the UK teams");waitForList();
+            press(a,"Search by name");String name=new String(new char[30]).replace('\0','é');
+            AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();((EditText)Shadows.shadowOf(d).getView()).setText(name);
+            d.getButton(DialogInterface.BUTTON_POSITIVE).performClick();idle();
+            assertNotNull(text(root(a),SetupPages.TOO_LONG));assertNull(find(root(a),"Look up \""+name+"\" on TheSportsDB"));
+            for(String r:new ArrayList<>(sent))assertFalse(r.startsWith("searchteams"));
         }
     }
     @Test public void aBundledClubCanBePickedAndSaysWhenNoFixturesAreFound()throws Exception{

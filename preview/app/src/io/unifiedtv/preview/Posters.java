@@ -170,13 +170,13 @@ final class Posters {
                 if(out!=null)memory.put(k,out);deliver(k,out);
             });
         };
-        if(latestOnly)synchronized(this){queuedBackdrop=lookup;queuedBackdropKey=k;}
+        if(latestOnly)synchronized(queueLock){queuedBackdrop=lookup;queuedBackdropKey=k;}
         submit(lookups,lookupQueue,true,lookup);
     }
     private void dropQueuedBackdrop(String next){
-        Runnable r;String k;synchronized(this){r=queuedBackdrop;k=queuedBackdropKey;queuedBackdrop=null;queuedBackdropKey=null;}
+        Runnable r;String k;synchronized(queueLock){r=queuedBackdrop;k=queuedBackdropKey;queuedBackdrop=null;queuedBackdropKey=null;}
         if(r==null)return;
-        if(k.equals(next)){synchronized(this){if(queuedBackdrop==null){queuedBackdrop=r;queuedBackdropKey=k;}}return;}
+        if(k.equals(next)){synchronized(queueLock){if(queuedBackdrop==null){queuedBackdrop=r;queuedBackdropKey=k;}}return;}
         if(lookupQueue.remove(r))deliver(k,null);   // not started yet: nothing was looked up or decoded for it
     }
     /** Warms the cache for tiles about to be seen (not urgent; nothing is shown). */
@@ -186,8 +186,13 @@ final class Posters {
     /** What a lookup needs, copied so that no view or catalogue is held by the queue. */
     private static final class LookupJob{final String lookupKey,title,year,serverArt,udn;final boolean tv;
         LookupJob(LibraryCatalogue.Card c,String udn){lookupKey=c.lookupKey();title=c.lookupTitle();year=c.lookupYear();serverArt=c.serverArt()==null?"":c.serverArt();tv=c.tv();this.udn=udn==null?"":udn;}}
-    private synchronized boolean wait(String k,Callback cb){List<Callback> l=waiting.get(k);if(l!=null){if(cb!=null)l.add(cb);return false;}l=new ArrayList<>();if(cb!=null)l.add(cb);waiting.put(k,l);return true;}
-    private void deliver(String k,Bitmap b){List<Callback> l;synchronized(this){l=waiting.remove(k);}if(l==null||l.isEmpty())return;main.post(()->{for(Callback c:l)c.done(b);});}
+    /**
+     * The main thread's own lock (callbacks waiting, the queued background): never the one held while the match list is
+     * read or changed, and no file is ever written under either (AGENTS rule 5: focus never waits for storage).
+     */
+    private final Object queueLock=new Object();
+    private boolean wait(String k,Callback cb){synchronized(queueLock){List<Callback> l=waiting.get(k);if(l!=null){if(cb!=null)l.add(cb);return false;}l=new ArrayList<>();if(cb!=null)l.add(cb);waiting.put(k,l);return true;}}
+    private void deliver(String k,Bitmap b){List<Callback> l;synchronized(queueLock){l=waiting.remove(k);}if(l==null||l.isEmpty())return;main.post(()->{for(Callback c:l)c.done(b);});}
     private void submit(ThreadPoolExecutor ex,LinkedBlockingDeque<Runnable> q,boolean urgent,Runnable r){
         try{if(ex.isShutdown())return;if(ex.getPoolSize()<ex.getCorePoolSize())ex.prestartAllCoreThreads();if(urgent)q.offerFirst(r);else q.offerLast(r);}
         catch(RuntimeException ignored){}
@@ -250,22 +255,37 @@ final class Posters {
         catch(Exception e){matches=new JSONObject();}
         return matches;
     }
-    private synchronized void remember(String id,JSONObject rec){
-        try{matches().put(id,rec);}catch(JSONException ignored){return;}
-        if(matches.length()>MATCH_MAX)trim();
-        dirty=true;long now=System.currentTimeMillis();
-        if(now-savedAt>3000||lookupQueue.isEmpty())save();
+    private void remember(String id,JSONObject rec){
+        boolean due;
+        synchronized(this){
+            try{matches().put(id,rec);}catch(JSONException ignored){return;}
+            if(matches.length()>MATCH_MAX)trim();
+            dirty=true;long now=System.currentTimeMillis();due=now-savedAt>3000||lookupQueue.isEmpty();
+        }
+        if(due)save();
     }
     private void trim(){
         List<String> keys=new ArrayList<>();for(Iterator<String> it=matches.keys();it.hasNext();)keys.add(it.next());
         keys.sort(Comparator.comparingLong(k->matches.optJSONObject(k)==null?0:matches.optJSONObject(k).optLong("at")));
         for(int i=0;i<keys.size()-MATCH_MAX;i++)matches.remove(keys.get(i));
     }
-    private synchronized void save(){
-        if(!dirty||matches==null)return;
-        try{if(!dir.isDirectory()&&!dir.mkdirs())return;File tmp=new File(dir,"matches.tmp"),f=new File(dir,"matches.json");
-            try(OutputStream o=new FileOutputStream(tmp)){o.write(matches.toString().getBytes(StandardCharsets.UTF_8));}
-            if(tmp.renameTo(f)){dirty=false;savedAt=System.currentTimeMillis();}}catch(Exception ignored){}
+    /** A copy is taken under the lock; the file is written after it, so nothing waits on storage for the lock. */
+    private void save(){
+        String json;long seq;
+        synchronized(this){if(!dirty||matches==null)return;json=matches.toString();dirty=false;savedAt=System.currentTimeMillis();seq=++writes;}
+        if(!write("matches",json,seq))synchronized(this){dirty=true;}
+    }
+    private final Object fileLock=new Object();private final Map<String,Long> written=new HashMap<>();private long writes;
+    /** One private file, replaced whole; an older copy that arrives after a newer one is not written over it. */
+    private boolean write(String name,String content,long seq){
+        synchronized(fileLock){
+            Long last=written.get(name);if(last!=null&&last>=seq)return true;
+            try{if(!dir.isDirectory()&&!dir.mkdirs())return false;File tmp=new File(dir,name+".tmp"),f=new File(dir,name+".json");
+                try(OutputStream o=new FileOutputStream(tmp)){o.write(content.getBytes(StandardCharsets.UTF_8));}
+                if(!tmp.renameTo(f)){tmp.delete();return false;}
+                written.put(name,seq);return true;}
+            catch(Exception e){return false;}
+        }
     }
     /** Cache key: the server's UDN and the item's id (or the programme's key), hashed. */
     static String id(String udn,String lookupKey){return hash((udn==null?"":udn)+"\n"+lookupKey);}
@@ -278,16 +298,23 @@ final class Posters {
     /** For tests: the match saved for a tile, or null. */
     synchronized JSONObject saved(String udn,String lookupKey){return matches().optJSONObject(id(udn,lookupKey));}
     /** Settings > Privacy (or a reset): forget matches and pictures. The household's own corrections (SET-034) stay. */
-    synchronized void clear(){memory.evictAll();summaries.clear();matches=new JSONObject();dirty=true;save();disk.clear();
-        lastResult="";lastCode=0;lastAt=0;unmatched.clear();new File(dir,"status.json").delete();}
+    void clear(){
+        memory.evictAll();summaries.clear();String status;long seq;
+        synchronized(this){matches=new JSONObject();dirty=true;lastResult="";lastCode=0;lastAt=0;unmatched.clear();status=statusJson();seq=++writes;}
+        save();write("status",status,seq);disk.clear();
+    }
 
     // --- Owner diagnostics: what happened with TMDB on this TV
     /** Keeps the last request's result; saved when it changes or a title had no match (cleaned titles only, never a file name). */
-    private synchronized void note(String result,int code,String missed){
-        status();boolean changed=!result.equals(lastResult)||code!=lastCode;
-        lastResult=result;lastCode=code;lastAt=System.currentTimeMillis();
-        if(missed!=null&&!missed.trim().isEmpty()){unmatched.remove(missed);unmatched.addFirst(missed);while(unmatched.size()>UNMATCHED_KEPT)unmatched.removeLast();changed=true;}
-        if(changed)saveStatus();
+    private void note(String result,int code,String missed){
+        String json;long seq;
+        synchronized(this){
+            status();boolean changed=!result.equals(lastResult)||code!=lastCode;
+            lastResult=result;lastCode=code;lastAt=System.currentTimeMillis();
+            if(missed!=null&&!missed.trim().isEmpty()){unmatched.remove(missed);unmatched.addFirst(missed);while(unmatched.size()>UNMATCHED_KEPT)unmatched.removeLast();changed=true;}
+            if(!changed)return;json=statusJson();seq=++writes;
+        }
+        write("status",json,seq);
     }
     private synchronized void status(){
         if(lastResult!=null)return;lastResult="";
@@ -296,11 +323,9 @@ final class Posters {
             JSONArray u=o.optJSONArray("u");if(u!=null)for(int i=0;i<u.length()&&unmatched.size()<UNMATCHED_KEPT;i++)unmatched.addLast(u.optString(i));}
         catch(Exception ignored){/* none yet */}
     }
-    private synchronized void saveStatus(){
-        try{if(!dir.isDirectory()&&!dir.mkdirs())return;File tmp=new File(dir,"status.tmp"),f=new File(dir,"status.json");
-            JSONObject o=new JSONObject().put("r",lastResult).put("c",lastCode).put("at",lastAt).put("u",new JSONArray(new ArrayList<>(unmatched)));
-            try(OutputStream out=new FileOutputStream(tmp)){out.write(o.toString().getBytes(StandardCharsets.UTF_8));}
-            if(!tmp.renameTo(f))tmp.delete();}catch(Exception ignored){}
+    private synchronized String statusJson(){
+        try{return new JSONObject().put("r",lastResult).put("c",lastCode).put("at",lastAt).put("u",new JSONArray(new ArrayList<>(unmatched))).toString();}
+        catch(JSONException e){return "{}";}
     }
     /** The last request's result ("" when there was none), its HTTP status and when (ms), for tests and diagnostics. */
     synchronized String lastResult(){status();return lastResult;}
@@ -352,7 +377,8 @@ final class Posters {
     }
     /** Back to the automatic picture (TMDB's cautious match, then the server's): the choice is removed and looked up again. */
     void automatic(String udn,String lookupKey){
-        synchronized(this){fixes().remove(id(udn,lookupKey));matches().remove(id(udn,lookupKey));dirty=true;save();saveFixes();}
+        synchronized(this){fixes().remove(id(udn,lookupKey));matches().remove(id(udn,lookupKey));dirty=true;saveFixes();}
+        save();
         forget(udn,lookupKey);
     }
     /** For Settings (Library &amp; Media or Privacy &amp; Data): how many titles have a picture chosen by hand, and forgetting them all. */

@@ -46,7 +46,17 @@ final class CleanupRecord {
         if (!DEVICE_ID.matcher(v).matches() || PLACEHOLDERS.contains(v.toLowerCase(Locale.ROOT)) || v.matches("0+")) return null;
         return v;
     }
-    static String home(String component) { return component != null && HOME.matcher(component).matches() ? component : null; }
+    /**
+     * A Home component worth replaying, else null. Android's chooser ("android/com.android.internal.app.ResolverActivity",
+     * what resolve-activity answers when no Home is the default) is not one: replayed, set-home-activity fails and restore
+     * skips its stock-launcher fallback (tools/recovery.py treats it the same way).
+     */
+    static String home(String component) { return component != null && HOME.matcher(component).matches() && !chooser(component) ? component : null; }
+    static boolean chooser(String component) {
+        if (component == null) return false;
+        int slash = component.indexOf('/');
+        return (slash < 0 ? component : component.substring(0, slash)).equals("android") || component.endsWith("ResolverActivity");
+    }
     static String scale(String value) { String v = value == null ? "" : value.trim(); return SCALE.matcher(v).matches() ? v : null; }
 
     /** Packages Unified TV turned off (recorded as on before), in name order. */
@@ -112,8 +122,9 @@ final class CleanupRecord {
             JSONObject p = o.optJSONObject("packages"); if (p == null) return null;
             CleanupRecord r = new CleanupRecord();
             r.created = o.optString("created"); r.fingerprint = o.optString("fingerprint");
-            r.home = o.isNull("home") ? null : home(o.optString("home"));
-            if (!o.isNull("home") && r.home == null) return null;
+            String rawHome = o.isNull("home") ? null : o.optString("home");
+            if (rawHome != null && !HOME.matcher(rawHome).matches()) return null;   // damaged, as recovery.py refuses it
+            r.home = home(rawHome);
             for (Iterator<String> k = p.keys(); k.hasNext(); ) {
                 String name = k.next(), state = p.optString(name);
                 if (!io.unifiedtv.adb.AdbCommands.isPackage(name) || !(ENABLED.equals(state) || DISABLED.equals(state) || ABSENT.equals(state))) return null;

@@ -49,7 +49,8 @@ import java.util.concurrent.Executors;
 public final class CleanupActivity extends GlassScreen {
     /** The open link: what runs commands, and what closes it. */
     static final class Opened { final Cleanup.Shell shell; final Closeable link; Opened(Cleanup.Shell shell, Closeable link) { this.shell = shell; this.link = link; } }
-    interface Opener { Opened open(Context c, AdbLink.Prompt prompt) throws Exception; }
+    /** {@code opening} receives what to close to abort the connection while it is still being opened (the TV's prompt). */
+    interface Opener { Opened open(Context c, AdbLink.Prompt prompt, java.util.function.Consumer<Closeable> opening) throws Exception; }
     /** Tests only: a simulated TV, a same-thread executor and the TV's fingerprint. Production never sets them. */
     static volatile Opener openerForTests;
     static volatile Executor backgroundForTests;
@@ -61,15 +62,20 @@ public final class CleanupActivity extends GlassScreen {
         + "It talks only to this TV, and only while this page is open.";
     static final String PROMPT_WORDS = "Look at the TV: a box asks \"Allow USB debugging?\". Tick \"Always allow from this computer\", then choose OK. "
         + "It names this TV's own key, unifiedtv@tv.";
-    static final String UNKNOWN_WORDS = "This TV isn't one the clean-up lists were tested on, so nothing can be changed here, and nothing has been. "
-        + "Turning off the wrong app can stop the remote, the picture, the network or updates. If you want to tidy this TV, do it from a computer "
+    static final String UNKNOWN_ADVICE = "Turning off the wrong app can stop the remote, the picture, the network or updates. If you want to tidy this TV, do it from a computer "
         + "with a list made and tested for this exact model, which saves a backup first and can be undone (docs/INSTALLATION_AND_RECOVERY.md). "
         + "Never turn off the TV's Home, Settings, Live TV and inputs, remote, network, keyboard, accessibility or updates.";
+    static final String UNKNOWN_WORDS = "This TV isn't one the clean-up lists were tested on, so nothing can be changed here, and nothing has been. " + UNKNOWN_ADVICE;
+    /** The same, when Unified TV did turn apps off earlier (the firmware has changed since, for example after an update). */
+    static final String UNKNOWN_AFTER = "This TV's firmware isn't one the clean-up lists were tested on (it may have been updated since), so no more apps can be "
+        + "turned off here. The apps Unified TV turned off earlier can still be turned back on below. " + UNKNOWN_ADVICE;
 
     private ExecutorService worker;
     private volatile Cleanup.Shell shell;
-    private volatile Closeable link;
-    private volatile boolean busy, changing, stopped;
+    private volatile Closeable link, opening;
+    /** Titles from the tested lists, parsed once (off the UI thread when a job needs them first). */
+    private volatile Map<String, String> titles;
+    private volatile boolean busy, changing, stopped, destroyed;
     /** Bumped when the owner leaves a page while it is still reading, so its late result doesn't replace the page they went to. */
     private volatile int generation;
     private Cleanup.Check check;
@@ -110,20 +116,27 @@ public final class CleanupActivity extends GlassScreen {
         text(Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE, 18);
         text("Firmware: " + fp, 16);
         text(m.describe(), 18);
-        if (!m.known()) { group("What you can do"); card(); text(UNKNOWN_WORDS, 17); button("Back", this::finish).requestFocus(); return; }
-        group("Before you start"); card();
-        text(ADB_WORDS, 17);
-        text("The first time, the TV asks \"Allow USB debugging?\". Tick \"Always allow from this computer\", then choose OK.", 17);
-        Button start = button("Start the read-only check", this::checkNow);
+        if (titles == null) titles = titlesOf(CleanupLists.load(this));
         CleanupRecord rec = record();
-        if (rec != null && !rec.changed().isEmpty()) {
+        boolean earlier = rec != null && !rec.changed().isEmpty();
+        Button first = null;
+        if (!m.known()) { group("What you can do"); card(); text(earlier ? UNKNOWN_AFTER : UNKNOWN_WORDS, 17); }
+        else {
+            group("Before you start"); card();
+            text(ADB_WORDS, 17);
+            text("The first time, the TV asks \"Allow USB debugging?\". Tick \"Always allow from this computer\", then choose OK.", 17);
+            first = button("Start the read-only check", this::checkNow);
+        }
+        // Undo never depends on the firmware still being on a list: after an update it is what the owner needs most.
+        if (earlier) {
             group("Earlier clean-up"); card();
             text(rec.changed().size() + " apps were turned off by Unified TV" + (rec.created.length() >= 10 ? " on " + rec.created.substring(0, 10) : "") + ".", 18);
-            button("Turn apps back on", this::undoPage);
+            Button undo = button("Turn apps back on", this::undoPage);
+            if (first == null) first = undo;
             button("Save the undo files on your phone", this::phonePage);
         }
-        button("Not now", this::finish);
-        start.requestFocus();
+        Button leave = button(m.known() ? "Not now" : "Back", this::finish);
+        (first == null ? leave : first).requestFocus();
     }
 
     private void checkNow() {
@@ -142,7 +155,7 @@ public final class CleanupActivity extends GlassScreen {
         text(Build.MANUFACTURER + " " + Build.MODEL + " · firmware " + check.fingerprint, 17);
         text(check.match.describe(), 17);
         if (check.openToAll()) text("Note: this TV lets any device on your network use network debugging without asking (ro.adb.secure=0). Turn network debugging off when you're done.", 16);
-        if (!check.match.known()) { text(UNKNOWN_WORDS, 17); button("Back", this::intro).requestFocus(); return; }
+        if (!check.match.known()) { CleanupRecord rec = record(); text(rec != null && !rec.changed().isEmpty() ? UNKNOWN_AFTER : UNKNOWN_WORDS, 17); button("Back", this::intro).requestFocus(); return; }
         int offered = 0, recommended = 0;
         for (Cleanup.Item i : check.items) if (i.canTurnOff()) { offered++; if (i.recommended) recommended++; }
         text(offered == 0 ? "Nothing on the tested list is turned on on this TV, so there is nothing to do."
@@ -328,49 +341,74 @@ public final class CleanupActivity extends GlassScreen {
 
     /** Runs a job with the link (opening it first), then its result on the page. {@code change}: it changes the TV. */
     private void work(boolean change, Job job) {
-        busy = true; changing = change; int mine = ++generation;
+        // "changing" (Back refused) starts only once the link is open, so Back still works while the TV's prompt waits.
+        busy = true; changing = false; int mine = ++generation;
         background(() -> {
             Runnable ui;
-            try { ui = job.run(shell()); }
+            try { if (titles == null) titles = titlesOf(CleanupLists.load(this)); ui = job.run(shell(mine, change)); }
             catch (AdbException e) { closeLink(); ui = () -> problem(e.kind); }
-            catch (IllegalStateException e) { ui = () -> problem(null); }
+            catch (IllegalStateException e) { ui = () -> problem((AdbException.Kind) null); }
+            catch (IllegalArgumentException e) { ui = () -> problem(CANT_CHANGE); }
             catch (Exception e) { closeLink(); ui = () -> problem(AdbException.Kind.LOST); }
             Runnable show = ui;
-            runOnUiThread(() -> { if (mine != generation) return; busy = false; changing = false; if (!isFinishing() && !isDestroyed()) show.run(); if (stopped) closeLink(); });
+            runOnUiThread(() -> {
+                boolean current = mine == generation;
+                if (current) { busy = false; changing = false; }
+                // Left already: the link goes now, whichever job this was (a late "Allow" must not leave it open).
+                if (stopped || destroyed || isFinishing()) closeLink();
+                if (current && !isFinishing() && !destroyed) show.run();
+            });
         });
     }
+    static final String CANT_CHANGE = "That app can't be changed here. Nothing was changed. Run the check again.";
+    /** The owner has left this job's page or the screen: its link must not be kept. */
+    private boolean gone(int mine) { return mine != generation || stopped || destroyed || isFinishing(); }
 
-    private Cleanup.Shell shell() throws Exception {
-        Cleanup.Shell s = shell; if (s != null) return s;
-        Opener o = openerForTests;
-        if (o == null) o = CleanupActivity::openLink;
-        Opened opened = o.open(this, () -> runOnUiThread(() -> {
-            if (prompt != null) prompt.setText(PROMPT_WORDS);
-            if (progress != null) progress.setText("Waiting for you to allow it on the TV…");
-        }));
-        say("Connected. Reading…");
-        link = opened.link; shell = opened.shell; return opened.shell;
+    private Cleanup.Shell shell(int mine, boolean change) throws Exception {
+        Cleanup.Shell s = shell;
+        if (s == null) {
+            Opener o = openerForTests;
+            if (o == null) o = CleanupActivity::openLink;
+            Opened opened = o.open(this, () -> runOnUiThread(() -> {
+                if (prompt != null) prompt.setText(PROMPT_WORDS);
+                if (progress != null) progress.setText("Waiting for you to allow it on the TV…");
+            }), c -> opening = c);
+            opening = null;
+            if (gone(mine)) {   // e.g. "Allow" was pressed on the TV after the owner had left this page
+                try { opened.link.close(); } catch (IOException ignored) { /* already closed */ }
+                throw new AdbException(AdbException.Kind.LOST, "The page was left.");
+            }
+            link = opened.link; shell = opened.shell; s = opened.shell;
+            say("Connected. Reading…");
+        }
+        if (gone(mine)) throw new AdbException(AdbException.Kind.LOST, "The page was left.");
+        if (change) changing = true;
+        return s;
     }
 
     /** This TV's own ADB, checked to be this TV (the banner's device, then the fingerprint in Cleanup.check). */
-    static Opened openLink(Context c, AdbLink.Prompt prompt) throws Exception {
+    static Opened openLink(Context c, AdbLink.Prompt prompt, java.util.function.Consumer<Closeable> opening) throws Exception {
         AdbKey key = AdbKeys.get(c);
-        AdbLink l = AdbLink.open(key, prompt);
+        AdbLink l = AdbLink.open(key, prompt, opening);
         String device = l.bannerProperty("ro.product.device");
         if (!device.isEmpty() && !device.equals(Build.DEVICE)) { l.close(); throw new AdbException(AdbException.Kind.NOT_THIS_TV, "Another device answered."); }
         return new Opened(l::shell, l);
     }
 
+    /** Closes the link, and a connection still being opened (the TV's prompt waiting), so nothing stays open. */
     private void closeLink() {
-        Closeable l = link; link = null; shell = null;
-        if (l != null) try { l.close(); } catch (IOException ignored) { /* already closed */ }
+        Closeable l = link, o = opening; link = null; shell = null; opening = null;
+        for (Closeable c : new Closeable[]{l, o}) if (c != null) try { c.close(); } catch (IOException ignored) { /* already closed */ }
     }
 
-    private void problem(AdbException.Kind kind) {
+    private void problem(AdbException.Kind kind) { problem(kind, null); }
+    private void problem(String words) { problem(null, words); }
+    private void problem(AdbException.Kind kind, String given) {
         screen("Nothing more was changed", null, this::intro);
         card();
         String words;
-        if (kind == null) words = "Something changed on the TV since the check (an app, or what answers Home), so nothing was changed. Run the check again.";
+        if (given != null) words = given;
+        else if (kind == null) words = "Something changed on the TV since the check (an app, or what answers Home), so nothing was changed. Run the check again.";
         else switch (kind) {
             case CLOSED: words = "Network debugging is off on this TV. To use the clean-up, turn on USB debugging in Settings > System > Developer options, then try again. Turn it off again when you're done."; break;
             case NOT_ALLOWED: words = "The TV didn't allow Unified TV. Try again, and when the TV asks \"Allow USB debugging?\", tick \"Always allow from this computer\" and choose OK."; break;
@@ -394,9 +432,18 @@ public final class CleanupActivity extends GlassScreen {
     private String title(String pkg) {
         Cleanup.Item i = check == null ? null : check.item(pkg);
         if (i != null) return i.title();
-        CleanupLists.Match m = CleanupLists.match(CleanupLists.load(this), fingerprint());
-        for (CleanupLists.Entry e : m.items) if (e.pkg.equals(pkg)) return CleanupPolicy.title(e);
-        return pkg;
+        Map<String, String> t = titles;
+        String known = t == null ? null : t.get(pkg);
+        return known != null ? known : pkg;
+    }
+    /** Every listed app's title, from every list (also after a firmware update leaves this TV off the lists). */
+    static Map<String, String> titlesOf(String lists) {
+        Map<String, String> out = new HashMap<>();
+        try {
+            for (CleanupLists.Profile p : CleanupLists.profiles(new org.json.JSONObject(lists)))
+                for (String[] e : p.packages) out.putIfAbsent(e[0], CleanupPolicy.title(new CleanupLists.Entry(e[0], e[1], e[2], p.title, false)));
+        } catch (Exception ignored) { /* no titles: package names are shown */ }
+        return Collections.unmodifiableMap(out);
     }
 
     @Override public void onBackPressed() {
@@ -407,5 +454,5 @@ public final class CleanupActivity extends GlassScreen {
     @Override protected void onStart() { super.onStart(); stopped = false; }
     /** Leaving the screen closes the link (unless a step is still running: it closes when that step ends). */
     @Override protected void onStop() { super.onStop(); stopped = true; if (!busy) closeLink(); }
-    @Override protected void onDestroy() { if (phone != null) { phone.stop(); phone = null; } closeLink(); worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed = true; if (phone != null) { phone.stop(); phone = null; } closeLink(); worker.shutdownNow(); super.onDestroy(); }
 }

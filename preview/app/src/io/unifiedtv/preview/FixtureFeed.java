@@ -77,19 +77,41 @@ final class FixtureFeed {
     }
     private static List<Fixtures.Fixture> refreshNow(Context c){
         long now=System.currentTimeMillis();Fixtures.Team team=team(c);
-        JSONObject cache=load(c,"fixtures.json");List<Fixtures.Fixture> cached=read(cache);
+        JSONObject cache=load(c,"fixtures.json");
         Fixtures.FixtureSource source=source(c,team);
         if(source==null)return new ArrayList<>();
-        if(!source.id().equals(cache.optString("source")))cached=new ArrayList<>();
-        if(!due(source.id(),cache.optLong("fetchedAt"),cached,now,HouseholdSettings.zone(c)))return cached;
+        // Kept fixtures count only for this source and this team: another team's are neither shown nor "not due".
+        boolean mine=source.id().equals(cache.optString("source"))&&forTeam(cache,team);
+        List<Fixtures.Fixture> cached=mine?read(cache):new ArrayList<>();
+        if(mine&&!due(source.id(),cache.optLong("fetchedAt"),cached,now,HouseholdSettings.zone(c)))return cached;
         try{
             List<Fixtures.Fixture> fresh=source.fetch(Instant.ofEpochMilli(now));
+            // The household chose another team while this read was out (a pick in Settings during Home's read): these
+            // fixtures are the old team's, so they are neither kept nor shown, and the new team's read finds nothing kept.
+            Fixtures.Team after=team(c);
+            if(!sameTeam(team,after))return new ArrayList<>();
             JSONArray all=new JSONArray();for(Fixtures.Fixture f:fresh)all.put(f.json());
-            store(c,"fixtures.json",new JSONObject().put("source",source.id()).put("fetchedAt",now).put("fixtures",all));
+            store(c,"fixtures.json",new JSONObject().put("source",source.id()).put("fetchedAt",now).put("fixtures",all)
+                .put("teamName",after==null?"":after.displayName).put("teamId",after==null?"":after.id));
             JSONObject track;try{track=new JSONObject(prefs(c).getString(TRACK,"{}"));}catch(Exception e){track=new JSONObject();}
             prefs(c).edit().putString(TRACK,Fixtures.track(track,fresh).toString()).apply();
             return fresh;
         }catch(Exception e){return cached;}
+    }
+    /**
+     * The same household team: the same name and the same id, or a bundled club ("club") and the number its first read
+     * learnt for it. Two "no team" are the same (a calendar source with no team named).
+     */
+    static boolean sameTeam(Fixtures.Team a,Fixtures.Team b){
+        if(a==null||b==null)return a==b;
+        return a.displayName.equals(b.displayName)&&(a.id.equals(b.id)||Fixtures.Team.CLUB.equals(a.id)||Fixtures.Team.CLUB.equals(b.id));
+    }
+    /** Whether kept fixtures were read for this team. A copy kept before teams were recorded counts for nobody. */
+    static boolean forTeam(JSONObject cache,Fixtures.Team team){
+        if(!cache.has("teamName"))return false;
+        String name=cache.optString("teamName"),id=cache.optString("teamId");
+        if(team==null)return name.isEmpty()&&id.isEmpty();
+        return name.equals(team.displayName)&&(id.equals(team.id)||Fixtures.Team.CLUB.equals(id)||Fixtures.Team.CLUB.equals(team.id));
     }
     /** Whether the source's fixtures are due a read: each source keeps its own pace. */
     static boolean due(String source,long fetchedAt,List<Fixtures.Fixture> cached,long now,java.time.ZoneId zone){
@@ -113,7 +135,7 @@ final class FixtureFeed {
      */
     static boolean noneFound(Context c){
         Fixtures.Team t=team(c);if(t==null||!t.listed())return false;
-        JSONObject cache=load(c,"fixtures.json");return cache.optLong("fetchedAt")>0&&!cache.optString("source").isEmpty()&&read(cache).isEmpty();
+        JSONObject cache=load(c,"fixtures.json");return cache.optLong("fetchedAt")>0&&!cache.optString("source").isEmpty()&&forTeam(cache,t)&&read(cache).isEmpty();
     }
     /** The household's source, or null when none is set up. */
     static Fixtures.FixtureSource source(Context c,Fixtures.Team team){
@@ -187,7 +209,7 @@ final class FixtureFeed {
     static final String TEAMS="teams-sdb.json",TEAMS_NEXT="teams-sdb-next.json";
     static final String UNREACHABLE="TheSportsDB couldn't be reached. The list carries on next time you open this page.";
     /** The team list completed with Unified TV's own clubs (TeamList.merged): what the picker shows and searches. */
-    static JSONObject teams(Context c){return TeamList.merged(catalogue(c),TeamList.bundle(c));}
+    static JSONObject teams(Context c){return TeamList.mergedFor(catalogue(c),TeamList.bundle(c));}
     /** The saved team list as read from TheSportsDB (possibly partial). */
     static JSONObject catalogue(Context c){return load(c,TEAMS);}
     /**
@@ -195,6 +217,8 @@ final class FixtureFeed {
      * can't be reached, or the thread is interrupted (the screen closed). A complete list is kept for a week; the weekly
      * re-read is built beside it, and the old list stays in use until the new one is complete.
      */
+    /** A copy for listeners on other threads: this thread goes on changing the list it reads into. */
+    private static JSONObject copy(JSONObject o){try{return new JSONObject(o.toString());}catch(Exception e){return new JSONObject();}}
     static void build(Context c,Progress progress){
         // The API-Football team list of earlier installs is no longer used.
         forget(c,"teams.json");forget(c,"teams-next.json");
@@ -203,7 +227,7 @@ final class FixtureFeed {
         String name=refreshing?TEAMS_NEXT:TEAMS;JSONObject cat=load(c,name);
         while(!Thread.currentThread().isInterrupted()){
             String request=SportsDb.next(cat);
-            if(request==null){if(refreshing){store(c,TEAMS,cat);forget(c,TEAMS_NEXT);}progress.update(cat,null);return;}
+            if(request==null){if(refreshing){store(c,TEAMS,cat);forget(c,TEAMS_NEXT);}progress.update(copy(cat),null);return;}
             JSONObject shown=refreshing?current:cat;
             JSONObject reply;
             try{reply=SportsDb.http.get(request);}
@@ -212,7 +236,7 @@ final class FixtureFeed {
                 if(!SportsDb.optional(request)||e.code==429){progress.update(shown,UNREACHABLE);return;}
                 reply=new JSONObject();
             }catch(Exception e){progress.update(shown,UNREACHABLE);return;}
-            try{SportsDb.apply(cat,request,reply,System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
+            try{SportsDb.apply(cat,request,reply,System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(copy(cat),null);}
             catch(Exception e){progress.update(shown,UNREACHABLE);return;}
             long pace=SportsDb.paceMs;
             if(pace>0)try{Thread.sleep(pace);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}

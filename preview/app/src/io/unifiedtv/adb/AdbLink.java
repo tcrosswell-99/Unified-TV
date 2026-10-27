@@ -62,11 +62,23 @@ public final class AdbLink implements Closeable {
     }
 
     /** Connects to this TV's own ADB and signs in; the prompt may show on the TV the first time. */
-    public static AdbLink open(AdbKey key, Prompt prompt) throws IOException { return connect(PORT, key, prompt, PROMPT_MS); }
+    public static AdbLink open(AdbKey key, Prompt prompt) throws IOException { return connect(PORT, key, prompt, PROMPT_MS, null); }
+
+    /**
+     * As {@link #open(AdbKey, Prompt)}, handing the socket to {@code opening} before the handshake starts, so the page can
+     * close it while the TV's prompt is still waiting (the owner left): the handshake then fails at once and nothing stays
+     * open.
+     */
+    public static AdbLink open(AdbKey key, Prompt prompt, java.util.function.Consumer<Closeable> opening) throws IOException {
+        return connect(PORT, key, prompt, PROMPT_MS, opening);
+    }
 
     /** Tests only choose the port (a fake adbd on the loopback address); the address is always loopback. */
-    static AdbLink connect(int port, AdbKey key, Prompt prompt, int promptMs) throws IOException {
+    static AdbLink connect(int port, AdbKey key, Prompt prompt, int promptMs) throws IOException { return connect(port, key, prompt, promptMs, null); }
+
+    static AdbLink connect(int port, AdbKey key, Prompt prompt, int promptMs, java.util.function.Consumer<Closeable> opening) throws IOException {
         Socket s = new Socket();
+        if (opening != null) opening.accept(s);
         try {
             s.connect(new InetSocketAddress(loopback(), port), CONNECT_MS);
         } catch (ConnectException | SocketTimeoutException e) {

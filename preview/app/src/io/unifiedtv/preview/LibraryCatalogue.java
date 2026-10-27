@@ -31,6 +31,8 @@ final class LibraryCatalogue {
     static final long SAMPLE_MAX_BYTES=300L*1024*1024;static final int SAMPLE_SHARE=10;
     /** A sample by length: under five minutes beside a main video over forty. */
     static final long SHORT_MS=5*60_000L,FEATURE_MS=40*60_000L;
+    /** At most this many files in one folder are taken for samples by size or length. */
+    static final int SAMPLES_MAX=2;
     static final long RECENT_GRACE_MS=60_000;
     enum Kind{FILM,EPISODE}
 
@@ -112,7 +114,9 @@ final class LibraryCatalogue {
         Map<String,List<LibraryIndex.Entry>> byFolder=new LinkedHashMap<>();
         for(LibraryIndex.Entry e:byStream.values())byFolder.computeIfAbsent(e.root+"\n"+(e.pathIds.isEmpty()?"":e.pathIds.get(e.pathIds.size()-1)),k->new ArrayList<>()).add(e);
         Set<LibraryIndex.Entry> kept=Collections.newSetFromMap(new IdentityHashMap<>()),sole=Collections.newSetFromMap(new IdentityHashMap<>());
-        for(List<LibraryIndex.Entry> group:byFolder.values()){List<LibraryIndex.Entry> mains=mains(group);kept.addAll(mains);if(mains.size()==1&&!mains.get(0).pathIds.isEmpty())sole.add(mains.get(0));}
+        for(List<LibraryIndex.Entry> group:byFolder.values()){LibraryIndex.Entry first=group.get(0);boolean tv=tvRoot(rootNames.get(first.root));
+            if(tv)for(String n:first.pathNames)if(MediaName.filmsFolder(n)){tv=false;break;}
+            List<LibraryIndex.Entry> mains=mains(group,tv);kept.addAll(mains);if(mains.size()==1&&!mains.get(0).pathIds.isEmpty())sole.add(mains.get(0));}
         for(Map.Entry<String,LibraryIndex.Entry> me:byStream.entrySet()){
             LibraryIndex.Entry e=me.getValue();boolean kids=kidsBy.getOrDefault(me.getKey(),false);
             if(!kept.contains(e))continue;
@@ -186,8 +190,14 @@ final class LibraryCatalogue {
      * "Title-sample.mkv", "Title - Trailer.mkv", anything in a "Sample" or "Extras" folder), nor one far smaller than the
      * folder's largest (under a tenth and under 300 MB), nor one under five minutes beside a main video over forty. Sizes
      * and lengths are the server's (DLNA res@size, res@duration); without them only the names count.
+     *
+     * Size and length count only where one clear main video stands out (review, 27 October 2026): never for loose files in
+     * a chosen folder, a season folder, a folder in a TV folder ({@code tv}) or an episode; every size or length the server
+     * sent must agree; and at most {@link #SAMPLES_MAX} files go. A short film, a short episode or an SD copy beside an HD
+     * one stays.
      */
-    static List<LibraryIndex.Entry> mains(List<LibraryIndex.Entry> folder){
+    static List<LibraryIndex.Entry> mains(List<LibraryIndex.Entry> folder){return mains(folder,false);}
+    static List<LibraryIndex.Entry> mains(List<LibraryIndex.Entry> folder,boolean tv){
         List<LibraryIndex.Entry> out=new ArrayList<>();if(folder==null||folder.isEmpty())return out;
         // One path for the whole folder: an extras folder in it (a "Sample" one always; "Extras" unless seasons sit below it,
         // as in a programme called Extras).
@@ -200,12 +210,16 @@ final class LibraryCatalogue {
             if(extrasFolder&&!MediaName.parse(e.title).episodic())continue;
             named.add(e);biggest=Math.max(biggest,e.size);longest=Math.max(longest,e.duration);
         }
-        for(LibraryIndex.Entry e:named){
-            if(e.size>0&&e.size*SAMPLE_SHARE<biggest&&e.size<SAMPLE_MAX_BYTES)continue;
-            if(e.duration>0&&e.duration<SHORT_MS&&longest>FEATURE_MS)continue;
-            out.add(e);
-        }
-        return out;
+        if(tv||path.isEmpty()||MediaName.seasonFolder(path.get(path.size()-1))>=0)return named;
+        List<LibraryIndex.Entry> small=new ArrayList<>();
+        for(LibraryIndex.Entry e:named){if(measuredSample(e,biggest,longest)&&!MediaName.parse(e.title).episodic())small.add(e);else out.add(e);}
+        return out.size()==1&&!small.isEmpty()&&small.size()<=SAMPLES_MAX?out:named;
+    }
+    /** Far smaller and far shorter than the folder's main video, by every measure the server sent (at least one). */
+    private static boolean measuredSample(LibraryIndex.Entry e,long biggest,long longest){
+        boolean size=e.size>0&&biggest>0,length=e.duration>0&&longest>0;if(!size&&!length)return false;
+        if(size&&!(e.size*SAMPLE_SHARE<biggest&&e.size<SAMPLE_MAX_BYTES))return false;
+        return !length||(e.duration<SHORT_MS&&longest>FEATURE_MS);
     }
     /** A numbered clip rather than a title: "01 - Part one", "2. Second half", "Part 1", "Disc 2". */
     private static final java.util.regex.Pattern NUMBERED=java.util.regex.Pattern.compile("(?i)^(?:\\d{1,3}\\s*[-.:)]\\s*\\S|(?:episode|ep|part|pt|disc|cd)\\s*\\d)");
@@ -213,7 +227,7 @@ final class LibraryCatalogue {
     /**
      * For a folder holding one film: whether the folder's name is the better title. Yes when the file's is generic
      * ("movie.mkv"), the same title, a scene name that no longer reads as one ("grp-ttl1080p"), a numbered clip ("01 -
-     * Part one"), or the folder's title with more after it ("Title 3D"); and when the folder gives a year the file agrees
+     * Part one"), or the folder's title followed only by words about the copy ("Title 3D"); and when the folder gives a year the file agrees
      * with or lacks. Never a folder named for films as a kind ("Films") or a season.
      */
     static boolean folderSaysMore(MediaName.Parsed file,String fileRaw,MediaName.Parsed folder,String folderRaw){
@@ -224,7 +238,8 @@ final class LibraryCatalogue {
         String stem=fileRaw==null?"":fileRaw.trim();
         if(!stem.contains(" ")&&stem.equals(stem.toLowerCase(Locale.ROOT))&&stem.contains("-"))return true;
         if(NUMBERED.matcher(stem).find()&&!f.startsWith(d))return true;
-        return f.startsWith(d+" ");
+        // "Title 3D" in "Title": only words that describe the copy. "Harry Potter and the Philosopher's Stone" in "Harry Potter" keeps its own.
+        return f.startsWith(d+" ")&&MediaName.copyWordsOnly(f.substring(d.length()+1));
     }
     /** One saved file as a film or an episode, with a clean name (MediaName). */
     static Title classify(LibraryIndex.Entry e,String rootName,URI origin,String udn){return classify(e,rootName,origin,udn,false);}

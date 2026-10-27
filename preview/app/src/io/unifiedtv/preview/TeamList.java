@@ -153,6 +153,30 @@ final class TeamList {
             return result;
         } catch (Exception e) { return catalogue == null ? new JSONObject() : catalogue; }
     }
+    private static String mergedVersion; private static JSONObject mergedCopy;
+    /**
+     * merged(), kept for the last catalogue version (one result for the whole app): the list grows a step every few
+     * seconds while it is read, and the merge (names folded and matched) is too slow to repeat for every look on an old
+     * TV. Callers on the main thread find it ready; SetupPages builds it on its worker as each step arrives.
+     */
+    static JSONObject mergedFor(JSONObject catalogue, JSONObject bundle) {
+        String v = version(catalogue) + "/" + System.identityHashCode(bundle);
+        synchronized (TeamList.class) { if (v.equals(mergedVersion)) return mergedCopy; }
+        JSONObject m = merged(catalogue, bundle);
+        synchronized (TeamList.class) { mergedVersion = v; mergedCopy = m; }
+        return m;
+    }
+    /** A cheap fingerprint of the catalogue's reading so far: each league's steps, without folding any name. */
+    static String version(JSONObject catalogue) {
+        StringBuilder b = new StringBuilder(); if (catalogue == null) return "";
+        b.append(catalogue.optLong("started")).append(':').append(catalogue.optLong("fetchedAt"));
+        JSONArray all = catalogue.optJSONArray("leagues");
+        if (all != null) for (int i = 0; i < all.length(); i++) { JSONObject l = all.optJSONObject(i); if (l == null) continue;
+            JSONArray t = l.optJSONArray("teams"), m = l.optJSONArray("more");
+            b.append('|').append(l.optInt("id")).append(',').append(t == null ? -1 : t.length()).append(',').append(l.optInt("tried")).append(',').append(l.optLong("sdb"))
+                .append(',').append(l.has("round") ? l.optInt("round") : -1).append(',').append(m == null ? -1 : m.length()); }
+        return b.toString();
+    }
     private static JSONObject find(Map<String, JSONObject> byKey, List<String> names) {
         for (String n : names) { JSONObject m = byKey.get(key(n)); if (m != null) return m; }
         for (JSONObject x : byKey.values()) for (String a : x.optString("also").split("[,;/]")) for (String n : names) if (!key(a).isEmpty() && key(a).equals(key(n))) return x;

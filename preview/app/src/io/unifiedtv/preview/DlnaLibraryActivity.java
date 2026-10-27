@@ -44,7 +44,7 @@ public final class DlnaLibraryActivity extends Screen {
     private final ExecutorService walker=Executors.newSingleThreadExecutor(),quick=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private LibraryFolders.Library lib;private LibraryCatalogue.Catalogue cat;private Posters posters;private String udn="";
-    private float unit;private boolean light,calm,postersOn;private int generation;
+    private float unit;private boolean light,calm,postersOn,postersKnown;private int generation;
     private ImageView[] backs=new ImageView[2];private int front=0;private String shownBack="",focusKey="",wantedBack="";
     private TextView heroTitle,heroMeta,heroText,status,keyHint;private ProgressBar statusSpin;
     private FrameLayout area;private LinearLayout bar;
@@ -63,7 +63,7 @@ public final class DlnaLibraryActivity extends Screen {
         android.content.SharedPreferences prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
         calm=prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();
         light=prefs.getBoolean("lightweight",false)||((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).isLowRamDevice();
-        posters=Posters.get(this);postersOn=Posters.on(this);   // read once: never a Vault read per focus move
+        posters=Posters.get(this);   // whether there is a key is read off the main thread (onResume), never per focus move
         lib=LibraryFolders.library(this);udn=lib.udn();
         frame();keyHint();
         if(kids&&!lib.ready){message(KidsPolicy.ASK_ADULT,"An adult chooses the folders for Kids in the Adults profile.",null,null);return;}
@@ -79,12 +79,19 @@ public final class DlnaLibraryActivity extends Screen {
     /** Back from "Wrong picture?" (a sidebar: this screen was only paused): the tiles and background ask for the chosen picture. */
     @Override protected void onResume(){super.onResume();
         if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();return;}
-        // A key added (or changed) while this screen was away, perhaps by phone setup: every tile asks again.
-        if(posters==null||lib==null)return;boolean changed=posters.refreshKey(),on=posters.usable();
-        if(changed||on!=postersOn){postersOn=on;keyHint();if(cat!=null){handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}}
+        // A key added (or changed) while this screen was away, perhaps by phone setup: every tile asks again. The key is in
+        // the Keystore-backed Vault, so it is read on the worker, never on the main thread.
+        if(posters==null||lib==null)return;Posters p=posters;
+        try{quick.execute(()->{boolean changed=p.refreshKey(),on=p.usable();handler.post(()->keyRead(changed,on));});}catch(RuntimeException ignored){/* closing */}
+    }
+    private void keyRead(boolean changed,boolean on){
+        if(isFinishing()||isDestroyed())return;boolean first=!postersKnown;postersKnown=true;
+        if(!changed&&!first&&on==postersOn)return;
+        postersOn=on;keyHint();
+        if(cat!=null&&(changed||!first)){handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}
     }
     /** The one-line "add your TMDB key" hint: Adults only (Kids can't add one), and only while there is no key. */
-    private void keyHint(){if(keyHint!=null)keyHint.setVisibility(!postersOn&&lib!=null&&lib.ready&&!lib.kids?View.VISIBLE:View.GONE);}
+    private void keyHint(){if(keyHint!=null)keyHint.setVisibility(postersKnown&&!postersOn&&lib!=null&&lib.ready&&!lib.kids?View.VISIBLE:View.GONE);}
     /** For tests: whether the no-key hint is showing. */
     boolean keyHintShown(){return keyHint!=null&&keyHint.getVisibility()==View.VISIBLE;}
     /** The tile whose picture is being corrected, while "Wrong picture?" is open. */

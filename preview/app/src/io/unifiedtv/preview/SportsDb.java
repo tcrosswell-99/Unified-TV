@@ -116,7 +116,18 @@ final class SportsDb {
         if(n.length()>40)n=n.substring(0,40).trim();
         return n.replaceAll("[\\s'.&-]","").isEmpty()?null:n;
     }
-    static String searchTeams(String name){String n=searchName(name);return n==null?null:"searchteams.php?t="+encode(n);}
+    /** Longest query allowed() lets through, once encoded. */
+    static final int MAX_QUERY=120;
+    /**
+     * The searchteams request for a club's name, or null when there is nothing usable or it is too long once encoded
+     * (accented letters take six characters each): never a request fetch would refuse.
+     */
+    static String searchTeams(String name){
+        String n=searchName(name);if(n==null)return null;String q=encode(n);
+        return q.length()>MAX_QUERY?null:"searchteams.php?t="+q;
+    }
+    /** True when the name has letters to look up but is too long to send. */
+    static boolean tooLong(String name){return searchName(name)!=null&&searchTeams(name)==null;}
     /** TheSportsDB's football season around a date: "2026-2027" from July, else "2025-2026". */
     static String seasonOf(long now){
         LocalDate d=Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).toLocalDate();int y=d.getMonthValue()>=7?d.getYear():d.getYear()-1;

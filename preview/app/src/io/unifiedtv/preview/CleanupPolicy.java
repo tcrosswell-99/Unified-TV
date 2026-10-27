@@ -13,7 +13,13 @@ import java.util.regex.Pattern;
  * #321); the firmware updater; the TV's settings and whatever opens them; the remote, Bluetooth and the microphone
  * plumbing; the network and Wi-Fi owners, including the setup wizard (setupwraith can own the saved Wi-Fi); keyboards;
  * accessibility (TalkBack and its speech engine); sound and HDMI-CEC; Google Play and Play services; the household's
- * VPN and its Live TV app; WebView itself; and every package a tested list's notes say to keep.
+ * VPN and its Live TV app; any WebView (any package with "webview" in its name: com.tcl.android.webview may be this
+ * TV's active WebView provider); the active screensaver (read with {@code settings get secure screensaver_components});
+ * Google's TV recommendations while a stock launcher is installed and on (its Home rows use them); and every package a
+ * tested list's notes say to keep.
+ *
+ * <p>On the owner's exact firmware, packages that only the sibling lists (TCL 55C725, 65C725) name are still offered, as
+ * "optional, your choice" with at least some risk, and never recommended (risk(), recommended()).
  */
 final class CleanupPolicy {
     private CleanupPolicy() {}
@@ -27,7 +33,9 @@ final class CleanupPolicy {
     /** Stock Home apps this project knows by name, whatever answers Home today. */
     static final Set<String> LAUNCHERS = new HashSet<>(Arrays.asList("com.google.android.tvlauncher", "com.google.android.apps.tv.launcherx",
         "com.google.android.leanbacklauncher", "com.tcl.tvlauncher", "com.gathin.tvhome"));
-    static final Pattern WEBVIEW = Pattern.compile("^com\\.(google\\.)?android\\.webview$");
+    /** Any WebView: com.tcl.android.webview may be this TV's active WebView provider, so none is ever offered. */
+    static final Pattern WEBVIEW = Pattern.compile("(?i).*webview.*");
+    static final String RECOMMENDATIONS = "com.google.android.tvrecommendations";
 
     /** Name rules, in the order they are checked, each with the reason the page gives. */
     private static final Object[][] RULES = {
@@ -48,8 +56,10 @@ final class CleanupPolicy {
     /** What the TV told the check, for the rules that depend on this TV rather than on a name. */
     static final class Facts {
         final Set<String> keep = new HashSet<>(), stockLaunchers = new HashSet<>(), homeClaims = new HashSet<>(), channelApps = new HashSet<>(),
-            settingsApps = new HashSet<>(), inputDrivers = new HashSet<>();
+            settingsApps = new HashSet<>(), inputDrivers = new HashSet<>(), screensavers = new HashSet<>();
         String homeOwner, self, liveTv;
+        /** A stock launcher is installed and on: its recommendation rows are still in use. */
+        boolean stockLauncherOn;
     }
 
     /** Why this package may never be turned off here, in plain words; null when it may be offered. */
@@ -61,7 +71,9 @@ final class CleanupPolicy {
             return "It can be the TV's Home screen. The TV's own Home is never turned off.";
         if (f.inputDrivers.contains(pkg) || f.channelApps.contains(pkg)) return "Live TV and the HDMI inputs need it (#321: turning it off can leave the inputs black).";
         if (f.settingsApps.contains(pkg)) return "The TV's Settings open with it.";
-        if (WEBVIEW.matcher(pkg).matches()) return "Apps use it to show web pages.";
+        if (WEBVIEW.matcher(pkg).matches()) return "Apps use it to show web pages. It may be this TV's WebView.";
+        if (f.screensavers.contains(pkg)) return "It's the TV's screensaver now. Choose another screensaver in the TV's settings first.";
+        if (RECOMMENDATIONS.equals(pkg) && f.stockLauncherOn) return "The TV's own Home screen is still on and uses it for its rows.";
         for (Object[] rule : RULES) if (((Pattern) rule[0]).matcher(pkg).matches()) return (String) rule[1];
         if (f.keep.contains(pkg)) return "The tested lists say to keep it on this family of TCL TVs.";
         return null;
@@ -74,9 +86,8 @@ final class CleanupPolicy {
         HIGH.put("com.google.android.katniss", "Voice search and the remote's microphone button stop working, and so does Ask your TV.");
         HIGH.put("com.tcl.assistant", "The remote's microphone button may stop working.");
         HIGH.put("com.tcl.dashboard", "The remote's settings button may stop opening TCL's quick panel. The TV's own Settings still open from Home.");
-        HIGH.put("com.tcl.android.webview", "Some TCL screens show web pages with it. On the tested TCL they still worked without it.");
         HIGH.put("com.google.android.apps.tv.dreamx", "It's the screensaver (ambient mode). Choose another screensaver in the TV's settings first.");
-        HIGH.put("com.google.android.tvrecommendations", "The TV's own Home loses its recommendation rows. Only worth it when Unified TV is your Home.");
+        HIGH.put(RECOMMENDATIONS, "The TV's own Home loses its recommendation rows. Only offered while the TV's own Home is turned off.");
         MEDIUM.put("com.tcl.partnercustomizer", "TCL's partner settings. On some TVs the stock Home's Inputs button uses it.");
         MEDIUM.put("com.tcl.ui_mediaCenter", "Turn it back on to play films from a USB drive.");
         MEDIUM.put("android.autoinstalls.config.tcl.device", "Stops TCL installing its own apps silently. Apps you installed are not affected.");

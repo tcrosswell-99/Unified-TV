@@ -81,14 +81,31 @@ public class BackJourneyTest {
     }
 
     // --- both
-    @Test public void aNotificationsScreenOpensOverHome(){
+    @Test public void aNotificationsScreenGoesOverHomeOnlyWhenUnifiedTvWasntOpen(){
         Intent settings=new Intent(app(),SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        Intent[] stack=Launch.overHome(app(),settings);
-        assertEquals(2,stack.length);
-        assertEquals("Home underneath, so Back from the screen lands on Unified TV",UnifiedPreviewActivity.class.getName(),stack[0].getComponent().getClassName());
-        assertTrue((stack[0].getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK)!=0);
-        assertEquals(SettingsActivity.class.getName(),stack[1].getComponent().getClassName());
-        assertEquals((stack[1].getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK),0);
-        assertEquals(SettingsActivity.NOTIFICATIONS,stack[1].getIntExtra("category",-1));
+        Intent handOver=Launch.viaHandOver(app(),settings);
+        assertEquals(HouseholdActivity.class.getName(),handOver.getComponent().getClassName());assertTrue((handOver.getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK)!=0);
+        // Unified TV wasn't open: Home underneath, then the screen.
+        java.util.List<String> started=handOver(handOver,true);
+        assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(UnifiedPreviewActivity.class.getName(),SettingsActivity.class.getName())),new java.util.HashSet<>(started));
+        Intent[] stack=Launch.route(true,app(),settings);
+        assertEquals("Home first, underneath",UnifiedPreviewActivity.class.getName(),stack[0].getComponent().getClassName());assertEquals(SettingsActivity.class.getName(),stack[1].getComponent().getClassName());
+        // Open already (a film playing in Unified TV's task): the screen on top, Home not started, so nothing above it closes.
+        started=handOver(handOver,false);
+        assertEquals("Back from the screen returns to the film",java.util.Collections.singletonList(SettingsActivity.class.getName()),started);
+        Intent[] top=Launch.route(false,app(),settings.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+        assertEquals(0,top[0].getFlags()&(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP));assertEquals(SettingsActivity.NOTIFICATIONS,top[0].getIntExtra("category",-1));
+        // Only this app's own screens are ever opened from the hand-over.
+        started=handOver(new Intent(app(),HouseholdActivity.class).putExtra(Launch.SCREEN,new Intent().setClassName("com.example.other","com.example.other.Main")),false);
+        assertEquals(java.util.Collections.singletonList(SettingsActivity.class.getName()),started);
+    }
+    /** Runs HouseholdActivity's hand-over as the first screen of a new task ({@code root}) or on top of an open one. */
+    private java.util.List<String> handOver(Intent intent,boolean root){
+        ActivityController<HouseholdActivity> c=Robolectric.buildActivity(HouseholdActivity.class,intent);
+        Shadows.shadowOf(c.get()).setIsTaskRoot(root);c.create();
+        java.util.List<String> out=new java.util.ArrayList<>();
+        for(Intent i;(i=Shadows.shadowOf(c.get()).getNextStartedActivity())!=null;)out.add(i.getComponent().getClassName());
+        assertTrue(c.get().isFinishing());c.destroy();
+        return out;
     }
 }

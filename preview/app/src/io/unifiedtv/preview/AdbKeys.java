@@ -41,9 +41,21 @@ final class AdbKeys {
     static volatile AdbKey testKey;
     private AdbKeys() {}
 
+    /** Where the Keystore key comes from; tests replace it (JVM tests have no Keystore). */
+    interface Source { AdbKey get() throws Exception; }
+    static volatile Source keystoreForTests;
+
+    /**
+     * The same key every session, so the TV asks only once. A Keystore failure is tried once more before the stored key
+     * is used: one transient failure must not switch to another key (the TV would ask again, and the owner would see a
+     * second "unifiedtv@tv" in its list of allowed computers).
+     */
     static synchronized AdbKey get(Context c) throws Exception {
         AdbKey t = testKey; if (t != null) return t;
-        try { return keystore(); } catch (Exception | LinkageError ignored) { /* this TV's Keystore can't: the stored key below */ }
+        Source k = keystoreForTests; if (k == null) k = AdbKeys::keystore;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try { return k.get(); } catch (Exception | LinkageError ignored) { /* once more, then this TV's Keystore can't: the stored key */ }
+        }
         return stored(c.getApplicationContext());
     }
 
@@ -64,7 +76,9 @@ final class AdbKeys {
     private static AdbKey stored(Context c) throws Exception {
         JSONObject saved;
         boolean vault = true;
-        try { saved = new Vault(c).read(VAULT_ID); } catch (Exception e) { vault = false; saved = readFile(c); }
+        try { saved = new Vault(c).read(VAULT_ID); } catch (Exception e) { vault = false; saved = new JSONObject(); }
+        // A key saved in the file (when the Vault couldn't work once) is still this app's key: use it before making one.
+        if (saved.optString("private").isEmpty()) saved = readFile(c);
         if (saved.optString("private").isEmpty()) {
             KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA"); gen.initialize(new RSAKeyGenParameterSpec(AdbKey.BITS, RSAKeyGenParameterSpec.F4));
             KeyPair pair = gen.generateKeyPair();

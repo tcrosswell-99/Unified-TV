@@ -215,6 +215,83 @@ public class CleanupTest {
         }
     }
 
+    // ---------------------------------------------------------------- review fixes (regressions)
+    @Test public void androidsChooserIsNotRecordedAsHome() throws Exception {
+        String chooser = "android/com.android.internal.app.ResolverActivity";
+        assertNull(Cleanup.homeComponent("priority=0\n" + chooser + "\n"));
+        assertNull(Cleanup.homeComponent("android\n"));
+        assertEquals(FakeTv.HOME, Cleanup.homeComponent(FakeTv.HOME + "\n"));
+        tv.home = chooser;
+        Cleanup.apply(tv, recordFile, check(), Collections.singletonList("com.tcl.bi"), CREATED, null, null);
+        CleanupRecord r = CleanupRecord.read(recordFile);
+        assertNull("no Home to replay", r.home);
+        assertTrue(r.json().contains("\"home\": null"));
+        CleanupRecord old = CleanupRecord.parse(fixture().replace(FakeTv.HOME, chooser));
+        assertNotNull("an older record with the chooser still reads", old);
+        assertNull(old.home);
+        assertNull("a damaged Home is still refused", CleanupRecord.parse(fixture().replace(FakeTv.HOME, "not a component")));
+    }
+
+    @Test public void successIsWhatTheTvReportsNotASubstring() throws Exception {
+        Cleanup.apply(tv, recordFile, check(), Collections.singletonList("com.tcl.messagebox"), CREATED, null, null);   // an earlier batch
+        tv.failDisable.add("com.tcl.esticker");   // pm's error mentions "disabled", and the app stays on
+        List<String> logged = new ArrayList<>();
+        List<String> done = Cleanup.apply(tv, recordFile, check(), Arrays.asList("com.tcl.bi", "com.tcl.esticker"), CREATED, null, logged::add);
+        assertEquals(Collections.singletonList("com.tcl.bi"), done);
+        assertEquals("only real changes are logged", done, logged);
+        CleanupRecord r = CleanupRecord.read(recordFile);
+        assertFalse("never changed, so not in the record or the phone's undo list", r.packages.containsKey("com.tcl.esticker"));
+        assertFalse(r.listText().contains("com.tcl.esticker"));
+        assertTrue("earlier entries are untouched", r.packages.containsKey("com.tcl.messagebox"));
+        assertTrue(Cleanup.said("Package com.tcl.bi new state: disabled-user\n", "com.tcl.bi", "disabled-user"));
+        assertFalse(Cleanup.said("Error: com.tcl.bi not disabled-user\n", "com.tcl.bi", "disabled-user"));
+        assertFalse(Cleanup.said("Package com.tcl.bi new state: enabled\n", "com.tcl.bi", "disabled-user"));
+        tv.failEnable.add("com.tcl.bi");   // its error mentions "enabled", and the app stays off
+        assertTrue("not turned back on", Cleanup.turnBackOn(tv, r, Arrays.asList("com.tcl.bi", "com.tcl.messagebox"), null, null).equals(Collections.singletonList("com.tcl.messagebox")));
+        assertTrue(tv.disabled.contains("com.tcl.bi"));
+    }
+
+    @Test public void webviewsAreNeverOffered() {
+        CleanupPolicy.Facts f = new CleanupPolicy.Facts();
+        for (String p : new String[]{"com.tcl.android.webview", "org.chromium.webview_shell", "com.google.android.webview", "com.android.webview", "com.example.WebViewProvider"})
+            assertNotNull(p, CleanupPolicy.blocked(p, f));
+    }
+
+    @Test public void recommendationsStayWhileTheStockHomeIsOn() throws Exception {
+        tv.installed.add(CleanupPolicy.RECOMMENDATIONS);
+        assertNotNull("the stock launcher is on", check().item(CleanupPolicy.RECOMMENDATIONS).blocked);
+        tv.disabled.add("com.google.android.tvlauncher");
+        Cleanup.Item i = check().item(CleanupPolicy.RECOMMENDATIONS);
+        assertNull("the stock Home is off: offered", i.blocked);
+        assertFalse("from a sibling list: never recommended", i.recommended);
+        assertEquals(CleanupPolicy.Risk.HIGH, i.risk);
+        Cleanup.Check c = check();
+        tv.disabled.remove("com.google.android.tvlauncher");   // the stock Home came back before the confirm
+        try { Cleanup.apply(tv, recordFile, c, Collections.singletonList(CleanupPolicy.RECOMMENDATIONS), CREATED, null, null); fail("re-checked"); } catch (IllegalStateException expected) { /* refused */ }
+        assertTrue(tv.changes().isEmpty());
+    }
+
+    @Test public void theActiveScreensaverIsNeverOffered() throws Exception {
+        String dream = "com.google.android.apps.tv.dreamx";
+        tv.installed.add(dream);
+        tv.screensaver = dream + "/.DreamService,com.google.android.backdrop/.Backdrop";
+        assertNotNull("it is the screensaver now", check().item(dream).blocked);
+        assertTrue(tv.commands.contains(io.unifiedtv.adb.AdbCommands.SCREENSAVER));
+        assertEquals(new LinkedHashSet<>(Arrays.asList(dream, "com.google.android.backdrop")), Cleanup.screensavers(tv.screensaver));
+        assertTrue(Cleanup.screensavers("null").isEmpty());
+        tv.screensaver = "com.google.android.backdrop/.Backdrop";
+        assertNull("another screensaver: offered", check().item(dream).blocked);
+        assertTrue(io.unifiedtv.adb.AdbCommands.allowed(io.unifiedtv.adb.AdbCommands.SCREENSAVER));
+        assertFalse(io.unifiedtv.adb.AdbCommands.allowed("settings put secure screensaver_components x/.Y"));
+    }
+
+    @Test public void siblingListsAreOptionalOnTheOwnersFirmware() throws Exception {
+        Cleanup.Check c = check();
+        int siblings = 0;
+        for (Cleanup.Item i : c.items) if (!i.entry.thisFirmware) { siblings++; assertFalse(i.pkg(), i.recommended); assertNotEquals(i.pkg(), CleanupPolicy.Risk.LOW, i.risk); }
+        assertTrue("55C725 and 65C725 entries are still listed", siblings > 0);
+    }
+
     // ---------------------------------------------------------------- the phone's undo files
     @Test public void thePhoneGetsTheRecordAndTheListAndNothingElse() throws Exception {
         String record = fixture(), list = CleanupRecord.parse(record).listText();

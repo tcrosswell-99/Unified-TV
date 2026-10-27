@@ -21,8 +21,8 @@ public class FilmFoldersTest {
                 .video("sf","sf-s1","sample.mkv",40*MB,MIN).video("sf","sf-s2","Some.Film.sample.mkv",60*MB,MIN).video("sf","sf-tr","Some Film - Trailer.mkv",90*MB,2*MIN)
                 .folder("sf","sf-sd","Sample").video("sf-sd","sf-s3","grp-sf-1080p.mkv",50*MB,MIN)
             .folder("f","of","Other Film (2020)").video("of","of-main","grp-of1080p.mkv",6*GB,110*MIN)
-                .video("of","of-small","of-clip.mkv",120*MB,9*MIN)       // a sample by size only: under a tenth and under 300 MB
-                .video("of","of-short","making-of.mkv",900*MB,3*MIN)     // a sample by length only: three minutes beside nearly two hours
+                .video("of","of-small","of-clip.mkv",120*MB,0)           // a sample by size (no length sent): under a tenth and under 300 MB
+                .video("of","of-short","making-of.mkv",0,3*MIN)          // a sample by length (no size sent): three minutes beside nearly two hours
             // Several main videos: a collection, each film its own tile under its own name.
             .folder("f","col","Alien Collection").video("col","a1","Alien (1979).mkv",4*GB,117*MIN).video("col","a2","Aliens (1986).mkv",5*GB,137*MIN)
             // A programme in a TV folder, as before; and one called Extras, which is never taken for extras.
@@ -83,6 +83,48 @@ public class FilmFoldersTest {
         assertEquals("not a programme called Films",LibraryCatalogue.Kind.FILM,t.get("heat").kind);assertEquals("Heat",t.get("heat").name);assertEquals("1995",t.get("heat").year);
         assertEquals(LibraryCatalogue.Kind.EPISODE,t.get("pilot").kind);assertEquals("Line of Duty",t.get("pilot").showName);
     }
+    // Review, 27 October 2026: size and length never thin a chosen folder's loose files, a season, or episodes.
+    @Test public void sizeAndLengthOnlyThinAFolderWithOneClearMainVideo()throws Exception{
+        LibraryIndex.Entry big=loose("Big Film (2019)",40*GB,150*MIN),shortFilm=loose("A Short Film (2015)",250*MB,25*MIN),shorter=loose("Tiny Short (2018)",60*MB,4*MIN);
+        assertEquals("loose films in the chosen folder all stay",3,LibraryCatalogue.mains(Arrays.asList(big,shortFilm,shorter)).size());
+        server.folder("f","shorts","Some Shorts").video("shorts","b1","Big Film (2019).mkv",40*GB,150*MIN).video("shorts","b2","A Short Film (2015).mkv",250*MB,25*MIN);
+        server.video("f","l1","Big Film (2019).mkv",40*GB,150*MIN).video("f","l2","A Short Film (2015).mkv",250*MB,25*MIN).video("f","l3","Tiny Short (2018).mkv",60*MB,4*MIN);
+        Set<String> ids=byId(build("f","Films")).keySet();
+        assertTrue(ids.toString(),ids.containsAll(Arrays.asList("l1","l2","l3")));
+        assertTrue("a 25-minute film is not a sample, even beside a big one",ids.containsAll(Arrays.asList("b1","b2")));
+        List<LibraryIndex.Entry> season=new ArrayList<>();for(int i=1;i<=6;i++)season.add(in(Arrays.asList("Peppa Pig","Season 1"),"Peppa Pig S01E0"+i,60*MB,(4*60+50)*1000L));
+        season.add(in(Arrays.asList("Peppa Pig","Season 1"),"Peppa Pig S01E07 Special",600*MB,45*MIN));
+        assertEquals("every episode of a season stays",7,LibraryCatalogue.mains(season).size());
+        List<LibraryIndex.Entry> named=new ArrayList<>();for(int i=1;i<=6;i++)named.add(in(Collections.singletonList("Peppa Pig"),"0"+i+" - Episode "+i,60*MB,(4*60+50)*1000L));
+        named.add(in(Collections.singletonList("Peppa Pig"),"Peppa Pig Special",600*MB,45*MIN));
+        assertEquals("many short videos beside one long one are not samples",7,LibraryCatalogue.mains(named).size());
+        List<LibraryIndex.Entry> mixed=Arrays.asList(in(Collections.singletonList("Show"),"Show S01E01 SD",350*MB,44*MIN),in(Collections.singletonList("Show"),"Show S01E02 HD",4*GB,44*MIN),
+            in(Collections.singletonList("Show"),"Show S01E03 SD",200*MB,44*MIN));
+        assertEquals("SD episodes beside HD ones stay",3,LibraryCatalogue.mains(mixed).size());
+        assertEquals("nor in a TV folder",2,LibraryCatalogue.mains(Arrays.asList(in(Collections.singletonList("Show"),"Pilot",4*GB,60*MIN),in(Collections.singletonList("Show"),"Recap",60*MB,3*MIN)),true).size());
+    }
+    // Review: a sole film in a collection folder keeps its own longer title.
+    @Test public void aSoleFilmInACollectionFolderKeepsItsOwnTitle(){
+        assertFalse(more("Harry Potter and the Philosopher's Stone (2001)","Harry Potter"));
+        assertFalse(more("Star Wars Episode IV (1977)","Star Wars"));assertFalse(more("Christmas Vacation (1989)","Christmas"));
+        assertTrue("words about the copy only",more("Some Film Extended Edition 1080p","Some Film"));
+        server.folder("f","hp","Harry Potter").video("hp","hp1","Harry Potter and the Philosopher's Stone (2001).mkv",8*GB,152*MIN);
+        LibraryCatalogue.Title t=null;try{t=byId(build("f","Films")).get("hp1");}catch(Exception e){fail(e.toString());}
+        assertEquals("Harry Potter and the Philosopher's Stone",t.name);assertEquals("2001",t.year);
+    }
+    // Review: "sample" and the extras words only as a tag at the end, or as the whole name.
+    @Test public void titlesThatMerelyContainTheWordsStay(){
+        for(String title:new String[]{"Free Samples (2012).mkv","Sample People 2000.mkv","The Extras (2020).mkv","Hollywood Extras.mkv","Trailer Park Boys The Movie (2006).mkv"}){
+            assertFalse(title,MediaName.sample(title));assertFalse(title,MediaName.extra(title));}
+        for(String title:new String[]{"sample.mkv","Film-sample.mkv","Some.Film.2019.sample.mkv","Some Film sample","Some Film [Sample].mkv"})assertTrue(title,MediaName.sample(title));
+        for(String title:new String[]{"trailer.mkv","Some Film - Trailer.mkv","Some.Film.2019.Featurette.mkv","Some Film 2019 Trailer","Some Film (Behind the Scenes).mkv"})assertTrue(title,MediaName.extra(title));
+        assertFalse("a household's own Bonus folder stays",MediaName.extrasFolder("Bonus"));
+        server.folder("f","fs","Free Samples (2012)").video("fs","fs1","Free.Samples.2012.1080p.mkv",5*GB,90*MIN).folder("f","bo","Bonus").video("bo","bo1","Home Movie 2010.mkv",2*GB,50*MIN);
+        Set<String> ids=null;try{ids=byId(build("f","Films")).keySet();}catch(Exception e){fail(e.toString());}
+        assertTrue(ids.toString(),ids.contains("fs1")&&ids.contains("bo1"));
+    }
+    static LibraryIndex.Entry loose(String title,long size,long duration){LibraryIndex.Entry e=new LibraryIndex.Entry();e.id=title;e.title=title;e.size=size;e.duration=duration;return e;}
+    static LibraryIndex.Entry in(List<String> path,String title,long size,long duration){LibraryIndex.Entry e=loose(title,size,duration);e.pathNames.addAll(path);e.pathIds.addAll(path);return e;}
     @Test public void theFolderNameWinsOnlyWhenItSaysMore(){
         assertTrue(more("movie","Some Film (2019)"));assertTrue(more("Some Film","Some Film (2019)"));assertTrue(more("grp-sf1080p","Some Film"));
         assertTrue(more("01 - Part one","Some Documentary"));assertTrue(more("Some Film 3D","Some Film"));

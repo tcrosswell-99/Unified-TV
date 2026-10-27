@@ -32,14 +32,16 @@ public final class AdbCommands {
         HOME = "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME",
         HOME_CLAIMS = "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME",
         CHANNEL_APPS = "cmd package query-activities --brief -a android.intent.action.VIEW -t vnd.android.cursor.item/channel",
-        SETTINGS_APPS = "cmd package query-activities --brief -a android.settings.SETTINGS";
+        SETTINGS_APPS = "cmd package query-activities --brief -a android.settings.SETTINGS",
+        /** The active screensaver (read only), so the clean-up never turns it off. */
+        SCREENSAVER = "settings get secure screensaver_components";
     /** The animation scales tools/recovery.py records; read only. */
     public static final String[] SCALES = {"window_animation_scale", "transition_animation_scale", "animator_duration_scale"};
 
     private static final Set<String> FIXED;
     static {
         Set<String> s = new HashSet<>(Arrays.asList(FINGERPRINT, SERIAL, ADB_SECURE, ANDROID_ID, PACKAGES, DISABLED, ENABLED, SYSTEM,
-            HOME, HOME_CLAIMS, CHANNEL_APPS, SETTINGS_APPS));
+            HOME, HOME_CLAIMS, CHANNEL_APPS, SETTINGS_APPS, SCREENSAVER));
         for (String key : SCALES) s.add(scale(key));
         FIXED = Collections.unmodifiableSet(s);
     }

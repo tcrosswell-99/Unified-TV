@@ -17,7 +17,10 @@ final class FakeTv implements Cleanup.Shell, Closeable {
     static final String SONY = "Sony/BRAVIA_VH2_EU/BRAVIA_VH2:12/STT1.230201.001/123:user/release-keys";
     static final String HOME = "com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity";
 
-    String fingerprint = OWNER, serial = "TESTSERIAL0001", androidId = "a1b2c3d4e5f60718", adbSecure = "1", home = HOME;
+    String fingerprint = OWNER, serial = "TESTSERIAL0001", androidId = "a1b2c3d4e5f60718", adbSecure = "1", home = HOME,
+        screensaver = "com.google.android.backdrop/com.google.android.backdrop.Backdrop";
+    /** pm prints an error for these and leaves them as they were. */
+    final Set<String> failDisable = new HashSet<>(), failEnable = new HashSet<>();
     final Set<String> installed = new LinkedHashSet<>(), disabled = new LinkedHashSet<>(), homeClaims = new LinkedHashSet<>(),
         channelApps = new LinkedHashSet<>(), settingsApps = new LinkedHashSet<>(), inputDrivers = new LinkedHashSet<>();
     final Map<String, String> scales = new HashMap<>();
@@ -59,6 +62,7 @@ final class FakeTv implements Cleanup.Shell, Closeable {
         if (c.equals(AdbCommands.HOME_CLAIMS)) return brief(homeClaims);
         if (c.equals(AdbCommands.CHANNEL_APPS)) return brief(channelApps);
         if (c.equals(AdbCommands.SETTINGS_APPS)) return brief(settingsApps);
+        if (c.equals(AdbCommands.SCREENSAVER)) return (screensaver == null ? "null" : screensaver) + "\n";
         if (c.startsWith("settings get global ")) return scales.getOrDefault(c.substring(20), "null") + "\n";
         if (c.startsWith("dumpsys package ")) {
             String p = c.substring(16);
@@ -70,9 +74,10 @@ final class FakeTv implements Cleanup.Shell, Closeable {
             if (beforeChange != null) beforeChange.run();
             String p = c.substring(25);
             if (!installed.contains(p)) return "Error: Unknown package: " + p + "\n";
+            if (failDisable.contains(p)) return "Exception occurred while executing 'disable-user':\njava.lang.SecurityException: Shell cannot change component state for " + p + " to disabled\n";
             disabled.add(p); return "Package " + p + " new state: disabled-user\n";
         }
-        if (c.startsWith("pm enable ")) { String p = c.substring(10); disabled.remove(p); return "Package " + p + " new state: enabled\n"; }
+        if (c.startsWith("pm enable ")) { String p = c.substring(10); if (failEnable.contains(p)) return "Error: package " + p + " is not enabled (disabled-user)\n"; disabled.remove(p); return "Package " + p + " new state: enabled\n"; }
         return "";
     }
     private static String list(Collection<String> pkgs) { StringBuilder b = new StringBuilder(); for (String p : pkgs) b.append("package:").append(p).append('\n'); return b.toString(); }

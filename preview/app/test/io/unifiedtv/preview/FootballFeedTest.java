@@ -123,6 +123,27 @@ public class FootballFeedTest {
         assertFalse(FixtureFeed.noneFound(app));
         assertTrue("each league's rounds are kept",FixtureFeed.load(app,FixtureFeed.LEAGUES).has("4329"));
     }
+    @Test public void aTeamPickedWhileAReadIsOutNeverGetsTheOldTeamsFixtures(){
+        FixtureFeed.saveTeam(app,spurs(""));
+        Fixtures.Team wrexham=new Fixtures.Team(Fixtures.Team.CLUB,"Wrexham","WRE",0xFFD71920,0xFFFFFFFF,Fixtures.Sport.FOOTBALL,null,"","0");
+        // Home's read for Spurs is out when the adult picks Wrexham in Settings (saveTeam clears what was kept).
+        SportsDb.http=path->{sent.add(path);if(path.startsWith("eventsnext.php?id=133616")){FixtureFeed.saveTeam(app,wrexham);return new JSONObject(sdbReply);}return new JSONObject("{\"events\":null}");};
+        assertTrue("the old team's fixtures are not shown",FixtureFeed.refresh(app).isEmpty());
+        assertFalse("nor kept",FixtureFeed.load(app,"fixtures.json").has("fetchedAt"));
+        sent.clear();FixtureFeed.refresh(app);
+        assertTrue("the new team is read at once, not \"not due\"",sent.contains("searchteams.php?t=Wrexham"));
+        assertTrue("and nothing was found for it",FixtureFeed.noneFound(app));
+        // Fixtures kept for one team never count for another, even if the team changed without clearing them.
+        FixtureFeed.forget(app,"fixtures.json");FixtureFeed.saveTeam(app,spurs(""));
+        SportsDb.http=path->new JSONObject(path.startsWith("eventsnext")?sdbReply:"{\"events\":null}");
+        assertEquals(1,FixtureFeed.refresh(app).size());
+        FixtureFeed.prefs(app).edit().putString(FixtureFeed.TEAM,wrexham.json().toString()).commit();
+        assertFalse("Spurs' kept empty-or-not list says nothing about Wrexham",FixtureFeed.noneFound(app));
+        sent.clear();SportsDb.http=path->{sent.add(path);return new JSONObject("{\"events\":null}");};
+        assertTrue(FixtureFeed.refresh(app).isEmpty());assertFalse("read again for Wrexham",sent.isEmpty());
+        // A bundled club numbered by its own read is still the same team: its fixtures are kept.
+        assertTrue(FixtureFeed.sameTeam(wrexham,wrexham.learnt("134000","4329")));assertFalse(FixtureFeed.sameTeam(wrexham,spurs("")));
+    }
     @Test public void aClubWithNoFixturesFoundIsSaidPlainly(){
         FixtureFeed.saveTeam(app,new Fixtures.Team(Fixtures.Team.CLUB,"Nowhere Town","",0,0,Fixtures.Sport.FOOTBALL,null,"","4396"));
         SportsDb.http=path->{throw new IOException("offline");};

@@ -53,11 +53,20 @@ final class HaSignIn implements PhoneFlows.HaNet {
             // Android 11 TVs often can't look .local names up at all; Home Assistant also announces itself by mDNS.
             java.net.URI u = java.net.URI.create(base);
             if (u.getHost() == null || !u.getHost().toLowerCase(java.util.Locale.ROOT).endsWith(".local") || !"http".equals(u.getScheme())) return base;
-            for (LocalDiscovery.Found f : LocalDiscovery.mdns(context, "_home-assistant._tcp.", 3000))
-                if (java.net.URI.create(f.base).getPort() == u.getPort()) return f.base;
+            return announced(base, LocalDiscovery.mdns(context, "_home-assistant._tcp.", 3000));
         } catch (RuntimeException ignored) {}
         return base;
     }
+    /** Pure: the announced Home Assistant on the same port as {@code base} (ports compared as used: 80/443 when unwritten), else base. */
+    static String announced(String base, java.util.List<LocalDiscovery.Found> found) {
+        try {
+            int port = port(java.net.URI.create(base));
+            if (found != null) for (LocalDiscovery.Found f : found) if (port(java.net.URI.create(f.base)) == port) return f.base;
+        } catch (RuntimeException ignored) {}
+        return base;
+    }
+    /** The port a URL is actually reached on: its own, else its scheme's (PhoneFlows.haBase writes 8123 when no scheme was typed). */
+    static int port(java.net.URI u) { return u.getPort() > 0 ? u.getPort() : "https".equalsIgnoreCase(u.getScheme()) ? 443 : 80; }
     /**
      * Pure: a plain-http base named by a host name, as its private IPv4 address on the home network when {@code resolve}
      * gives one; anything else unchanged (https keeps its name, which its certificate needs; a public address is not
@@ -124,7 +133,10 @@ final class HaSignIn implements PhoneFlows.HaNet {
         Mint(String access, String name) { this(access, name, null); }
         Mint(String access, String name, String retryName) { this.access = access; this.name = name; this.retryName = retryName; }
         boolean finished() { return done; }
-        /** Home Assistant said something: a missing token was its refusal, not an unreachable server. */
+        /**
+         * Home Assistant refused (auth_invalid) or answered the request (a result): a missing token was its refusal. A
+         * connection that drops before that, even after auth_required, counts as not reached.
+         */
         boolean answered() { return answered; }
         String token() { return token; }
         void fail() { done = true; }
@@ -135,14 +147,14 @@ final class HaSignIn implements PhoneFlows.HaNet {
         /** The reply to send for one incoming message, or null. */
         String on(String text) {
             if (done) return null;
-            answered = true;
             try {
                 JSONObject m = new JSONObject(text);
                 switch (m.optString("type")) {
                     case "auth_required": return new JSONObject().put("type", "auth").put("access_token", access).toString();
                     case "auth_ok": return request(ID, name);
-                    case "auth_invalid": done = true; return null;
+                    case "auth_invalid": answered = true; done = true; return null;
                     case "result": {
+                        answered = true;
                         int id = m.optInt("id");
                         if (id != ID && !(retried && id == RETRY_ID)) return null;
                         Object result = m.opt("result");

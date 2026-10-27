@@ -90,6 +90,35 @@ class CleanupRecordTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cleanup_restore.prepare(self.record, "tv.example")
 
+    def test_androids_chooser_is_not_a_home(self):
+        chooser = "android/com.android.internal.app.ResolverActivity"
+        self.assertTrue(recovery.is_chooser(chooser))
+        self.assertFalse(recovery.is_chooser("com.google.android.tvlauncher/.MainActivity"))
+
+        class Dev:
+            def __init__(self, answer):
+                self.answer = answer
+
+            def shell(self, command, read_timeout_s=None):
+                return self.answer
+
+        self.assertIsNone(recovery.query_home(Dev("priority=0 isDefault=false\n" + chooser + "\n")))
+        self.assertIsNone(recovery.query_home(Dev("android\n")))
+        self.assertEqual(recovery.query_home(Dev("com.google.android.tvlauncher/.MainActivity\n")),
+                         "com.google.android.tvlauncher/.MainActivity")
+
+    def test_a_record_holding_the_chooser_falls_back_to_the_stock_launcher(self):
+        record = json.loads(FIXTURE.read_text())
+        record["home"] = "android/com.android.internal.app.ResolverActivity"
+        self.record.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        list_path, _, _ = cleanup_restore.prepare(self.record, "tv.example")
+        recovery.current_device = lambda: dict(self.device)
+        commands = recovery.restore_commands(list_path, "com.google.android.tvlauncher", "tv.example")
+        self.assertFalse([c for c in commands if "set-home-activity --user 0 android/" in c], commands)
+        self.assertTrue([c for c in commands if "set-home-activity" in c and "resolve-activity" in c
+                         and "com.google.android.tvlauncher" in c], commands)
+        self.assertIn("pm enable com.google.android.tvlauncher", commands)
+
 
 if __name__ == "__main__":
     unittest.main()
