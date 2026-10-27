@@ -7,7 +7,7 @@ public final class PreviewApp extends android.app.Application {
         // (HomeSafety). When the safe screen will show, each start step below is best-effort, so the app lives to show it.
         boolean safe=HomeSafety.appStart(this);
         Runnable[] steps={()->LocalDiscovery.app=this,()->MemoryBudget.get(this),()->HouseholdSettings.ensure(this),()->TurnOn.track(this),
-            ()->registerActivityLifecycleCallbacks(LiveTvGuard.SCREENS),()->androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)};
+            ()->registerActivityLifecycleCallbacks(LiveTvGuard.SCREENS),()->registerActivityLifecycleCallbacks(Comeback.SCREENS),()->androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)};
         for(Runnable step:steps){if(!safe){step.run();continue;}try{step.run();}catch(RuntimeException|LinkageError skipped){/* the safe screen still shows */}}
     }
 

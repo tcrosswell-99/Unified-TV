@@ -33,6 +33,31 @@ final class RemoteHelp {
         k.add(new Key("Volume, mute, power, input and voice","The TV's own. Unified TV doesn't change them."));
         return k;
     }
+    /** The guided setup's look at the remote: nothing to do there, so it says so first (owner, TCL build run 99). */
+    static final String LOOK_ONLY="Nothing to do here — just a quick look at what your remote does. Press Next when you're ready.";
+    /** The buttons Unified TV leaves alone, as one line under the glance. */
+    static final String TV_KEYS="Volume, mute, power, input and voice stay the TV's own.";
+    /** At most this many pairs, so the guided setup's remote step fits a 1080p screen without scrolling. */
+    static final int GLANCE_MAX=8;
+
+    /**
+     * The same help as {@link #keys}, as short pairs for one glance (the guided setup's remote step): no more than
+     * {@link #GLANCE_MAX}, each meaning a few words, and just as true for this TV (Back and Home depend on the app and on
+     * whether Unified TV holds the Home button).
+     */
+    static List<Key> glance(boolean launcherApp,boolean isHome){
+        List<Key> k=new ArrayList<>();
+        k.add(new Key("OK","Open or choose"));
+        k.add(new Key("Hold OK","Move or remove an app on Home"));
+        k.add(new Key("Up","Settings and icons, top right"));
+        k.add(new Key("Down","Your Films & TV"));
+        k.add(new Key("Left and Right","Along a row"));
+        k.add(new Key("Menu","All apps"));
+        k.add(new Key("Back",launcherApp?"One step back. Stays in Unified TV":"One step back. On Home, closes the preview"));
+        k.add(new Key("Home",!launcherApp?"The TV's own Home screen":isHome?"Back to Unified TV":"The TV's own Home screen, for now"));
+        return k;
+    }
+
     /** What Back does on Home (HRC-03): the launcher app stays open; the preview is an ordinary app and closes. */
     static String back(boolean launcherApp,boolean isHome){
         if(!launcherApp)return "One step back. On Home it closes this preview, as any TV app does; open Unified TV again from the TV's apps.";

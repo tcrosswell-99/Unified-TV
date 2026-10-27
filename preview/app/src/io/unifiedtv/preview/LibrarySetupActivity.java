@@ -22,6 +22,11 @@ import java.util.concurrent.*;
  *
  * Nothing is saved until Save (the adult PIN, when one is set); Back with unsaved changes asks. Kids never reach this
  * screen. Adding a folder that contains, or sits inside, one already chosen says plainly that its titles show once.
+ *
+ * Save starts collecting at once (owner's TCL, build run 99): the app's background job (LibraryCollector) makes the list
+ * of titles and then looks up their posters, so Your Films &amp; TV is ready before it is opened. The sheet says how far
+ * it has got ("Finding your films… 120 so far — you can carry on.") and that leaving does not stop it. With no TMDB key
+ * it says once, on this TV, how to add one (from the phone, in Settings' Film posters step).
  */
 public final class LibrarySetupActivity extends GlassScreen {
     enum Page{MANAGE,DISCOVER,BROWSE,FOLDER,SAVED,KIDS}
@@ -37,6 +42,11 @@ public final class LibrarySetupActivity extends GlassScreen {
     /** Folders opened while adding, from the server's top ("0") down. */
     private final List<DlnaScope.Frame> trail=new ArrayList<>();
     private String folderId="",focusId="";private boolean autoChosen;
+    /** The background job's line on the Saved page, kept up to date while the sheet is open. */
+    private TextView progress,carryOn;private LinearLayout keyBox;
+    private final Runnable jobChanged=this::jobChanged;
+    /** Shown once on this TV: the "add your TMDB key" line after Save. */
+    static final String KEY_HINT_SAID="libraryKeyHintSaid";
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);
@@ -45,15 +55,17 @@ public final class LibrarySetupActivity extends GlassScreen {
         LibraryFolders.Library lib=LibraryFolders.library(household,kids,false);
         if(lib.ready){server=LibraryFolders.serverOnly(lib.source);folders=new ArrayList<>(lib.folders);}
         if(server.optString("control").isEmpty())discover();else render();
+        LibraryCollector.get(this).listen(jobChanged);
     }
-    @Override protected void onDestroy(){ticket++;handler.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
+    /** Leaving never stops the background job: it belongs to the app, not to this sheet. */
+    @Override protected void onDestroy(){ticket++;LibraryCollector.get(this).unlisten(jobChanged);handler.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
     /** For tests: where the sheet is, and the folders as they would be saved. */
     Page page(){return page;}
     List<LibraryFolders.Folder> folders(){return folders;}
 
     // --- pages
     private void render(){
-        ticket++;if(task!=null)task.cancel(true);clear();
+        ticket++;if(task!=null)task.cancel(true);clear();progress=null;carryOn=null;keyBox=null;
         switch(page){
             case KIDS:head("Your Films & TV",null);card();text(KidsPolicy.ASK_ADULT,25);text("An adult chooses the folders, and marks the ones for Kids, from the Adults profile.",15);button("Close",this::close);break;
             case MANAGE:manage();break;
@@ -76,7 +88,7 @@ public final class LibrarySetupActivity extends GlassScreen {
         for(LibraryFolders.Folder f:folders){Button b=row(f.name,f.kids?"For Kids":null,true,()->{folderId=f.id;page=Page.FOLDER;render();});if(f.id.equals(focusId))again=b;}
         row("Add a folder",null,true,()->browse(new DlnaScope.Frame("0",serverName(),0),true));
         if(dirty){card();Button save=row("Save changes",null,false,this::save);text("Not saved yet.",15);if(again==null&&focusId.equals("save"))again=save;}
-        else if(!folders.isEmpty()){card();row("Open Your Films & TV",null,false,this::openLibrary);}
+        else if(!folders.isEmpty()){card();row("Open Your Films & TV",null,false,this::openLibrary);progressLines(false);}
         text("Kids see only the folders marked for Kids, and only titles whose rating suits Kids. Adults see everything.",15);
         Button target=again;focusId="";if(target!=null)body.post(target::requestFocus);
     }
@@ -92,14 +104,47 @@ public final class LibrarySetupActivity extends GlassScreen {
     private void saved(){
         head("Saved","Your Films & TV");card();
         text(folders.size()==1?"1 folder is in your library.":folders.size()+" folders are in your library.",25);
-        text("The first time, the TV makes a list of your titles. That can take a minute; it says how far it has got.",15);
+        progressLines(true);
+        keyBox=new LinearLayout(this);keyBox.setOrientation(LinearLayout.VERTICAL);column.addView(keyBox);
         row("Open Your Films & TV",null,false,this::openLibrary);row("Done",null,false,this::close);
+        keyHintOnce();
+    }
+    /** The job's progress and that it carries on by itself ({@code always}: a line even before it has started). */
+    private void progressLines(boolean always){
+        LibraryCollector.Status s=LibraryCollector.get(this).status();
+        if(!always&&!s.busy())return;
+        progress=text(s.setup().isEmpty()?"Finding your films…":s.setup(),18);
+        carryOn=text(LibraryCollector.BACKGROUND,15);carryOn.setVisibility(s.busy()||always?View.VISIBLE:View.GONE);
+    }
+    private void jobChanged(){
+        if(progress==null||isFinishing())return;LibraryCollector.Status s=LibraryCollector.get(this).status();
+        if(!s.setup().isEmpty())progress.setText(s.setup());
+        if(carryOn!=null)carryOn.setVisibility(s.busy()?View.VISIBLE:View.GONE);
+    }
+    /**
+     * No TMDB key: one line, once on this TV, saying posters need it and where it is added (the key is read off the main
+     * thread: it is in the encrypted store).
+     */
+    private void keyHintOnce(){
+        if(prefs.getBoolean(KEY_HINT_SAID,false))return;Context app=getApplicationContext();int mine=ticket;
+        worker.execute(()->{boolean on=Posters.get(app).usable();
+            handler.post(()->{if(mine!=ticket||isFinishing()||on||keyBox==null)return;
+                prefs.edit().putBoolean(KEY_HINT_SAID,true).apply();LinearLayout was=column;column=keyBox;
+                text(LibraryCollector.KEY_HINT+". You add it from your phone: Settings > Library & Media > Film posters.",15);
+                row("Add your TMDB key from your phone",null,true,this::addKey);column=was;});});
+    }
+    private void addKey(){
+        try{startActivity(new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.LIBRARY).putExtra("task",SettingsActivity.PHONE_TMDB));}catch(RuntimeException ignored){}
+        close();
     }
     private void changed(LibraryFolders.Change c){folders=c.folders;dirty=true;if(c.message!=null&&!c.message.isEmpty())note(c.message);}
     private String serverName(){String n=server.optString("name").trim();return n.isEmpty()?"your media server":n;}
     private void save(){
         EditLock.ask(this,()->{
-            try{LibraryFolders.save(this,server,folders);prefs.edit().putString("librarySource","dlna").apply();dirty=false;page=Page.SAVED;render();}
+            try{LibraryFolders.save(this,server,folders);prefs.edit().putString("librarySource","dlna").apply();dirty=false;
+                // Start collecting now, in the background: the list of titles, then their posters.
+                LibraryCollector job=LibraryCollector.get(this);job.listen(jobChanged);job.start();
+                page=Page.SAVED;render();}
             catch(Exception e){note("Couldn't save on this TV. Nothing was changed.");}
         });
     }

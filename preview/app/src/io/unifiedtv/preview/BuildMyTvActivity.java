@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.*;
 import java.util.*;
 
@@ -17,7 +18,10 @@ import java.util.*;
  * Build My TV / Entertainment Hub Builder (v3.4.5/3.4.6 UX-BUILD-01, SET-BUILD-01..11). Optional and remote-first: a
  * category overview, then short guided choices, Music first; every one can be skipped, and Home never needs any of it.
  * Opened from the guided setup's "Your apps" step (FirstRunActivity) and at any time from Settings > Apps & Shortcuts >
- * Build My TV (start()).
+ * Build My TV (start()). Every page starts with one line saying what to do there, or that there is nothing to do (owner,
+ * TCL build run 99). Music is one choice: one OK makes the Music app that Home's Music place opens. Other kinds of app are
+ * ticked for Home (a tick shows what is on Home now); what isn't on this TV is one line of names unless Google Play can
+ * open its page.
  *
  * Detect before asking (AppCatalogue, HubBuilder): installed, launchable apps are found through the launcher query the
  * manifest declares (<queries>). Install only ever opens the Google Play page of a trusted listing, after the household
@@ -80,32 +84,42 @@ public final class BuildMyTvActivity extends GlassScreen {
     private String dockId(String entry){AppCatalogue.Entry e=AppCatalogue.entry(entry);return e==null?null:AppCatalogue.dockId(e,launchable);}
 
     // --- Pages
+    // Owner, TCL build run 99: every page starts with one plain line saying what to do there, or that there is nothing to
+    // do. Only things that do something can be focused; what was merely found is one line of text, not a list of rows.
     private void show(String step){
         if(!HubBuilder.OVERVIEW.equals(step)&&!HubBuilder.DONE.equals(step)&&!HubBuilder.ARRANGE.equals(step)&&AppCatalogue.category(step)==null)step=HubBuilder.OVERVIEW;
         HubBuilder.go(state,step);save();at=step;
         if(HubBuilder.OVERVIEW.equals(step))overview();else if(HubBuilder.ARRANGE.equals(step))arrange();else if(HubBuilder.DONE.equals(step))done();else category(AppCatalogue.category(step));
         focus="";
     }
+    /** The page's first line: what to do here, in plain words. */
+    private TextView lead(String words){return text(words,18);}
+    /** A quieter note under the first line. */
+    private TextView note15(String words){TextView t=text(words,15);t.setFocusable(false);return t;}
+    /** What is on Home now (dock ids), so a tick shows what is really there. */
+    private List<String> onHomeNow(){return DockPolicy.visible(HouseholdSettings.dock(this,room),DockCapacity.get(prefs,profile));}
     private void overview(){
-        page("Build My TV");
-        text("Optional. Tell Unified TV which services you use and it puts them where you want them. Skip anything: Home works without all of it.",18);
-        if(kids)text("These choices are for Kids only, from the apps an adult has allowed.",16);
+        page("Build My TV","Optional");
         String resume=state.stepId;boolean going=HubBuilder.IN_PROGRESS.equals(state.status)&&AppCatalogue.category(resume)!=null;
+        lead(going?"Carry on where you left off, or pick a kind of app below.":"Choose the apps you use, one kind at a time. Press Start with Music, or pick a kind of app below.");
+        // Said once, here: nobody has to fill Home.
+        note15("Home's places don't all need filling. Skip anything you don't use: Home works without it.");
+        if(kids)note15("These choices are for Kids only, from the apps an adult has allowed.");
         button(going?"Carry on: "+AppCatalogue.category(resume).title:"Start with Music",()->show(going?resume:AppCatalogue.MUSIC));
-        LinearLayout row=null;int n=0;
+        List<String> home=onHomeNow();LinearLayout row=null;int n=0;
         for(AppCatalogue.Category c:AppCatalogue.CATEGORIES){if(n++%4==0){row=new LinearLayout(this);column.addView(row);}
-            Button card=card(c.glyph,null,c.title,summary(c),()->show(c.id));row.addView(card,weighted());}
+            Button card=card(c.glyph,null,c.title,summary(c,home),()->show(c.id));row.addView(card,weighted());}
         button("Arrange Home  ·  "+DockCapacity.get(prefs,profile)+" places",()->show(HubBuilder.ARRANGE));
         if(!HubBuilder.COMPLETED.equals(state.status))button("Skip for now",()->{state.status=HubBuilder.SKIPPED;state.stepId=HubBuilder.OVERVIEW;save();finish();});
-        button("Exit to Home",this::finish);
+        button("Close Build My TV",this::finish);   // back to where it was opened from: Home, Settings or the guided setup
         button("Start over",()->new AlertDialog.Builder(this).setTitle("Start over?").setMessage("Your choices in Build My TV are cleared. Home, its dock and your other settings stay as they are.")
             .setPositiveButton("Start over",(d,w)->{state=HubBuilder.startOver();showAll.clear();arrangement=null;left.clear();save();show(HubBuilder.OVERVIEW);}).setNegativeButton("Cancel",null).show());
     }
-    private String summary(AppCatalogue.Category c){
+    private String summary(AppCatalogue.Category c,List<String> home){
         if(state.declinedCategories.contains(c.id))return "Not for us";
-        List<String> chosen=state.selected(c.id);
-        if(!chosen.isEmpty()){AppCatalogue.Entry p=AppCatalogue.entry(state.preferred(c.id));return (p==null?"":p.name)+(chosen.size()>1?" and "+(chosen.size()-1)+" more":"");}
+        if(AppCatalogue.MUSIC.equals(c.id)){AppCatalogue.Entry p=AppCatalogue.entry(state.preferred(c.id));if(p!=null)return p.name;}
         if(c.link)return state.selectedCategories.contains(c.id)?"Chosen":"Optional";
+        if(!AppCatalogue.MUSIC.equals(c.id)){int on=0;for(String id:found(c.id))if(HubBuilder.ticked(state,id,dockId(id),home))on++;if(on>0)return on+" on Home";}
         int found=found(c.id).size();return !reliable?"Choose yourself":found==0?"None found":found+" found";
     }
     private void footer(String category){
@@ -114,98 +128,113 @@ public final class BuildMyTvActivity extends GlassScreen {
         button("All categories",()->show(HubBuilder.OVERVIEW));
     }
     private void category(AppCatalogue.Category c){
-        page(c.title);text(c.blurb,18);
+        page(c.title);
         if(c.link)setup(c);else if(AppCatalogue.MUSIC.equals(c.id))music();else apps(c);
         footer(c.id);
     }
-    /** Yes / No / Later, in a few presses (UX-BUILD-01). */
+    /** Nothing of this kind was found: Yes / No / Later, in a few presses (UX-BUILD-01). The question is the first line. */
     private boolean ask(AppCatalogue.Category c){
         if(state.selectedCategories.contains(c.id)||showAll.contains(c.id))return false;
-        text(c.question,24);
+        lead(c.question);
+        note15("None was found on this TV.");
         button("Yes, show me",()->{HubBuilder.answer(state,c.id,true);showAll.add(c.id);save();show(c.id);});
         button("No thanks",()->{HubBuilder.answer(state,c.id,false);save();String next=AppCatalogue.next(c.id);show(next==null?HubBuilder.ARRANGE:next);});
         button("Do this later",()->{String next=AppCatalogue.next(c.id);show(next==null?HubBuilder.ARRANGE:next);});
         return true;
     }
+    /** SET-BUILD-09/10: one OK on a music app makes it the Music app that Home's Music place opens. */
     private void music(){
         AppCatalogue.Category c=AppCatalogue.category(AppCatalogue.MUSIC);List<String> found=found(c.id);
-        HubBuilder.Music rule=HubBuilder.music(found,reliable,state.preferred(c.id));
-        if(rule==HubBuilder.Music.AUTO_DEFAULT&&HubBuilder.autoMusic(state,found,reliable)){save();rule=HubBuilder.Music.KEEP;
-            text(AppCatalogue.entry(found.get(0)).name+" is the only music app on this TV, so it is your Music app now. It stays in Apps unless you put it on the dock.",19);}
-        else if(rule==HubBuilder.Music.KEEP){AppCatalogue.Entry p=AppCatalogue.entry(state.preferred(c.id));text((p==null?"Your chosen app":p.name)+" is your Music app"+(found.size()==1&&p!=null&&found.contains(p.id)?", the only one on this TV":"")+". It is on the dock only if you put it there. Change it below if you like.",19);}
-        else if(rule==HubBuilder.Music.CHOOSE)text("This TV has "+found.size()+" music apps. Choose the ones to show, and which one is your Music app.",19);
-        else if(rule==HubBuilder.Music.MANUAL)text(AppCatalogue.State.DETECTION_UNAVAILABLE.words+" which music apps are installed. Choose the ones you have.",19);
-        else if(ask(c))return;
-        if(rule==HubBuilder.Music.CHOOSE&&found.size()>1)button("Show all "+found.size(),()->{for(String id:found)HubBuilder.select(state,id,true);save();focus="all";show(c.id);});
-        list(c,found,rule==HubBuilder.Music.MANUAL);
+        AppCatalogue.Entry chosen=AppCatalogue.entry(state.preferred(c.id));
+        if(reliable&&found.isEmpty()&&chosen==null&&ask(c))return;
+        List<String> choices=reliable?found:ids(AppCatalogue.entries(c.id));
+        if(choices.isEmpty())lead(storeable(c,found).isEmpty()?"No music app is on this TV. Nothing to do here: press Next.":"No music app is on this TV yet. Pick one below to get it, or press Next.");
+        else lead("Which music app do you use? Pick one — it opens from the Music place on Home.");
+        if(!reliable)note15(AppCatalogue.State.DETECTION_UNAVAILABLE.words+" which apps are installed, so all of them are listed.");
+        if(chosen!=null&&reliable&&!found.contains(chosen.id))note15(chosen.name+" is your Music app, but it isn't on this TV now. Pick another, or install it again.");
+        grid(choices,id->{AppCatalogue.Entry e=AppCatalogue.entry(id);boolean mine=chosen!=null&&chosen.id.equals(id);
+            return card(glyphOf(e),iconOf(e),e.name,mine?"✓  Your Music app":"Press OK to choose",()->{HubBuilder.chooseMusic(state,id);save();focus=id;show(c.id);});},
+            id->(chosen!=null&&chosen.id.equals(id))?", your Music app":", press OK to make it your Music app");
+        if(reliable)missing(c,found);
     }
+    /** Streaming, YouTube and casting: tick the apps wanted on Home; the others stay in Apps. */
     private void apps(AppCatalogue.Category c){
         List<String> found=found(c.id);
-        if(!reliable)text(AppCatalogue.State.DETECTION_UNAVAILABLE.words+" which apps are installed. Choose the ones you have.",17);
-        else if(found.isEmpty()&&ask(c))return;
-        if(AppCatalogue.CASTING.equals(c.id))text("Some TVs also have Google Cast built in. Unified TV can't check that, so it isn't listed here.",16);
-        if(AppCatalogue.YOUTUBE.equals(c.id))text("SmartTube is an independent app, not made by YouTube. It isn't in Google Play, so Unified TV can only recognise it if you already have it.",16);
-        list(c,found,!reliable);
+        if(reliable&&found.isEmpty()&&ask(c))return;
+        List<String> choices=reliable?found:ids(AppCatalogue.entries(c.id)),home=onHomeNow();
+        if(choices.isEmpty())lead(storeable(c,found).isEmpty()?"None of these is on this TV. Nothing to do here: press Next.":"None of these is on this TV yet. Pick one below to get it, or press Next.");
+        else lead("Tick the apps you want on Home. The others stay in Apps.");
+        if(!reliable)note15(AppCatalogue.State.DETECTION_UNAVAILABLE.words+" which apps are installed, so all of them are listed.");
+        if(AppCatalogue.CASTING.equals(c.id))note15("Some TVs also have Google Cast built in. Unified TV can't check that, so it isn't listed here.");
+        if(AppCatalogue.YOUTUBE.equals(c.id))note15("SmartTube is an independent app, not made by YouTube. It isn't in Google Play, so Unified TV can only recognise it if you already have it.");
+        grid(choices,id->{AppCatalogue.Entry e=AppCatalogue.entry(id);boolean on=HubBuilder.ticked(state,id,dockId(id),home);
+            return card(glyphOf(e),iconOf(e),e.name,on?"✓  On Home":"In Apps",()->{
+                if(on){HubBuilder.select(state,id,false);HubBuilder.place(state,id,false);}else{HubBuilder.select(state,id,true);HubBuilder.place(state,id,true);}
+                arrangement=null;save();focus=id;show(c.id);});},
+            id->HubBuilder.ticked(state,id,dockId(id),home)?", ticked: on Home":", not ticked: in Apps");
+        if(reliable)missing(c,found);
     }
-    /** Found apps first, then the rest (unless the household only wants what it has). */
-    private void list(AppCatalogue.Category c,List<String> found,boolean manual){
-        for(String id:found)provider(AppCatalogue.entry(id),manual);
-        List<AppCatalogue.Entry> more=new ArrayList<>();for(AppCatalogue.Entry e:AppCatalogue.entries(c.id))if(!found.contains(e.id))more.add(e);
-        if(more.isEmpty())return;
-        if(!found.isEmpty())text("More services",20);
-        for(AppCatalogue.Entry e:more)provider(e,manual);
+    private static List<String> ids(List<AppCatalogue.Entry> entries){List<String> out=new ArrayList<>();for(AppCatalogue.Entry e:entries)out.add(e.id);return out;}
+    /** Cards three to a row; each card's spoken name says whether it is ticked. */
+    private void grid(List<String> ids,java.util.function.Function<String,Button> make,java.util.function.Function<String,String> spoken){
+        LinearLayout row=null;int n=0;
+        for(String id:ids){if(n++%3==0){row=new LinearLayout(this);column.addView(row);}
+            Button b=make.apply(id);b.setContentDescription(AppCatalogue.entry(id).name+spoken.apply(id));row.addView(b,weighted());if(id.equals(focus))focusOn(b);}
+        if(row!=null)for(int i=n%3==0?3:n%3;i<3;i++){View gap=new View(this);gap.setFocusable(false);row.addView(gap,weighted());}
     }
-    /** One service: its glyph, name and honest state; OK chooses it, installs it (with consent) or explains. */
-    private void provider(AppCatalogue.Entry e,boolean manual){
-        AppCatalogue.State s=stateOf(e);boolean chosen=state.selected(e.category).contains(e.id);
-        LinearLayout row=new LinearLayout(this);column.addView(row);
-        String sub=AppCatalogue.describe(e,s);Runnable action;
-        if(kids&&s==AppCatalogue.State.INSTALLED_AND_LAUNCHABLE&&!allowed(e)){sub="Not on the Kids list. Ask an adult.";action=()->note(e.name+" isn't on the Kids list. Ask an adult.");}
-        else if(s==AppCatalogue.State.INSTALLED_AND_LAUNCHABLE||(manual&&s==AppCatalogue.State.DETECTION_UNAVAILABLE)){sub=(chosen?"Chosen  ·  ":"")+sub;action=()->{HubBuilder.select(state,e.id,!chosen);save();focus=e.id;show(e.category);};}
-        else if(s==AppCatalogue.State.NOT_INSTALLED_STORE_AVAILABLE)action=()->install(e);
-        else if(s==AppCatalogue.State.NOT_AVAILABLE_ON_PLATFORM)action=()->note(e.name+" isn't available for this TV through Unified TV.");
-        else action=()->elsewhere(e);
-        Button main=card(glyphOf(e),iconOf(e),e.name,sub,action);row.addView(main,new LinearLayout.LayoutParams(0,-2,2));if(e.id.equals(focus))main.requestFocus();
-        if(!chosen)return;
-        boolean preferred=e.id.equals(state.preferred(e.category));
-        Button def=styled(preferred?"Default":"Make default",()->{HubBuilder.prefer(state,e.id);save();focus=e.id;show(e.category);});def.setTextSize(16);row.addView(def,weighted());
-        def.setContentDescription(e.name+(preferred?", the default":", make it the default"));
-        boolean dock=state.onDock(e.id);
-        Button place=styled(dock?"Add to dock":"Keep in Apps",()->{HubBuilder.place(state,e.id,!dock);arrangement=null;save();focus=e.id;show(e.category);});place.setTextSize(16);row.addView(place,weighted());
-        place.setContentDescription(e.name+(dock?": add to the dock. Press OK to keep it in Apps instead":": keep in Apps. Press OK to add it to the dock"));
+    /** Services not on this TV with a trusted Google Play page: the only ones with something to press. */
+    private List<AppCatalogue.Entry> storeable(AppCatalogue.Category c,List<String> found){
+        List<AppCatalogue.Entry> out=new ArrayList<>();
+        for(AppCatalogue.Entry e:AppCatalogue.entries(c.id))if(!found.contains(e.id)&&stateOf(e)==AppCatalogue.State.NOT_INSTALLED_STORE_AVAILABLE)out.add(e);
+        return out;
     }
-    /** Unified TV's own setup categories: a link to the existing screen, and the dock tile where there is one. */
+    /**
+     * What isn't on this TV: a row only where Unified TV can open its Google Play page (after an OK); the rest is one
+     * line of names, with nothing to press, because there is nothing Unified TV can do for them.
+     */
+    private void missing(AppCatalogue.Category c,List<String> found){
+        List<AppCatalogue.Entry> store=storeable(c,found);List<String> elsewhere=new ArrayList<>();
+        for(AppCatalogue.Entry e:AppCatalogue.entries(c.id)){AppCatalogue.State s=stateOf(e);
+            if(!found.contains(e.id)&&!store.contains(e)&&s!=AppCatalogue.State.NOT_AVAILABLE_ON_PLATFORM&&s!=AppCatalogue.State.INSTALLED_AND_LAUNCHABLE)elsewhere.add(e.name);}
+        for(AppCatalogue.Entry e:store){Button b=button("Get "+e.name+" from Google Play",()->install(e));if(e.id.equals(focus))focusOn(b);}
+        if(!elsewhere.isEmpty())note15("Not on this TV: "+String.join(", ",elsewhere)+". "+(kids?"Ask an adult to add one.":"To add one, install it from your TV's app store, then come back: Unified TV looks again."));
+    }
+    /** Unified TV's own setup categories: a hand-over to the existing screen, and the Home place where there is one. */
     private void setup(AppCatalogue.Category c){
         switch(c.id){
             case AppCatalogue.LOCAL:{
-                boolean ready=HomeShelf.configured(this);text(AppCatalogue.linkState(ready).words+".",17);
-                button(ready?"Open Your Films & TV":kids?"Ask an adult to set up Films & TV":"Find your home media server",()->{HubBuilder.answer(state,c.id,true);save();Launch.library(this);});
-                tile(HubBuilder.LIBRARY_TILE,"Library");break;}
+                boolean ready=HomeShelf.configured(this);
+                if(kids&&!ready){lead("Ask an adult to set up Films & TV. Nothing to do here: press Next.");break;}
+                lead(ready?"Your Films & TV is set up. Choose whether Library has a place on Home, then press Next.":"Have films and TV on a home media server, such as a NAS? Press Find your media server. If not, press Next.");
+                button(ready?"Open Your Films & TV":"Find your media server",()->{HubBuilder.answer(state,c.id,true);save();Launch.library(this);});
+                if(ready)tile(HubBuilder.LIBRARY_TILE,"Library");
+                break;}
             case AppCatalogue.LIVE:{
                 String live=LiveTvProtection.livePackage(this);
-                text(LiveTvProtection.RULE+" Choosing it here, or having the app installed, never unlocks it.",17);
-                if(live.isEmpty()){text("No single Live TV app was recognised on this TV.",17);break;}
-                TextView status=text("Live TV now: "+LiveTvProtection.word(LiveTvProtection.now(this)),19);status.setFocusable(false);
-                text("Protection is set up in Settings > Live TV & Network Protection.",16);
-                if(kids&&!approved.contains(live)){text("Live TV isn't on the Kids list. Ask an adult.",17);break;}
-                tile(HubBuilder.LIVE_TILE,"Live TV");break;}
+                if(live.isEmpty()){lead("No Live TV app was found on this TV. Nothing to do here: press Next.");break;}
+                if(kids&&!approved.contains(live)){lead("Live TV isn't on the Kids list. Ask an adult. Nothing to do here: press Next.");break;}
+                lead("Choose whether Live TV has a place on Home, then press Next.");
+                tile(HubBuilder.LIVE_TILE,"Live TV");
+                note15("Live TV now: "+LiveTvProtection.word(LiveTvProtection.now(this))+". "+LiveTvProtection.RULE+" Choosing it here, or having the app installed, never unlocks it.");
+                note15("Protection is set up in Settings > Live TV & Network Protection.");
+                break;}
             case AppCatalogue.PHOTOS:{
-                if(kids){text("Kids shows Artwork, never personal photos.",17);break;}
-                int chosen=0;try{org.json.JSONArray r=new Vault(this).read("photos").optJSONArray("roots");chosen=r==null?0:r.length();}catch(Exception ignored){}
-                text(AppCatalogue.linkState(chosen>0).words+(chosen>0?": "+chosen+" photo folders chosen.":"."),17);
-                button(chosen>0?"Change photo folders":"Choose photo folders",()->{HubBuilder.answer(state,c.id,true);save();startActivity(new Intent(this,PhotoFoldersActivity.class));});break;}
+                if(kids){lead("Kids shows Artwork, never personal photos. Nothing to do here: press Next.");break;}
+                int chosen=HubBuilder.photoFolders(this);
+                lead(chosen>0?(chosen==1?"1 photo folder is":chosen+" photo folders are")+" chosen for My Photos. Nothing to do here: press Next.":"Want your own photos on Wallpaper and in the Gallery? Press Choose photo folders. If not, press Next.");
+                button(chosen>0?"Change photo folders":"Choose photo folders",()->{HubBuilder.answer(state,c.id,true);save();startActivity(new Intent(this,PhotoFoldersActivity.class));});
+                break;}
             default:{   // Smart Home
-                if(kids){text("Ask an adult to set up Home Assistant.",17);break;}
-                boolean ha;try{org.json.JSONObject o=new Vault(this).read("ha");ha=o.optBoolean("enabled")&&!o.optString("token").isEmpty();}catch(Exception e){ha=false;}
-                text(AppCatalogue.linkState(ha).words+". Home Assistant is optional; Home works without it.",17);
+                if(kids){lead("Ask an adult to set up Home Assistant. Nothing to do here: press Next.");break;}
+                boolean ha=HubBuilder.homeAssistant(this);
+                lead(ha?"Home Assistant is set up. Nothing to do here: press Next.":"Use Home Assistant for the doorbell, alarms and rooms? Press Set up Home Assistant. If not, press Next: Home works without it.");
                 button(ha?"Home Assistant settings":"Set up Home Assistant",()->{HubBuilder.answer(state,c.id,true);save();startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key","ha"));});}
         }
-        if(!state.declinedCategories.contains(c.id))button("Not for us",()->{HubBuilder.answer(state,c.id,false);save();String next=AppCatalogue.next(c.id);show(next==null?HubBuilder.ARRANGE:next);});
     }
+    /** Unified TV's own Live TV or Library place on Home, as an On/Off switch that shows what is really on Home. */
     private void tile(String id,String name){
-        boolean dock=state.onDock(id);
-        Button b=button(name+(dock?" on the dock: yes":" on the dock: no"),()->{HubBuilder.place(state,id,!dock);arrangement=null;save();focus=id;show(at);});
-        if(id.equals(focus))b.requestFocus();
+        CheckBox b=switchRow(name+" on Home",HubBuilder.ticked(state,id,id,onHomeNow()),on->{HubBuilder.place(state,id,on);arrangement=null;save();});
+        if(id.equals(focus))focusOn(b);
     }
 
     // --- Store handoff (SET-BUILD-03)
@@ -243,10 +272,12 @@ public final class BuildMyTvActivity extends GlassScreen {
     // --- Arrange (SET-BUILD-04) and finish
     private void arrange(){
         int capacity=DockCapacity.get(prefs,profile);List<String> current=HouseholdSettings.dock(this,room);
-        if(arrangement==null){left.clear();arrangement=DockPolicy.place(room,current,HubBuilder.wantedOnDock(state,this::dockId),capacity,left);picked=-1;}
+        if(arrangement==null){left.clear();List<String> base=new ArrayList<>(current);base.removeAll(HubBuilder.unwantedOnDock(state,this::dockId));
+            arrangement=DockPolicy.place(room,base,HubBuilder.wantedOnDock(state,this::dockId),capacity,left);picked=-1;}
         List<String> shown=DockPolicy.visible(arrangement,capacity);
         page("Arrange Home");
-        text("Home has "+capacity+" places, "+shown.size()+" in use. Empty places stay empty. Press OK on a tile, then on another place, to swap them.",18);
+        lead("To swap two places, press OK on a tile, then on the other place. Then press Save to Home.");
+        note15("Home has "+capacity+" places, "+shown.size()+" in use. Nothing changes on Home until you save.");
         for(String id:new ArrayList<>(left)){
             text(DockCapacity.name(this,id)+" doesn't fit: Home is full.",18);
             LinearLayout row=new LinearLayout(this);column.addView(row);
@@ -256,7 +287,7 @@ public final class BuildMyTvActivity extends GlassScreen {
         LinearLayout dock=new LinearLayout(this);column.addView(dock);
         for(int i=0;i<capacity;i++){final int at=i;String id=i<shown.size()?shown.get(i):null;
             Button slot=card(id==null?"mono":DockLabels.glyph(id),id==null?null:icon(id),id==null?"Empty":DockCapacity.name(this,id),at==picked?"Moving":String.valueOf(at+1),()->swap(at,shown.size()));
-            if(id==null)slot.setAlpha(.55f);slot.setTextSize(capacity==DockCapacity.EIGHT?13:15);dock.addView(slot,weighted());if(at==picked||(picked<0&&at==0&&left.isEmpty()))slot.requestFocus();}
+            if(id==null)slot.setAlpha(.55f);slot.setTextSize(capacity==DockCapacity.EIGHT?13:15);dock.addView(slot,weighted());if(at==picked||(picked<0&&at==0&&left.isEmpty()))focusOn(slot);}
         button("Save to Home",this::saveHome);
         button("All categories",()->show(HubBuilder.OVERVIEW));
     }
@@ -282,9 +313,10 @@ public final class BuildMyTvActivity extends GlassScreen {
     }
     private void done(){
         page("Your TV is set up");
+        lead("Nothing to do here: press Done.");
         AppCatalogue.Entry music=AppCatalogue.entry(state.preferred(AppCatalogue.MUSIC));
-        text(music==null?"Change anything here at any time from Settings > Apps & Shortcuts > Build My TV.":"Music opens "+music.name+". Change anything at any time from Settings > Apps & Shortcuts > Build My TV.",18);
-        button("Back to Home",this::finish);
+        note15((music==null?"":"Music opens "+music.name+". ")+"Change anything at any time from Settings > Apps & Shortcuts > Build My TV.");
+        button("Done",this::finish);
         button("Change something",()->show(HubBuilder.OVERVIEW));
     }
 

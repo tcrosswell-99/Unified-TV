@@ -62,6 +62,9 @@
          and, if it drops, covers Live TV with LiveTvCoverActivity. Not a kill switch. -->
     <service android:name=".LiveTvGuard" android:exported="false"/>
     <activity android:name=".LiveTvCoverActivity" android:exported="false" android:screenOrientation="landscape" android:excludeFromRecents="true"/>
+    <!-- Notification access through the TV's debugging prompt, for TVs with no notification-access screen (the TCL):
+         one allow_listener command for Unified TV's own MediaWatch, over the clean-up's session link. Adults only. -->
+    <activity android:name=".NotificationAccessActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
     <!-- OD-19: Gallery's settings are the glass sidebar over a still Home; its slideshow fills the screen. -->

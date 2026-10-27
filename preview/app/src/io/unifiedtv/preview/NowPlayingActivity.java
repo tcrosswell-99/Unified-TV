@@ -80,6 +80,8 @@ public final class NowPlayingActivity extends Screen {
      * by voice is for that request only): Echoes.TV, Echoes.EVERYWHERE or an Echo's entity; null for the profile's choice.
      */
     private String place, placeName;
+    /** The last track remembered for "Recently played", and whether its artwork was with it. */
+    private String rememberedKey; private boolean rememberedWithArt;
 
     /** Now Playing waiting for Amazon Music to start {@code query} (play by name, the library). */
     static Intent waiting(Context c, String query, AmazonMusic.Focus focus, AmazonMusic.Route route, String before) {
@@ -200,6 +202,7 @@ public final class NowPlayingActivity extends Screen {
         // Play by name: done once the player is playing something other than what was on before.
         if (waitQuery != null && now.playing() && (waitBefore.isEmpty() || !now.trackKey().equals(waitBefore))) { waitQuery = null; status = null; }
         artwork();
+        remember();
         extras();
         show(Mode.PLAYING);
         String who = now.artist.isEmpty() ? "" : " by " + now.artist;
@@ -222,9 +225,23 @@ public final class NowPlayingActivity extends Screen {
             worker.execute(() -> {
                 Bitmap a; Bitmap blurred;
                 try { a = MusicArt.load(app, s, size, size); if (a == null) return; blurred = Backdrops.fromPoster(a); } catch (RuntimeException e) { return; }
-                handler.post(() -> { if (gen == generation) { art = a; backdrop = blurred; if (stage != null) stage.invalidate(); } });
+                handler.post(() -> { if (gen == generation) { art = a; backdrop = blurred; remember(); if (stage != null) stage.invalidate(); } });
             });
         } catch (RejectedExecutionException ignored) { /* closing */ }
+    }
+
+    /**
+     * The Music page's "Recently played" (MusicHistory): an album or artist Amazon Music (or an Echo) is playing, once per
+     * track, again when its artwork arrives. Written on the worker, never the main thread.
+     */
+    private void remember() {
+        MusicSession s = session; NowPlaying n = now;
+        if (s == null || n == null || !n.playing() || !(s instanceof EchoSession || AmazonMusic.packages(this).contains(s.packageName()))) return;
+        String key = n.trackKey(); Bitmap a = art; boolean withArt = a != null;
+        if (key.equals(rememberedKey) && (rememberedWithArt || !withArt)) return;
+        rememberedKey = key; rememberedWithArt = withArt;
+        Context app = getApplicationContext();
+        try { worker.execute(() -> MusicHistory.remember(app, n, a)); } catch (RejectedExecutionException ignored) { /* closing */ }
     }
 
     /** The buttons under the controls: only what the player itself offers, then Play on and the app. */

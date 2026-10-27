@@ -40,7 +40,7 @@ public class FirstRunJourneyTest {
             assertEquals("OK starts it","Start",focused(a));assertNotNull("Skip is always there",find(root(a),"Skip the guided setup"));
             press(a,"Start");
             assertEquals(FirstRun.REMOTE,a.step());assertEquals(FirstRun.REMOTE,FirstRun.load(prefs()).step);assertEquals(FirstRun.IN_PROGRESS,FirstRun.load(prefs()).status);
-            assertNotNull(find(root(a),"Up · From the apps on Home, straight to the small icons at the top right (Settings is always there)."));
+            assertTrue("a look at the remote, not a task",says(root(a),RemoteHelp.LOOK_ONLY));assertTrue(says(root(a),"Settings and icons, top right"));
             // The live demonstration: a button says what it does on Home, and still moves focus here.
             a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_DOWN));idle();
             assertTrue(says(root(a),"Down: on Home, this shows your Films & TV."));
@@ -53,8 +53,9 @@ public class FirstRunJourneyTest {
             assertEquals(FirstRun.LIBRARY,a.step());assertTrue(says(root(a),"You never type an address."));
             press(a,"Find my media server");
             Intent lib=Shadows.shadowOf(a).getNextStartedActivity();assertEquals(DlnaLibraryActivity.class.getName(),lib.getComponent().getClassName());assertTrue(lib.getBooleanExtra("setup",false));
+            c.pause().resume();idle();assertEquals("back from Films & TV setup, on the same step",FirstRun.LIBRARY,a.step());
             press(a,"Next");
-            assertEquals(FirstRun.FINISH,a.step());assertTrue(says(root(a),"Films & TV: not set up yet"));assertNull("nothing left to skip",find(root(a),"Skip the guided setup"));
+            assertEquals(FirstRun.FINISH,a.step());assertTrue(says(root(a),"Films & TV: skipped — set up any time in Settings"));assertNull("nothing left to skip",find(root(a),"Skip the guided setup"));
             press(a,"Go to Home");
             assertTrue(a.isFinishing());assertEquals(FirstRun.COMPLETED,FirstRun.load(prefs()).status);
         }finally{c.pause().stop().destroy();}

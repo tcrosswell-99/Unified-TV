@@ -182,6 +182,21 @@ public class AdbLinkTest {
         assertFalse("not every setting can be read", AdbCommands.allowed("settings get secure enabled_accessibility_services"));
     }
 
+    /** Build run 99: notification access through the TV's debugging, only for Unified TV's own listener. */
+    @Test public void notificationAccessOnlyForUnifiedTvsOwnListener() {
+        for (String app : new String[]{"io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview"}) {
+            String c = AdbCommands.allowListener(app);
+            assertEquals("cmd notification allow_listener " + app + "/io.unifiedtv.preview.MediaWatch", c);
+            assertTrue(c, AdbCommands.allowed(c)); assertTrue("it changes the TV", AdbCommands.changes(c));
+        }
+        for (String c : new String[]{"cmd notification allow_listener com.evil/io.unifiedtv.preview.MediaWatch",
+            "cmd notification allow_listener io.unifiedtv.launcher/com.evil.Listener", "cmd notification allow_listener io.unifiedtv.launcher/io.unifiedtv.preview.MediaWatch; reboot",
+            "cmd notification allow_listener io.unifiedtv.launcher", "cmd notification disallow_listener io.unifiedtv.launcher/io.unifiedtv.preview.MediaWatch",
+            "cmd notification allow_assistant io.unifiedtv.launcher/io.unifiedtv.preview.MediaWatch"})
+            assertFalse(c, AdbCommands.allowed(c));
+        try { AdbCommands.allowListener("com.evil"); fail("another app's listener"); } catch (IllegalArgumentException expected) { /* refused */ }
+    }
+
     @Test public void framingIsLittleEndianWithChecksumAndMagic() {
         byte[] data = "host::\0".getBytes(StandardCharsets.UTF_8);
         ByteBuffer h = ByteBuffer.wrap(AdbLink.header(AdbLink.CNXN, AdbLink.VERSION, AdbLink.MAX_DATA, data)).order(ByteOrder.LITTLE_ENDIAN);

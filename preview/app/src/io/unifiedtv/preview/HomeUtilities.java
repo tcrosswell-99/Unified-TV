@@ -65,6 +65,30 @@ final class HomeUtilities {
             default:return id;
         }
     }
+    // --- one rule for the pill's status icons (owner's TCL, build run 99: the shield looked "on" with NordVPN off)
+    /** Inactive or off: the same dim for every status icon. Active: bright. */
+    static final int DIM=90,BRIGHT=245;
+    /** The small mark inside or across an icon: an "off" slash, a "connected" tick, a "checking" dot, or nothing. */
+    enum Mark{NONE,OFF,TICK,DOT}
+    /** How a status icon is drawn: its alpha and its mark. */
+    static final class Look{
+        final int alpha;final Mark mark;
+        Look(int alpha,Mark mark){this.alpha=alpha;this.mark=mark;}
+        boolean bright(){return alpha==BRIGHT;}
+        @Override public String toString(){return alpha+"/"+mark;}
+    }
+    /** The VPN shield: bright with a tick only while Android reports a VPN; otherwise dim, with a slash when it is off. */
+    static Look vpnLook(VpnGate.State state){
+        if(state==VpnGate.State.CONNECTED)return new Look(BRIGHT,Mark.TICK);
+        if(state==VpnGate.State.CHECKING)return new Look(DIM,Mark.DOT);
+        return new Look(DIM,state==VpnGate.State.DISCONNECTED?Mark.OFF:Mark.NONE);
+    }
+    /** AirPlay: bright while AirPin is offering AirPlay; otherwise dim with the same slash (a dot while it is being checked). */
+    static Look airPlayLook(boolean ready,boolean checking){
+        if(ready)return new Look(BRIGHT,Mark.NONE);
+        return new Look(DIM,checking?Mark.DOT:Mark.OFF);
+    }
+
     /** The microphone's focus label: local requests always work; general questions need the household's assistant. */
     static String voiceLabel(boolean assistant){return assistant?"Ask your TV":"Ask your TV · apps and films (no assistant set up)";}
     static String name(String id){switch(id){case AIRPLAY:return "AirPlay";case VPN:return "NordVPN";case VOICE:return "Voice";case SETTINGS:return "Settings";default:return id;}}

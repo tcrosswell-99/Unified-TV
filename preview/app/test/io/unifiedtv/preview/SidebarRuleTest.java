@@ -33,6 +33,7 @@ public class SidebarRuleTest {
 
     /** Settings and setup: the GlassScreen sidebar over a still Home (half width; wide() for about three quarters). */
     static final Set<String> SETUP=new TreeSet<>(Arrays.asList(
+        "NotificationAccessActivity",// notification access through the TV's debugging prompt (no TV screen for it)
         "BuildMyTvActivity",         // Build My TV: choosing services and arranging Home (wide)
         "CleanupActivity",           // Updates & About > Advanced > Optional clean-up (wide for its list)
         "ConnectionsActivity",       // signing in to a media server by typing (advanced)

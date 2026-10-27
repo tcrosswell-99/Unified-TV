@@ -46,6 +46,7 @@ final class TmdbKey {
     }
 
     static boolean saved(Context c) { try { return !new Vault(c).read(VAULT).optString("key").isEmpty(); } catch (Exception e) { return false; } }
-    static void save(Context c, String key) throws Exception { new Vault(c).save(VAULT, new JSONObject().put("key", key)); }
+    /** Saves the key; the library's background job then looks up the posters of titles already found (LibraryCollector). */
+    static void save(Context c, String key) throws Exception { new Vault(c).save(VAULT, new JSONObject().put("key", key)); LibraryCollector.get(c).start(); }
     static void forget(Context c) { new Vault(c).forget(VAULT); }
 }

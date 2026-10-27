@@ -505,9 +505,14 @@ public final class SettingsActivity extends Screen {
         button("NordVPN",()->VpnGate.show(this));
         // NordVPN's own "Connected" notice (MediaWatch, NordCountry): how Unified TV tells NordVPN's VPN from another app's.
         if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this)){
-            text("Allow notification access so Unified TV can see NordVPN's own \"Connected\" notice. Without it, Live TV opens only while NordVPN is the only VPN app on this TV, and no country flag shows beside the shield on Home.",15);
-            button("Allow notification access",()->Launch.unlocked(this,MediaWatch.accessSettings(this),"This TV doesn't offer notification access"));
+            text("Allow notification access so Unified TV can see NordVPN's own \"Connected\" notice. Without it, Live TV opens only while NordVPN is the only VPN app on this TV, and no country flag shows beside the shield on Home. The same access makes Now Playing work for Amazon Music.",15);
+            // Owner's TCL, build run 99: no notification-access screen. Then through the TV's debugging prompt, or a computer.
+            Intent screen=MediaWatch.accessScreen(this);
+            if(screen!=null)button("Allow notification access",()->Launch.unlocked(this,screen,"This TV doesn't offer notification access"));
+            else{button(VpnGate.DEBUG_ACCESS,()->NotificationAccessActivity.open(this));
+                text("This TV has no notification-access screen. From a computer with ADB instead: "+MediaWatch.pcCommand(this),14).setTypeface(android.graphics.Typeface.MONOSPACE);}
         }
+        text(NordConnect.AUTO_TIP,15);
         text(LiveTvProtection.RULE+" "+LiveTvProtection.COVERS+" "+LiveTvProtection.NOT_A_KILL_SWITCH,15);
         if(!TurnOn.permitted(this))text("Covering Live TV needs \"Display over other apps\" for Unified TV in the TV's own settings. Without it, a notification says NordVPN disconnected and Live TV stays on screen.",15);
     }
@@ -564,6 +569,7 @@ public final class SettingsActivity extends Screen {
         if(pkg==null){text("AirPlay from iPhone: install AirPin LITE from the TV's app store to receive AirPlay.",16);return;}
         text(AirPlayReceiver.ready?"AirPlay from iPhone: ready"+(AirPlayReceiver.advertisedAs.isEmpty()?".":", shown on iPhones as \""+AirPlayReceiver.advertisedAs+"\"."):"AirPlay from iPhone: AirPin LITE is installed but isn't offering AirPlay on the network right now. Open it once, and check its own setting to start with the TV.",16);
         button("Open AirPin LITE",()->{String error=Launch.open(this,pkg,"AirPin LITE");if(error!=null&&!error.isEmpty())note(error);});
+        text(AirPlayStart.TIP,15);
     }
     /**
      * Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). My Photos
@@ -636,6 +642,15 @@ public final class SettingsActivity extends Screen {
         if(overlayAsked){overlayAsked=false;TurnOn.sync(this);refresh();}}
     /** Back from Android's "Display over other apps" screen: the row shows whatever was chosen there. */
     private boolean overlayAsked;
+    /** Only one panel at a time (OnePanel): this sheet hides while a setup panel is open over it, and comes back after. */
+    private final OnePanel panels=new OnePanel();
+    @Override public void startActivityForResult(Intent intent,int code,Bundle options){
+        boolean panel=OnePanel.opensPanel(this,intent);if(panel)panels.hide(sheet,calm());
+        try{super.startActivityForResult(intent,code,options);}catch(RuntimeException e){if(panel)panels.show(sheet,true);throw e;}
+    }
+    @Override protected void onPostResume(){super.onPostResume();panels.show(sheet,calm());}
+    /** True when the sheet is on screen: not hidden under another panel (OnePanel). */
+    boolean panelShown(){return sheet!=null&&sheet.isAttachedToWindow()&&sheet.getVisibility()==View.VISIBLE&&sheet.getAlpha()>0&&!panels.hidden();}
     /**
      * OD-23 "Open Unified TV when the TV turns on" (launcher app; Home button not Unified TV's): one row behind the adult
      * PIN, its state said honestly (On, Needs permission, Off). The permission is Android's "Display over other apps",

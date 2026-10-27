@@ -14,10 +14,11 @@ import android.view.View;
  * <p>Blur, honestly: an app can't sample or blur another activity's pixels on Android 11 (TCL), and on API 31+
  * {@code RenderEffect} blurs only a view's own content, never what is behind its window. So the sheet is (1) a static,
  * screen-aligned frost of Unified TV's own ambient mesh, drawn once per scene from a small cached bitmap, blurred with
- * {@code RenderEffect} only on API 31+ when lightweight rendering is off, (2) a dark blue-charcoal tint of about 75–80%
- * combined opacity, through which Home stays faintly visible, (3) a soft top sheen, inner rim and a hairline ice-blue left
- * edge, and (4) a low shadow separating it from Home. Reduce transparency and High contrast drop the frost and make the
- * tint nearly solid. Nothing here animates by itself.
+ * {@code RenderEffect} only on API 31+ when lightweight rendering is off, (2) a dark blue-charcoal tint of about 80–85%
+ * combined opacity (raised a little for reading from the sofa, owner, 27 October 2026), through which Home stays faintly
+ * visible, (3) a soft top sheen, inner rim and a hairline ice-blue left edge, and (4) a low shadow separating it from
+ * Home. Reduce transparency and High contrast drop the frost and make the tint nearly solid. Nothing here animates by
+ * itself. Only one sheet is ever visible: a sheet that opens another hides until it closes (OnePanel).
  */
 final class SettingsGlass {
     private SettingsGlass() {}
@@ -61,7 +62,7 @@ final class SettingsGlass {
             edge.reset(); edge.moveTo(l + radius, b.top); edge.arcTo(new RectF(l, b.top, l + 2 * radius, b.top + 2 * radius), 270, -90);
             edge.lineTo(l, b.bottom - radius); edge.arcTo(new RectF(l, b.bottom - 2 * radius, l + 2 * radius, b.bottom), 180, -90);
             shade = new LinearGradient(b.left, 0, l, 0, 0x00000000, 0x4D000000, Shader.TileMode.CLAMP);
-            tint = new LinearGradient(0, b.top, 0, b.bottom, solid ? 0xF2111A28 : 0x9E121B2A, solid ? 0xF50B1220 : 0xB00B1220, Shader.TileMode.CLAMP);
+            tint = new LinearGradient(0, b.top, 0, b.bottom, solid ? 0xF2111A28 : 0xB3121B2A, solid ? 0xF50B1220 : 0xC40B1220, Shader.TileMode.CLAMP);
             sheen = new LinearGradient(0, b.top, 0, b.top + b.height() * .28f, solid ? 0x08FFFFFF : 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
             rim = new LinearGradient(l, 0, b.right, 0, new int[]{0x00FFFFFF, 0x52FFFFFF, 0x0DFFFFFF}, null, Shader.TileMode.CLAMP);
         }

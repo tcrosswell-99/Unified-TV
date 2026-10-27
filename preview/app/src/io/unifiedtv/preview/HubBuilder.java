@@ -14,10 +14,12 @@ import java.util.*;
  * dockAssignments {entry: "dock" | "apps"}, pendingInstall}. App identifiers and choices only: never a password, token
  * or account. Start over resets only this value; the dock, labels and every other setting stay as they are.
  *
- * Music (SET-BUILD-09): detect before asking. A saved choice that is still installed is kept (no prompt after restarts
- * or rescans). Detection unknown: a manual choice, because unknown is not absent. Exactly one music app found: it becomes
- * the Music choice without asking, and is not put on the dock unless the household says so. Two or more: the household
- * picks which to show and which is the default; nothing is picked for them. None: ask "Would you like music on your TV?".
+ * Music (SET-BUILD-09): detect before asking. A saved choice is kept (no prompt after restarts or rescans, and never
+ * replaced by the one-app rule). Detection unknown: a manual choice, because unknown is not absent. Exactly one music app
+ * found and nothing chosen: it becomes the Music app without asking. Two or more: the household picks one, and one OK
+ * makes it the Music app that Home's Music place opens; nothing is picked for them. None: ask "Would you like music on
+ * your TV?". Other categories: the household ticks the apps it wants on Home; unticking one that is on Home takes it off
+ * Home at Arrange (it stays installed and in Apps).
  */
 final class HubBuilder {
     private HubBuilder(){}
@@ -106,13 +108,56 @@ final class HubBuilder {
         if(detected.size()==1)return Music.AUTO_DEFAULT;
         return detected.isEmpty()?Music.ASK:Music.CHOOSE;
     }
-    /** Applies the one-app rule: true when it chose the Music app (shown in Apps; on the dock only if the household says). */
+    /**
+     * Applies the one-app rule: true when it chose the Music app. Only while nothing is chosen: a choice the household made
+     * is never replaced behind their back, even if the TV briefly doesn't list that app (owner, TCL build run 99: a chosen
+     * YouTube Music must not jump back to Amazon Music). The Music place on Home opens it; nothing else on Home changes.
+     */
     static boolean autoMusic(State s,List<String> detected,boolean reliable){
-        if(music(detected,reliable,s.preferred(AppCatalogue.MUSIC))!=Music.AUTO_DEFAULT)return false;
-        prefer(s,detected.get(0));if(!s.dockAssignments.containsKey(detected.get(0)))s.dockAssignments.put(detected.get(0),APPS);return true;
+        if(!s.preferred(AppCatalogue.MUSIC).isEmpty()||music(detected,reliable,"")!=Music.AUTO_DEFAULT)return false;
+        chooseMusic(s,detected.get(0));return true;
+    }
+    /**
+     * One OK on a music app makes it the Music app (owner, TCL build run 99): the only music app chosen and the one the
+     * Music place on Home opens ({@link #musicPackage}). No separate "make default" step, and pressing it again keeps it.
+     */
+    static void chooseMusic(State s,String entry){
+        AppCatalogue.Entry e=AppCatalogue.entry(entry);if(e==null||!AppCatalogue.MUSIC.equals(e.category))return;
+        begin(s);
+        for(String old:new ArrayList<>(s.selected(AppCatalogue.MUSIC)))if(!old.equals(entry))s.dockAssignments.remove(old);
+        List<String> only=new ArrayList<>();only.add(entry);s.providerSelections.put(AppCatalogue.MUSIC,only);s.preferredProviderByCategory.put(AppCatalogue.MUSIC,entry);
+        if(!s.selectedCategories.contains(AppCatalogue.MUSIC))s.selectedCategories.add(AppCatalogue.MUSIC);s.declinedCategories.remove(AppCatalogue.MUSIC);
+    }
+
+    /** What OK on Home's Music place does (SET-BUILD-10, OD-27). */
+    enum MusicTile {NOW_PLAYING,MUSIC_PAGE,CHOSEN_APP}
+    /**
+     * A chosen Music app other than Amazon Music always opens, whatever else is playing or paused (owner, TCL build run
+     * 99: it jumped back to Amazon Music when Amazon Music had a paused session). With Amazon Music chosen, or nothing
+     * chosen, Amazon Music's own session opens Now Playing, else the Music page, as before.
+     */
+    static MusicTile musicTile(String chosenPackage,boolean chosenIsAmazon,boolean amazonSession){
+        if(chosenPackage!=null&&!chosenIsAmazon)return MusicTile.CHOSEN_APP;
+        return amazonSession?MusicTile.NOW_PLAYING:MusicTile.MUSIC_PAGE;
     }
 
     // --- Arrange (SET-BUILD-04)
+    /** True when the household took this entry (or Live TV / Library tile) off Home in Build My TV. */
+    static boolean offHome(State s,String entry){return APPS.equals(s.dockAssignments.get(entry));}
+    /**
+     * Whether an entry shows ticked ("on Home"): the household ticked it here, or it is already on Home ({@code onHomeNow},
+     * by dock id) and they haven't taken it off.
+     */
+    static boolean ticked(State s,String entry,String dockId,Collection<String> onHomeNow){
+        return s.onDock(entry)||(!offHome(s,entry)&&dockId!=null&&onHomeNow.contains(dockId));
+    }
+    /** The dock ids the household took off Home here, so Arrange leaves them out (they stay installed and in Apps). */
+    static List<String> unwantedOnDock(State s,java.util.function.Function<String,String> dockIdOf){
+        List<String> out=new ArrayList<>();
+        for(Map.Entry<String,String> x:s.dockAssignments.entrySet()){if(!APPS.equals(x.getValue()))continue;String e=x.getKey();
+            String d=e.equals(LIVE_TILE)||e.equals(LIBRARY_TILE)?e:dockIdOf.apply(e);if(d!=null&&!out.contains(d))out.add(d);}
+        return out;
+    }
     /**
      * The dock ids the household asked to put on Home, in the guided order with each category's default first. An entry
      * maps to its installed dock id ({@code dockIdOf}); one that isn't installed is skipped (never placed unverified).
@@ -140,5 +185,14 @@ final class HubBuilder {
     /** The installed package of this profile's chosen Music app, from {package: label} of launchable apps; null if none. */
     static String musicPackage(SharedPreferences p,String profile,Map<String,String> launchable){
         String e=load(p,profile).preferred(AppCatalogue.MUSIC);return e.isEmpty()?null:AppCatalogue.installedPackage(AppCatalogue.entry(e),launchable);
+    }
+    /** Photo folders chosen for My Photos (0 when none, or when they can't be read). */
+    static int photoFolders(android.content.Context c){
+        try{JSONArray r=new Vault(c).read("photos").optJSONArray("roots");return r==null?0:r.length();}catch(Exception e){return 0;}
+    }
+    /** Home Assistant is set up (an address and a sign-in saved); SettingsActivity.haForTests stands in for the keystore in tests. */
+    static boolean homeAssistant(android.content.Context c){
+        Boolean t=SettingsActivity.haForTests;if(t!=null)return t;
+        try{JSONObject o=new Vault(c).read("ha");return o.optBoolean("enabled")&&!o.optString("token").isEmpty();}catch(Exception e){return false;}
     }
 }

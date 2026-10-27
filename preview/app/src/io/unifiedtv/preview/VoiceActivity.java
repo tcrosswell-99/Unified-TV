@@ -249,52 +249,14 @@ public final class VoiceActivity extends Activity {
         show("“" + text + "”", "That isn't something I can do yet. Try “Open BBC”, “Open Netflix”, “Play” and an artist, “Show camera”, “Switch profile”, or “Find” and a title. General questions aren't connected yet.");
     }
 
-    /**
-     * "Play …" (OD-27): Amazon Music on this TV through its own media controls (AmazonMusic), or on an Echo through Home
-     * Assistant (Echoes). "… on <words>" is a place only when the words name an Echo Home Assistant found; otherwise they
-     * are part of the title ("Carry On Wayward Son") and the whole phrase plays where this profile plays. A place said here
-     * is for this request only (owner, 27 October 2026): the profile's Play on choice never changes. Echo speakers keep
-     * their Kids rule; the network is never touched on the main thread.
-     */
+    /** "Play …" (OD-27): SpokenMusic, the same route as the Music page's microphone. */
     private void music(String text) {
         VoiceCommand.Music m = VoiceCommand.music(text); if (m == null) return;
         String said = "“" + text + "”";
-        if (!m.maybeEcho()) { playMusic(said, m.query, m.focus, m.place.isEmpty() ? null : m.place, null, null); return; }
-        show(said, "One moment…");
-        android.content.Context app = getApplicationContext();
-        Thread t = new Thread(() -> {
-            Echoes.Found f = Echoes.finder.find(app);
-            Echoes.Echo e = f.problem == null ? Echoes.named(f.echoes, m.place) : null;
-            runOnUiThread(() -> {
-                if (isFinishing()) return;
-                if (e == null) playMusic(said, m.whole, m.wholeFocus, null, null, null);
-                else playMusic(said, m.query, m.focus, e.id, e.name, f);
-            });
-        }, "voice-echo-name");
-        t.setDaemon(true); t.start();
-    }
-    /** Plays {@code query} at {@code place} (null: this profile's Play on choice), without remembering the place. */
-    private void playMusic(String said, String query, AmazonMusic.Focus focus, String place, String name, Echoes.Found found) {
-        String target = place == null ? Echoes.target(prefs) : place;
-        if (Echoes.TV.equals(target)) {
-            AmazonMusic.Result r = AmazonMusic.play(this, query, focus);
-            if (r.words.isEmpty()) close(); else show(said, r.words);
-            return;
-        }
-        if (!Echoes.allowed(prefs)) { show(said, Echoes.KIDS); return; }
-        String shown = name != null ? name : place == null ? Echoes.targetName(prefs) : Echoes.EVERYWHERE.equals(target) ? "Everywhere" : target;
-        show(said, "Asking " + shown + " for “" + query + "”…");
-        android.content.Context app = getApplicationContext();
-        Thread t = new Thread(() -> {
-            String no = Echoes.play(app, Echoes.ha(app), target, query, found);
-            runOnUiThread(() -> {
-                if (isFinishing()) return;
-                if (no != null) { show(said, no); return; }
-                startActivity(NowPlayingActivity.waiting(this, query, focus, AmazonMusic.Route.ECHO, "", place == null ? null : target, shown));
-                close();
-            });
-        }, "voice-echo");
-        t.setDaemon(true); t.start();
+        SpokenMusic.play(this, m, null, new SpokenMusic.Reply() {
+            @Override public void say(String words) { show(said, words); }
+            @Override public void done() { close(); }
+        });
     }
     /** Tests: as if these words were said. */
     void askForTest(String words) { use(words); }

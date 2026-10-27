@@ -37,6 +37,30 @@ public class HubBuilderTest {
         HubBuilder.select(s,"disney",true);HubBuilder.place(s,"disney",true);
         assertFalse("not installed: never placed",HubBuilder.wantedOnDock(s,more::get).contains(null));
     }
+    @Test public void oneOkMakesTheMusicAppAndASavedChoiceIsNeverReplaced(){
+        HubBuilder.State s=new HubBuilder.State();
+        HubBuilder.chooseMusic(s,"youtubemusic");
+        assertEquals("youtubemusic",s.preferred("music"));assertEquals(Arrays.asList("youtubemusic"),s.selected("music"));assertEquals(HubBuilder.IN_PROGRESS,s.status);
+        HubBuilder.chooseMusic(s,"amazonmusic");assertEquals("one Music app at a time",Arrays.asList("amazonmusic"),s.selected("music"));
+        HubBuilder.chooseMusic(s,"youtubemusic");HubBuilder.chooseMusic(s,"youtubemusic");assertEquals("OK again keeps it","youtubemusic",s.preferred("music"));
+        HubBuilder.chooseMusic(s,"netflix");assertEquals("only a music app",Arrays.asList("youtubemusic"),s.selected("music"));
+        // Owner, TCL build run 99: the one-app rule never puts Amazon Music back over the household's choice.
+        assertFalse(HubBuilder.autoMusic(s,Arrays.asList("amazonmusic"),true));assertEquals("youtubemusic",s.preferred("music"));
+        assertFalse("not even when the chosen app is briefly missing",HubBuilder.autoMusic(s,Collections.singletonList("amazonmusic"),true));
+        assertEquals("youtubemusic",HubBuilder.parse(s.toJson()).preferred("music"));
+    }
+    @Test public void aTickShowsWhatIsOnHomeAndUntickingTakesItOff(){
+        HubBuilder.State s=new HubBuilder.State();List<String> home=Arrays.asList("netflix","bbc","music");
+        assertTrue("already on Home: ticked",HubBuilder.ticked(s,"netflix","netflix",home));
+        assertFalse(HubBuilder.ticked(s,"primevideo","com.amazon.amazonvideo.livingroom",home));
+        HubBuilder.select(s,"netflix",false);HubBuilder.place(s,"netflix",false);
+        assertFalse("unticked",HubBuilder.ticked(s,"netflix","netflix",home));
+        HubBuilder.select(s,"primevideo",true);HubBuilder.place(s,"primevideo",true);assertTrue(HubBuilder.ticked(s,"primevideo","com.amazon.amazonvideo.livingroom",home));
+        HubBuilder.place(s,HubBuilder.LIVE_TILE,false);
+        Map<String,String> ids=new HashMap<>();ids.put("netflix","netflix");ids.put("primevideo","com.amazon.amazonvideo.livingroom");
+        assertEquals("Arrange leaves these out",Arrays.asList("netflix","live"),HubBuilder.unwantedOnDock(s,ids::get));
+        assertEquals(Arrays.asList("com.amazon.amazonvideo.livingroom"),HubBuilder.wantedOnDock(s,ids::get));
+    }
     @Test public void yesNoAndLaterAreIndependent(){
         HubBuilder.State s=new HubBuilder.State();
         HubBuilder.select(s,"netflix",true);HubBuilder.answer(s,"video",false);

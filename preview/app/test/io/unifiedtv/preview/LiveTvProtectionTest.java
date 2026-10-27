@@ -60,7 +60,9 @@ public class LiveTvProtectionTest {
         assertEquals(Arrays.asList("open","checking","disconnected","locked","locked","locked","error"),words);
         assertEquals("NordVPN is connected. If NordVPN drops, Unified TV will cover Live TV.",LiveTvProtection.message(OPEN));
         assertEquals("Live TV is locked. Connect NordVPN first.",LiveTvProtection.message(DISCONNECTED));
-        assertTrue(LiveTvProtection.message(UNSURE).contains("Can't tell which VPN is on. Allow notification access so Unified TV can see NordVPN"));
+        assertTrue(LiveTvProtection.unsure("TCL Data Saver").contains("A VPN is connected, but Unified TV can't confirm it's NordVPN because TCL Data Saver can also run a VPN. Allow notification access"));
+        assertTrue("never a bare contradiction",LiveTvProtection.unsure(null).contains("because another app can also run a VPN"));
+        for(String old:new String[]{"Can't tell","can't tell"})assertFalse(LiveTvProtection.unsure("X").contains(old));
         for(LiveTvProtection.State s:LiveTvProtection.State.values()){String m=LiveTvProtection.message(s);assertFalse(m,m.isEmpty());
             String low=m.toLowerCase(Locale.ROOT);
             if(s!=OPEN&&s!=CHECKING)assertTrue(m,m.startsWith("Live TV is locked."));

@@ -13,6 +13,8 @@ final class FakeServer implements LibraryIndex.Browser {
     final Set<String> broken=new HashSet<>();
     /** Set to hold every browse until released (a slow server). */
     volatile java.util.concurrent.CountDownLatch gate;
+    /** With a gate: browses wait only once this many have been answered in all (a server that slows down part-way). */
+    volatile int holdAfter;
 
     static JSONObject source(){try{return new JSONObject().put("name","Synology Media Server").put("control",CONTROL).put("service","urn:schemas-upnp-org:service:ContentDirectory:1").put("udn","uuid:test-nas").put("location","http://"+HOST+":50001/desc.xml").put("enabled",true);}catch(Exception e){throw new IllegalStateException(e);}}
     static DlnaClient.Device device(){DlnaClient.Device d=new DlnaClient.Device();d.name="Synology Media Server";d.control=CONTROL;d.service="urn:schemas-upnp-org:service:ContentDirectory:1";d.udn="uuid:test-nas";d.location="http://"+HOST+":50001/desc.xml";return d;}
@@ -30,7 +32,7 @@ final class FakeServer implements LibraryIndex.Browser {
     DlnaClient.Item find(String id){for(List<DlnaClient.Item> l:children.values())for(DlnaClient.Item i:l)if(i.id.equals(id))return i;return null;}
 
     @Override public DlnaClient.Page browse(JSONObject source,String id,int offset)throws Exception{
-        java.util.concurrent.CountDownLatch g=gate;if(g!=null)g.await(20,java.util.concurrent.TimeUnit.SECONDS);
+        java.util.concurrent.CountDownLatch g=gate;if(g!=null&&calls.size()>=holdAfter)g.await(20,java.util.concurrent.TimeUnit.SECONDS);
         calls.add(id+"@"+offset);
         if(broken.contains(id)||!children.containsKey(id))throw new DlnaClient.Failure(DlnaClient.Failure.MISSING);
         List<DlnaClient.Item> all=children.get(id);DlnaClient.Page p=new DlnaClient.Page();

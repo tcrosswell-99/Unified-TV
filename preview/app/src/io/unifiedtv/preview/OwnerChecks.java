@@ -64,6 +64,14 @@ final class OwnerChecks {
             +". NordVPN's notice: "+(f.notificationAccess?says:"not readable")+". Apps that can run a VPN: "+(vpnApps==null||vpnApps.isEmpty()?"none found":String.join(", ",vpnApps))
             +". Live TV safety net: "+(watching?"watching":"not running")+(lastDrop==null?"":"; last drop: "+lastDrop)+".";
     }
+    /** The same, with the apps left out of "can run a VPN" and why (LiveTvProtection.ignoredBecause). */
+    static String liveFacts(LiveTvProtection.Facts f,java.util.Collection<String> vpnApps,java.util.Map<String,String> ignored,boolean watching,String lastDrop){
+        String line=liveFacts(f,vpnApps,watching,lastDrop);
+        if(ignored==null||ignored.isEmpty())return line+" Ignored VPN apps: none.";
+        StringBuilder b=new StringBuilder(line).append(" Ignored VPN apps: ");
+        boolean first=true;for(java.util.Map.Entry<String,String> e:ignored.entrySet()){if(!first)b.append("; ");b.append(e.getKey()).append(" (").append(e.getValue()).append(')');first=false;}
+        return b.append('.').toString();
+    }
     /** For "advanced details" only: the host of a saved or found address, nothing else of it. */
     static String host(String url){try{String h=URI.create(url).getHost();return h==null?"":h;}catch(RuntimeException e){return "";}}
     /** A time on the household's clock (its zone, the TV's language and 12/24-hour choice), or "none yet". */

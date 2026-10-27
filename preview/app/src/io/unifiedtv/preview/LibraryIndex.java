@@ -17,12 +17,17 @@ import java.util.*;
  * a NAS that changed address still plays). The file lives in the app's private storage, which is never backed up. No
  * address, key or server name is written into it.
  *
+ * The walk itself is the app's background job (LibraryCollector); while it runs, {@link #latest} gives Home's row and the
+ * library the titles found so far, so nothing waits for the whole list.
+ *
  * Virtual views that only repeat the same files ("Recently added", "Genre", "Actor", "Year"...) are not walked, nor a
  * server's "All videos" when a real folder view sits beside it. A folder that is itself chosen is walked once, as its own.
  */
 final class LibraryIndex {
     static final int MAX_DEPTH=8,MAX_FOLDERS=1500,MAX_REQUESTS=1500,MAX_TITLES=8000;
     static final long FRESH_MS=30*60_000L;
+    /** A walk in progress shows what it has found after the first titles, then about this often. */
+    static final int LIVE_STEP=200;static final long LIVE_MS=1500;
     private static final Set<String> VIRTUAL=new HashSet<>(Arrays.asList("recently added","recently played","last played","recently watched","recently viewed",
         "genre","genres","actor","actors","artist","artists","director","directors","year","years","date","by date","by genre","by year","by actor","by director",
         "by rating","rating","ratings","album","albums","playlist","playlists","favourites","favorites","keyword","keywords","series view"));
@@ -84,10 +89,17 @@ final class LibraryIndex {
      * is skipped and the result marked incomplete. Titles seen before keep the time they were first seen.
      */
     static Root walk(JSONObject source,String rootId,Set<String> otherRoots,Root previous,Progress progress,long now)throws Exception{
+        return walk(source,rootId,otherRoots,previous,progress,now,null);
+    }
+    /**
+     * As above; {@code live} is handed a copy of what has been found so far (the first titles at once, then about every
+     * {@link #LIVE_STEP} titles or {@link #LIVE_MS}), so Home's row and the library can show them while the walk goes on.
+     */
+    static Root walk(JSONObject source,String rootId,Set<String> otherRoots,Root previous,Progress progress,long now,java.util.function.Consumer<Root> live)throws Exception{
         Root out=new Root(rootId);out.at=now;out.created=previous!=null&&previous.created>0?previous.created:now;
         Map<String,Long> seenBefore=new HashMap<>();if(previous!=null)for(Entry e:previous.entries)seenBefore.put(e.id,e.seen);
         Deque<Frame> stack=new ArrayDeque<>();stack.push(new Frame(rootId,new ArrayList<>(),new ArrayList<>(),0));
-        Set<String> visited=new HashSet<>(),urls=new HashSet<>();int folders=0,requests=0;Browser b=browser;int maxTitles=MemoryBudget.current().libraryTitles();
+        Set<String> visited=new HashSet<>(),urls=new HashSet<>();int folders=0,requests=0,shown=0;long shownAt=0;Browser b=browser;int maxTitles=MemoryBudget.current().libraryTitles();
         while(!stack.isEmpty()){
             if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
             Frame f=stack.pop();if(!visited.add(f.id))continue;folders++;
@@ -95,6 +107,7 @@ final class LibraryIndex {
             try{
                 while(requests<MAX_REQUESTS){
                     DlnaClient.Page page=b.browse(source,f.id,offset);requests++;children.addAll(page.items);
+                    LibraryCollector.between();   // the background job's gentle pace, and its pause when the TV is short of memory
                     if(!page.more(offset)||page.returned<=0)break;offset=page.next(offset);
                     if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();
                 }
@@ -119,6 +132,10 @@ final class LibraryIndex {
             // Depth first, in the server's own order.
             for(int k=next.size()-1;k>=0;k--)stack.push(next.get(k));
             if(progress!=null)progress.found(out.entries.size(),folders);
+            int n=out.entries.size();long clock=System.currentTimeMillis();
+            if(live!=null&&n>shown&&(shown==0||n-shown>=LIVE_STEP||clock-shownAt>=LIVE_MS)){
+                Root copy=new Root(rootId);copy.at=out.at;copy.created=out.created;copy.complete=false;copy.entries.addAll(out.entries);
+                live.accept(copy);shown=n;shownAt=clock;}
             if(requests>=MAX_REQUESTS){out.complete=false;break;}
         }
         return out;
@@ -158,6 +175,18 @@ final class LibraryIndex {
     /** Titles found so far by a walk in progress anywhere in the app (Home's row and the library share one walk). */
     static volatile int walking=-1;
 
+    /** What a walk in progress has found so far (the folders done, the one being walked, earlier lists for the rest). */
+    private static final class Partial{final String key;final Index index;Partial(String key,Index index){this.key=key;this.index=index;}}
+    private static volatile Partial partial;
+    /**
+     * The newest list there is, without touching the network: while a walk is under way (LibraryCollector), the titles it
+     * has found so far; otherwise the saved list. Cheap: Home's row and the library read it as often as they like.
+     */
+    static Index latest(Context c,LibraryFolders.Library lib){
+        Partial p=partial;
+        if(p!=null&&p.key.equals(file(c,lib.source).getPath()))return keep(p.index,lib);
+        return cached(c,lib);
+    }
     /** The saved list for this library, without touching the network; empty when there is none yet. */
     static Index cached(Context c,LibraryFolders.Library lib){
         File f=file(c,lib.source);
@@ -196,20 +225,23 @@ final class LibraryIndex {
             Index all;synchronized(MEMORY){all=f.getPath().equals(memoryKey)&&memory!=null?memory:read(f);}long now=System.currentTimeMillis();
             if(!force&&!due(all,lib,now))return keep(all,lib);
             Index next=new Index();Exception failure=null;Set<String> chosen=new LinkedHashSet<>();for(LibraryFolders.Folder x:lib.folders)chosen.add(x.id);
-            int[] before={0};
+            int[] before={0};String key=f.getPath();
             try{
                 for(LibraryFolders.Folder folder:lib.folders){
                     Root old=all.roots.get(folder.id);
                     if(!force&&old!=null&&now-old.at<=FRESH_MS&&now>=old.at){next.roots.put(folder.id,old);before[0]+=old.entries.size();continue;}
                     Set<String> others=new HashSet<>(chosen);others.remove(folder.id);
                     int base=before[0];walking=base;
-                    try{Root r=walk(lib.source,folder.id,others,old,(t,n)->{walking=base+t;if(progress!=null)progress.found(base+t,n);},now);next.roots.put(folder.id,r);before[0]+=r.entries.size();}
+                    java.util.function.Consumer<Root> live=r->{Index shown=new Index();
+                        for(LibraryFolders.Folder x:lib.folders){Root have=next.roots.get(x.id);if(have==null)have=x.id.equals(folder.id)?r:all.roots.get(x.id);if(have!=null)shown.roots.put(x.id,have);}
+                        partial=new Partial(key,shown);};
+                    try{Root r=walk(lib.source,folder.id,others,old,(t,n)->{walking=base+t;if(progress!=null)progress.found(base+t,n);},now,live);next.roots.put(folder.id,r);before[0]+=r.entries.size();}
                     catch(InterruptedIOException e){throw e;}
                     catch(Exception e){if(old!=null){next.roots.put(folder.id,old);next.stale=true;before[0]+=old.entries.size();}else{failure=e;next.stale=true;}}
                 }
-            }finally{walking=-1;}
-            if(next.roots.isEmpty()&&failure!=null)throw failure;
-            synchronized(MEMORY){try{write(f,next);}catch(Exception ignored){/* Still shown this time. */}memoryKey=f.getPath();memory=next;}
+                if(next.roots.isEmpty()&&failure!=null)throw failure;
+                synchronized(MEMORY){try{write(f,next);}catch(Exception ignored){/* Still shown this time. */}memoryKey=f.getPath();memory=next;}
+            }finally{walking=-1;partial=null;}   // the saved list now holds everything the walk found
             return keep(next,lib);
         }
     }
@@ -219,5 +251,5 @@ final class LibraryIndex {
      */
     static void trim(){synchronized(MEMORY){memory=null;memoryKey=null;}}
     /** Settings > Privacy (or a reset): forget every saved list. */
-    static void clear(Context c){synchronized(MEMORY){memory=null;memoryKey=null;File[] fs=new File(c.getFilesDir(),"library").listFiles();if(fs!=null)for(File x:fs)x.delete();}}
+    static void clear(Context c){synchronized(MEMORY){memory=null;memoryKey=null;partial=null;File[] fs=new File(c.getFilesDir(),"library").listFiles();if(fs!=null)for(File x:fs)x.delete();}}
 }

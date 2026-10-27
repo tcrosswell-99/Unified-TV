@@ -50,7 +50,7 @@ public class LiveTvSafetyNetTest {
         while(Shadows.shadowOf((android.app.Application)app()).getNextStartedService()!=null){}
         while(Shadows.shadowOf((android.app.Application)app()).getNextStoppedService()!=null){}
     }
-    @After public void reset(){LiveTvProtection.forTests=null;ShadowSettings.setCanDrawOverlays(false);LiveTvGuard.running=false;}
+    @After public void reset(){Comeback.disarm();NordConnect.stop();LiveTvProtection.forTests=null;LiveTvProtection.last=null;ShadowSettings.setCanDrawOverlays(false);LiveTvGuard.running=false;}
 
     private static String words(View v){StringBuilder b=new StringBuilder();if(v instanceof TextView)b.append(((TextView)v).getText()).append(' ');if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)b.append(words(((ViewGroup)v).getChildAt(i)));return b.toString();}
     private static Button find(View v,String text){if(v instanceof Button&&((Button)v).getText().toString().equals(text))return (Button)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){Button b=find(((ViewGroup)v).getChildAt(i),text);if(b!=null)return b;}return null;}
@@ -66,20 +66,36 @@ public class LiveTvSafetyNetTest {
             assertEquals("the sheet explains",  "",Launch.open(a,LIVE,"Live TV"));
             assertFalse(opened(Shadows.shadowOf(a).getNextStartedActivity()));assertNull("no watch without Live TV",nextService());
             assertTrue(sheet(),sheet().contains("Live TV is locked. Connect NordVPN first."));assertNotNull(find(ShadowDialog.getLatestDialog().getWindow().getDecorView(),"Connect"));
-            // Retry on the sheet opens Live TV once NordVPN is connected: the refused route runs again through the gate.
-            nordConnected();find(ShadowDialog.getLatestDialog().getWindow().getDecorView(),"Retry").performClick();idle(10);
-            assertTrue("Retry opened Live TV",opened(Shadows.shadowOf(a).getNextStartedActivity()));
+            // Try again on the sheet opens Live TV once NordVPN is connected: the refused route runs again through the gate.
+            nordConnected();find(ShadowDialog.getLatestDialog().getWindow().getDecorView(),"Try again").performClick();idle(10);
+            assertTrue("Try again opened Live TV",opened(Shadows.shadowOf(a).getNextStartedActivity()));
             Intent watch=nextService();assertNotNull(watch);assertEquals(LiveTvGuard.class.getName(),watch.getComponent().getClassName());assertEquals(LIVE,watch.getStringExtra(LiveTvGuard.LIVE));
             assertNull("connected: opens at once",Launch.open(a,LIVE,"Live TV"));assertTrue(opened(Shadows.shadowOf(a).getNextStartedActivity()));
         }
     }
     @Test public void anotherVpnAppWithoutNotificationAccessSaysWhyAndOffersAccess(){
-        LiveTvProtection.Facts f=facts(VpnGate.State.CONNECTED);f.onlyNordCanVpn=false;LiveTvProtection.forTests=f;
+        LiveTvProtection.Facts f=facts(VpnGate.State.CONNECTED);f.onlyNordCanVpn=false;f.otherVpn="Data Saver";LiveTvProtection.forTests=f;
         try(ActivityController<UnifiedPreviewActivity> c=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()){
             Activity a=c.get();Shadows.shadowOf(a).getNextStartedActivity();
             assertEquals("",Launch.open(a,LIVE,"Live TV"));assertFalse(opened(Shadows.shadowOf(a).getNextStartedActivity()));
-            assertTrue(sheet(),sheet().contains("Can't tell which VPN is on. Allow notification access so Unified TV can see NordVPN"));
-            assertNotNull(find(ShadowDialog.getLatestDialog().getWindow().getDecorView(),"Allow access"));
+            // Build run 99: no contradiction, and the other app named.
+            assertTrue(sheet(),sheet().contains("A VPN is connected, but Unified TV can't confirm it's NordVPN because Data Saver can also run a VPN."));
+            View panel=ShadowDialog.getLatestDialog().getWindow().getDecorView();
+            // This test TV has no notification-access screen (the TCL): the debugging prompt, never a dead "Allow access".
+            assertNotNull(find(panel,VpnGate.DEBUG_ACCESS));assertNull(find(panel,VpnGate.ALLOW_ACCESS));
+            assertNotNull(find(panel,"Try again"));assertNotNull(find(panel,"Cancel"));assertNull(find(panel,"Retry"));
+            find(panel,VpnGate.DEBUG_ACCESS).performClick();
+            Intent next=Shadows.shadowOf(a).getNextStartedActivity();assertNotNull(next);assertEquals(NotificationAccessActivity.class.getName(),next.getComponent().getClassName());
+            assertTrue("Live TV carries on after access is given",Comeback.armed());Comeback.disarm();
+        }
+        // A TV with the screen: "Allow access", and no debugging prompt.
+        android.content.ComponentName settings=new android.content.ComponentName("com.android.tv.settings","com.android.tv.settings.NotificationAccess");
+        org.robolectric.shadows.ShadowPackageManager pm=Shadows.shadowOf(app().getPackageManager());pm.addActivityIfNotPresent(settings);
+        try{for(String action:new String[]{android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS,android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS}){
+            IntentFilter filter=new IntentFilter(action);filter.addCategory(Intent.CATEGORY_DEFAULT);pm.addIntentFilterForActivity(settings,filter);}}catch(Exception e){throw new AssertionError(e);}
+        try(ActivityController<UnifiedPreviewActivity> c=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()){
+            Activity a=c.get();Launch.open(a,LIVE,"Live TV");View panel=ShadowDialog.getLatestDialog().getWindow().getDecorView();
+            assertNotNull(find(panel,VpnGate.ALLOW_ACCESS));assertNull(find(panel,VpnGate.DEBUG_ACCESS));assertNotNull(find(panel,"Try again"));
         }
     }
     @Test public void theDockTileUsesTheRule()throws Exception{

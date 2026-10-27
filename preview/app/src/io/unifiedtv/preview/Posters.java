@@ -30,11 +30,20 @@ import java.util.concurrent.*;
  * looked up as soon as there is one; when the key changes ({@link #refreshKey}, the library calls it on coming back),
  * pictures held in memory (perhaps the server's own) are dropped so every tile asks again. A refused key or no internet
  * pauses lookups briefly instead of asking for every tile. Owner diagnostics read what happened ({@link #diagnosis}).
+ *
+ * Ahead of time (owner's TCL, build run 99): the background job (LibraryCollector) looks every new title up as soon as the
+ * list is made, a few at a time at the back of the queue ({@link #warm}), and keeps the posters on this TV's storage
+ * without decoding them, so Films &amp; TV opens with its pictures ready.
  */
 final class Posters {
     static final long DISK=80L*1024*1024,MISS_RETRY_MS=14L*24*60*60*1000,KEY_TTL_MS=60_000,GAP_MS=120;
     static final int MATCH_MAX=6000,POSTER_W=300,POSTER_H=450,BACK_W=960,BACK_H=540;
     static final String HINT="Add your free TMDB key in Settings > Library & Media > Film posters to see posters";
+    /**
+     * The one line on Home's row and in the library when there is no key (owner's TCL, build run 99: a reinstall had lost
+     * it, and a row of plain cards needs saying why). OK on it opens that setting. Adults only.
+     */
+    static final String ROW_HINT="No posters yet — add your free TMDB key: Settings > Library & Media > Film posters (set up on your phone)";
     /** After TMDB refused the key, or couldn't be reached: lookups wait this long (or until the key changes). */
     static final long REFUSED_PAUSE_MS=10*60_000L,OFFLINE_PAUSE_MS=30_000L;
     /** The last TMDB request's result, for Owner diagnostics. */
@@ -193,9 +202,33 @@ final class Posters {
     private final Object queueLock=new Object();
     private boolean wait(String k,Callback cb){synchronized(queueLock){List<Callback> l=waiting.get(k);if(l!=null){if(cb!=null)l.add(cb);return false;}l=new ArrayList<>();if(cb!=null)l.add(cb);waiting.put(k,l);return true;}}
     private void deliver(String k,Bitmap b){List<Callback> l;synchronized(queueLock){l=waiting.remove(k);}if(l==null||l.isEmpty())return;main.post(()->{for(Callback c:l)c.done(b);});}
-    private void submit(ThreadPoolExecutor ex,LinkedBlockingDeque<Runnable> q,boolean urgent,Runnable r){
-        try{if(ex.isShutdown())return;if(ex.getPoolSize()<ex.getCorePoolSize())ex.prestartAllCoreThreads();if(urgent)q.offerFirst(r);else q.offerLast(r);}
-        catch(RuntimeException ignored){}
+    private boolean submit(ThreadPoolExecutor ex,LinkedBlockingDeque<Runnable> q,boolean urgent,Runnable r){
+        try{if(ex.isShutdown())return false;if(ex.getPoolSize()<ex.getCorePoolSize())ex.prestartAllCoreThreads();return urgent?q.offerFirst(r):q.offerLast(r);}
+        catch(RuntimeException ignored){return false;}
+    }
+
+    // --- the background job (LibraryCollector): looked up before anyone browses
+    /**
+     * Looks a tile up at the back of the queue (the tile in focus and its neighbours still go first) and, when {@code
+     * picture}, keeps its poster on this TV's storage without decoding it: nothing is held in memory. {@code done} runs on
+     * the lookup thread when it is finished, or at once when the queue is closed.
+     */
+    void warm(LibraryCatalogue.Card card,String udn,boolean picture,Runnable done){
+        LookupJob job=new LookupJob(card,udn);
+        boolean queued=submit(lookups,lookupQueue,false,()->{
+            try{Tmdb.Match m=match(job);if(picture&&m!=null&&!m.poster.isEmpty())keep(m.poster,"w342");}
+            finally{done.run();}
+        });
+        if(!queued)done.run();
+    }
+    /** Whether this tile has been looked up already (a match, a "no match", or the household's own choice). */
+    synchronized boolean known(String udn,String lookupKey){String id=id(udn,lookupKey);return matches().has(id)||fixes().has(id);}
+    /** TMDB refused the key or couldn't be reached a moment ago: lookups are resting, so the background job waits too. */
+    boolean resting(){return System.currentTimeMillis()<pausedUntil;}
+    /** A TMDB picture saved to this TV's storage, not decoded. */
+    private void keep(String path,String size){
+        String k="tmdb:"+size+path;
+        try{File f=disk.file(k);if(f.isFile())return;Tmdb t=tmdb();if(t==null)return;byte[] data=t.image(path,size);disk.put(k,o->o.write(data));}catch(Exception ignored){/* fetched again when the tile is shown */}
     }
 
     /** The cached match, or a TMDB lookup (on the lookup thread). Null when there is none, no key, or no network. */

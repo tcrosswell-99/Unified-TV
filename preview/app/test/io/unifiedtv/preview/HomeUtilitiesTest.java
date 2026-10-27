@@ -45,4 +45,18 @@ public class HomeUtilitiesTest {
         assertEquals("AirPlay: AirPin isn't offering AirPlay right now",label(AIRPLAY,"",false,false));
         assertEquals(label(AIRPLAY,"",false),label(AIRPLAY,"",false,false));
     }
+    /** Build run 99: one rule for the pill's status icons. Off: the same dim, with a slash. On: bright (the shield ticked). */
+    @Test public void statusIconsAreDimWhenOffAndBrightWhenOn(){
+        Look off=vpnLook(VpnGate.State.DISCONNECTED),on=vpnLook(VpnGate.State.CONNECTED);
+        assertEquals(DIM,off.alpha);assertEquals(Mark.OFF,off.mark);assertFalse(off.bright());
+        assertEquals(BRIGHT,on.alpha);assertEquals(Mark.TICK,on.mark);assertTrue(on.bright());
+        assertEquals(new Look(DIM,Mark.DOT).toString(),vpnLook(VpnGate.State.CHECKING).toString());
+        assertEquals(DIM,vpnLook(VpnGate.State.UNKNOWN).alpha);
+        Look airOff=airPlayLook(false,false),airOn=airPlayLook(true,false);
+        assertEquals("the shield off is exactly as dim as AirPlay off",airOff.alpha,off.alpha);assertEquals(Mark.OFF,airOff.mark);
+        assertEquals(BRIGHT,airOn.alpha);assertEquals(Mark.NONE,airOn.mark);
+        assertEquals(Mark.DOT,airPlayLook(false,true).mark);
+        assertTrue("off is clearly dimmer than on",BRIGHT-DIM>=120);
+        for(VpnGate.State s:VpnGate.State.values())if(s!=VpnGate.State.CONNECTED)assertFalse(s.name(),vpnLook(s).bright());
+    }
 }

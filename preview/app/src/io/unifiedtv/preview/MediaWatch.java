@@ -54,6 +54,7 @@ public final class MediaWatch extends NotificationListenerService {
         if (says == null) return;
         NordCountry.connected = says;
         if (!says) LiveTvGuard.nordStopped();   // the safety net looks again (it decides with the same rule)
+        else NordConnect.nordSaid();            // a Connect for Live TV waiting on NordVPN looks again
     }
 
     static ComponentName component(Context c) { return new ComponentName(c, MediaWatch.class); }
@@ -75,6 +76,17 @@ public final class MediaWatch extends NotificationListenerService {
         if (Profiles.kids(a)) { if (i.resolveActivity(a.getPackageManager()) == null) return false; Launch.system(a, i, "This TV doesn't offer that setting"); return true; }
         try { a.startActivity(i); return true; } catch (android.content.ActivityNotFoundException | SecurityException e) { return false; }
     }
+
+    /**
+     * Android's own notification access screen, or null when this TV has none (the owner's TCL: build run 99). Then access
+     * can only be given through the TV's debugging (NotificationAccessActivity) or from a computer ({@link #pcCommand}).
+     */
+    static android.content.Intent accessScreen(Context c) {
+        android.content.Intent i = accessSettings(c);
+        try { return i.resolveActivity(c.getPackageManager()) != null ? i : null; } catch (RuntimeException e) { return null; }
+    }
+    /** The one computer command that gives this app's listener access (as NotificationAccessActivity sends it on the TV). */
+    static String pcCommand(Context c) { return "adb shell " + io.unifiedtv.adb.AdbCommands.allowListener(c.getPackageName()); }
 
     /** Android's own notification access screen: this app's page where the TV offers it (Android 11+), else the list. */
     static android.content.Intent accessSettings(Context c) {

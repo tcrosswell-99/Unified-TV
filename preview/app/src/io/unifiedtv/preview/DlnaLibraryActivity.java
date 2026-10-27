@@ -24,10 +24,13 @@ import java.util.concurrent.*;
  * OK: a film or episode plays; a programme opens its seasons; "All" opens the whole row as a grid.
  * Hold OK on a tile: Add to (or Remove from) Favourites; for Adults also "Wrong picture?" (SET-034, PictureFixActivity).</pre>
  *
- * Loading always says so: the first list shows a spinner and how many titles have been found; a later refresh shows a
- * small "Checking for new titles" while the saved list stays usable. Focus never waits for the network: pictures arrive
- * when ready (Posters), and a tile without one is a clean title card. With no TMDB key, Adults see one line saying where
- * to add it (Posters.HINT); a key added meanwhile (phone setup) is picked up when this screen comes back.
+ * Loading always says so. The list is made by the app's background job (LibraryCollector), never by this screen, so Back
+ * never stops it (owner's TCL, build run 99): while it runs, the titles found so far are shown with one progress line
+ * ("Finding your films… 120 so far. This carries on in the background — you can press Back."), and the full-page
+ * counter appears only while nothing at all has been found. Focus never waits for the network: pictures arrive when
+ * ready (Posters), and a tile without one is a dark glass title card. With no TMDB key, Adults see one line saying so
+ * (Posters.ROW_HINT); OK on it opens Settings' Film posters step. A key added meanwhile (phone setup) is picked up when
+ * this screen comes back, and the background job then looks the posters up.
  *
  * Profiles (owner, 25 October 2026): Kids see only titles in folders marked for Kids, within the Kids ratings; with no
  * Kids folders they see "Ask an adult". Adults see everything, with a Kids row. The player checks Kids again at play time.
@@ -37,21 +40,27 @@ public final class DlnaLibraryActivity extends Screen {
     /** Longest a folder may load before Retry is offered (also used by the Wallpaper's folder chooser). */
     static final long LOAD_LIMIT_MS=25_000;
     static final int GRID_CHUNK=84;
+    /** SPEC 7.4: a title's backdrop that isn't in memory yet may wait this long, so fast presses don't decode one per tile. */
+    static final long BACKDROP_SETTLE_MS=135;
+    /** While the list is being made, the rows take in new titles at most this often (the tile in focus stays in focus). */
+    static final long REBUILD_MS=4000;
     enum Kind{ROWS,GRID,SHOW,SEARCH}
     private static final class Place{final Kind kind;final String title,rowId,showKey;String query="",focus="";int shown=GRID_CHUNK;
         Place(Kind kind,String title,String rowId,String showKey){this.kind=kind;this.title=title;this.rowId=rowId;this.showKey=showKey;}}
 
-    private final ExecutorService walker=Executors.newSingleThreadExecutor(),quick=Executors.newSingleThreadExecutor();
+    private final ExecutorService quick=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
     private LibraryFolders.Library lib;private LibraryCatalogue.Catalogue cat;private Posters posters;private String udn="";
     private float unit;private boolean light,calm,postersOn,postersKnown;private int generation;
     private ImageView[] backs=new ImageView[2];private int front=0;private String shownBack="",focusKey="",wantedBack="";
-    private TextView heroTitle,heroMeta,heroText,status,keyHint;private ProgressBar statusSpin;
+    private TextView heroTitle,heroMeta,heroText,status;private Button keyHint;private ProgressBar statusSpin;
     private FrameLayout area;private LinearLayout bar;
     private final ArrayDeque<Place> stack=new ArrayDeque<>();
-    private boolean refreshing,firstLoad;
-    /** While the first list is made (perhaps by Home's row, already walking), the count follows the shared walk. */
-    private final Runnable countLater=new Runnable(){public void run(){if(!firstLoad)return;int n=LibraryIndex.walking;if(n>=0)loading(n);handler.postDelayed(this,500);}};
+    private boolean firstLoad;
+    /** The app's background job that makes the list and finds the posters; this screen only listens to it. */
+    private LibraryCollector collector;private final Runnable collectorChanged=this::collectorChanged;
+    /** The job's last run whose end this screen has taken in (a run already over when it opened counts as taken in). */
+    private int finishedPass;private int shownFound=-1;private long rebuiltAt;
     private final Runnable backdropLater=()->{LibraryCatalogue.Card c=cat==null?null:findCard(wantedBack);if(c!=null)backdrop(c);};
 
     @Override public void onCreate(Bundle state){
@@ -64,18 +73,19 @@ public final class DlnaLibraryActivity extends Screen {
         calm=prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();
         light=prefs.getBoolean("lightweight",false)||((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).isLowRamDevice();
         posters=Posters.get(this);   // whether there is a key is read off the main thread (onResume), never per focus move
-        lib=LibraryFolders.library(this);udn=lib.udn();
+        lib=LibraryFolders.library(this);udn=lib.udn();collector=LibraryCollector.get(this);
+        LibraryCollector.Status was=collector.status();finishedPass=was.scanning()?was.pass-1:was.pass;
         frame();keyHint();
         if(kids&&!lib.ready){message(KidsPolicy.ASK_ADULT,"An adult chooses the folders for Kids in the Adults profile.",null,null);return;}
         if(!lib.ready){message("Your Films & TV isn't set up yet.","Unified TV finds the media server on your home network. Choose the folders that hold your films and programmes.","Set up Your Films & TV",this::setup);return;}
         String search=in.getStringExtra("search");
-        stack.push(new Place(Kind.ROWS,"",null,null));
+        stack.push(new Place(Kind.ROWS,"",null,null));collector.listen(collectorChanged);
         // Home's row opens a programme straight at its seasons; Back then shows the rows.
         String showKey=in.getStringExtra("show");if(showKey!=null&&!showKey.isEmpty())stack.push(new Place(Kind.SHOW,"",null,showKey));
         if(search!=null&&!search.trim().isEmpty()){Place p=new Place(Kind.SEARCH,"Search",null,null);p.query=search.trim();stack.push(p);}
         load();
     }
-    @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)rebuild(false);}   // Continue Watching may have changed
+    @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)again();}   // Continue Watching may have changed
     /** Back from "Wrong picture?" (a sidebar: this screen was only paused): the tiles and background ask for the chosen picture. */
     @Override protected void onResume(){super.onResume();
         if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();return;}
@@ -87,18 +97,24 @@ public final class DlnaLibraryActivity extends Screen {
     private void keyRead(boolean changed,boolean on){
         if(isFinishing()||isDestroyed())return;boolean first=!postersKnown;postersKnown=true;
         if(!changed&&!first&&on==postersOn)return;
-        postersOn=on;keyHint();
+        postersOn=on;keyHint();if(changed&&on)collector.start();   // a key added: the background job looks the posters up
         if(cat!=null&&(changed||!first)){handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}
     }
     /** The one-line "add your TMDB key" hint: Adults only (Kids can't add one), and only while there is no key. */
     private void keyHint(){if(keyHint!=null)keyHint.setVisibility(postersKnown&&!postersOn&&lib!=null&&lib.ready&&!lib.kids?View.VISIBLE:View.GONE);}
+    /** Settings > Library & Media > Film posters: the step that adds the key from a phone (Settings asks for the adult PIN). */
+    private void addKey(){
+        try{startActivity(new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.LIBRARY).putExtra("task",SettingsActivity.PHONE_TMDB));overridePendingTransition(0,0);}
+        catch(RuntimeException e){note("Unable to open Settings");}
+    }
     /** For tests: whether the no-key hint is showing. */
     boolean keyHintShown(){return keyHint!=null&&keyHint.getVisibility()==View.VISIBLE;}
     /** The tile whose picture is being corrected, while "Wrong picture?" is open. */
     private String fixing;
     /** The focused view straight from the window's views (as SettingsActivity reads it), so a refresh keeps the same tile. */
     @Override public View getCurrentFocus(){View decor=getWindow().peekDecorView();return decor==null?null:decor.findFocus();}
-    @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);walker.shutdownNow();quick.shutdownNow();super.onDestroy();}
+    /** Back (or Home) leaves this screen only: the list and posters go on being made by the background job. */
+    @Override protected void onDestroy(){generation++;if(collector!=null)collector.unlisten(collectorChanged);handler.removeCallbacksAndMessages(null);quick.shutdownNow();super.onDestroy();}
     private void setup(){try{startActivity(new Intent(this,LibrarySetupActivity.class));overridePendingTransition(0,0);}catch(RuntimeException e){note("Unable to open Films & TV setup");}}
     private int px(float at1080){return Math.round(at1080*unit);}
     private TextView words(String s,float size,int colour,boolean bold,int lines){
@@ -120,13 +136,15 @@ public final class DlnaLibraryActivity extends Screen {
         bar=new LinearLayout(this);bar.setOrientation(LinearLayout.HORIZONTAL);top.addView(bar,new LinearLayout.LayoutParams(0,-2,1));
         statusSpin=new ProgressBar(this,null,android.R.attr.progressBarStyleSmall);statusSpin.setIndeterminate(true);statusSpin.setVisibility(View.GONE);statusSpin.setContentDescription("Loading");
         top.addView(statusSpin,new LinearLayout.LayoutParams(px(30),px(30)));
-        status=words("",22,0xFFC3CEDD,false,1);status.setPadding(px(12),0,0,0);top.addView(status);
+        status=words("",22,0xFFC3CEDD,false,2);status.setPadding(px(12),0,0,0);top.addView(status,new LinearLayout.LayoutParams(px(900),-2));
         content.addView(top,new LinearLayout.LayoutParams(-1,px(64)));
         LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(0,px(18),0,px(12));
         heroTitle=words("Your Films & TV",48,0xFFF4F7FB,true,1);heroMeta=words("",24,0xFFC3CEDD,false,1);heroText=words("",22,0xFFDCE4EE,false,3);
         heroMeta.setPadding(0,px(6),0,px(8));hero.addView(heroTitle);hero.addView(heroMeta);hero.addView(heroText,new LinearLayout.LayoutParams(px(1000),-2));
         content.addView(hero,new LinearLayout.LayoutParams(-1,px(250)));
-        keyHint=words(Posters.HINT,22,0xFFC3CEDD,false,1);keyHint.setPadding(px(6),0,0,px(6));keyHint.setVisibility(View.GONE);content.addView(keyHint);
+        // No key: one line that says why the tiles have no posters; OK on it opens Settings' Film posters step (phone setup).
+        keyHint=pill(Posters.ROW_HINT,this::addKey);keyHint.setTextSize(TypedValue.COMPLEX_UNIT_PX,22*unit);keyHint.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hl=new LinearLayout.LayoutParams(-2,-2);hl.bottomMargin=px(6);content.addView(keyHint,hl);
         area=new FrameLayout(this);content.addView(area,new LinearLayout.LayoutParams(-1,0,1));
         root.addView(content,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);column=null;
@@ -157,14 +175,17 @@ public final class DlnaLibraryActivity extends Screen {
     // --- loading
     private void load(){
         int mine=++generation;
-        // Cached list first (no network): rows appear at once when there is one.
+        // The newest list first (no network): the saved one, or what the background job has found so far.
         quick.execute(()->{
-            LibraryIndex.Index index=LibraryIndex.cached(getApplicationContext(),lib);
+            android.content.Context app=getApplicationContext();
+            LibraryIndex.Index index=LibraryIndex.latest(app,lib);
             LibraryCatalogue.Catalogue built=index.size()>0?build(index):null;
+            boolean due=built==null||LibraryIndex.due(LibraryIndex.cached(app,lib),lib,System.currentTimeMillis());
             handler.post(()->{if(mine!=generation||isFinishing())return;
                 if(built!=null){cat=built;topBar();show();}
-                else{firstLoad=true;loading(0);handler.postDelayed(countLater,500);}
-                if(built==null||LibraryIndex.due(index,lib,System.currentTimeMillis()))refresh(built==null);
+                else{firstLoad=true;loading(collector.status().found);}
+                if(due)collector.start();
+                collectorChanged();
             });
         });
     }
@@ -172,7 +193,7 @@ public final class DlnaLibraryActivity extends Screen {
         return LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(getApplicationContext()),ResumeStore.load(getApplicationContext()),
             Favourites.load(getSharedPreferences(HouseholdSettings.PREFS,0)),System.currentTimeMillis());
     }
-    /** The first time: a spinner and a count, never a blank screen. */
+    /** Only while nothing at all has been found yet: a spinner and a count, never a blank screen. */
     private void loading(int found){
         if(!firstLoad)return;
         TextView count=area.findViewWithTag("count");
@@ -182,41 +203,52 @@ public final class DlnaLibraryActivity extends Screen {
             box.addView(spin,new LinearLayout.LayoutParams(px(96),px(96)));
             TextView t=words("Finding your films and TV…",32,0xFFF4F7FB,true,2);t.setGravity(Gravity.CENTER);t.setPadding(0,px(24),0,px(8));box.addView(t);
             count=words("",24,0xFFC3CEDD,false,2);count.setGravity(Gravity.CENTER);count.setTag("count");box.addView(count);
-            TextView once=words("This happens once. Next time your library opens straight away.",22,0xFFC3CEDD,false,2);once.setGravity(Gravity.CENTER);once.setPadding(0,px(8),0,0);box.addView(once);
+            TextView once=words("Your titles appear here as they are found. "+LibraryCollector.BACKGROUND,22,0xFFC3CEDD,false,2);once.setGravity(Gravity.CENTER);once.setPadding(0,px(8),0,0);box.addView(once);
             Button back=pill("Back",this::finish);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.topMargin=px(28);box.addView(back,lp);
             FrameLayout.LayoutParams at=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER_HORIZONTAL);at.topMargin=px(40);area.addView(box,at);back.requestFocus();}
-        count.setText(found<=0?"Reading your folders":found==1?"1 video found so far":found+" videos found so far");
+        count.setText(found<=0?"Reading your folders":found==1?"1 video found so far":LibraryCollector.videos(found)+" found so far");
     }
-    private void refresh(boolean first){
-        if(refreshing)return;refreshing=true;int mine=generation;
-        if(!first)setStatus(true,"Checking for new titles…");
-        walker.execute(()->{
-            LibraryIndex.Index index=null;Exception failure=null;
-            try{index=LibraryIndex.refresh(getApplicationContext(),lib,false,(titles,folders)->handler.post(()->{if(mine==generation)loading(titles);}));}
-            catch(Exception e){failure=e;}
-            LibraryCatalogue.Catalogue built=index!=null?build(index):null;
-            LibraryIndex.Index got=index;Exception problem=failure;
-            handler.post(()->{if(mine!=generation||isFinishing())return;refreshing=false;
-                if(built==null){setStatus(false,"");
-                    if(cat==null){firstLoad=false;int kind=problem instanceof DlnaClient.Failure?((DlnaClient.Failure)problem).kind:DlnaClient.Failure.UNREACHABLE;
-                        message("Your films and TV aren't answering.",DlnaClient.Failure.plain(kind),"Try again",()->{firstLoad=true;loading(0);refresh(true);});}
-                    else setStatus(false,"Showing your saved list. The media server isn't answering.");
-                    return;}
-                setStatus(false,got.stale?"Showing your saved list. Some folders didn't answer.":"");
-                boolean wasEmpty=cat==null;LibraryCatalogue.Catalogue old=cat;cat=built;firstLoad=false;
-                if(wasEmpty){topBar();show();}
-                else if(changed(old,built))refreshPage();
-            });
-        });
+    /**
+     * The background job moved on: the count, the progress line, the titles found so far (at most every
+     * {@link #REBUILD_MS}, the tile in focus kept) and, when the list is done, the final rows.
+     */
+    private void collectorChanged(){
+        if(isFinishing()||isDestroyed()||lib==null||!lib.ready)return;
+        LibraryCollector.Status s=collector.status();
+        if(firstLoad)loading(s.found);
+        else setStatus(s.busy(),s.busy()?s.line():s.stale&&s.phase!=LibraryCollector.Phase.IDLE?"Showing your saved list. Some folders didn't answer.":"");
+        long now=android.os.SystemClock.uptimeMillis();
+        if(s.scanning()&&s.found>0&&s.found!=shownFound&&(cat==null||now-rebuiltAt>=REBUILD_MS)){shownFound=s.found;rebuiltAt=now;rebuild(false);}
+        if(!s.scanning()&&s.pass>finishedPass){finishedPass=s.pass;finished(s);}
+    }
+    private void finished(LibraryCollector.Status s){
+        if(s.phase==LibraryCollector.Phase.FAILED){
+            if(cat==null){firstLoad=false;setStatus(false,"");
+                message("Your films and TV aren't answering.",DlnaClient.Failure.plain(s.problem==0?DlnaClient.Failure.UNREACHABLE:s.problem),"Try again",()->{firstLoad=true;loading(0);collector.start();});}
+            else setStatus(false,"Showing your saved list. The media server isn't answering.");
+            return;
+        }
+        rebuild(true);
+    }
+    /** The newest list (found so far, or saved) as rows; {@code last}: the list is done, so even an empty one is shown. */
+    private void rebuild(boolean last){
+        int mine=generation;
+        quick.execute(()->{LibraryIndex.Index index=LibraryIndex.latest(getApplicationContext(),lib);
+            LibraryCatalogue.Catalogue built=index.size()>0||last?build(index):null;
+            handler.post(()->{if(mine!=generation||isFinishing()||built==null)return;
+                LibraryCatalogue.Catalogue old=cat;cat=built;
+                if(old==null||firstLoad){firstLoad=false;topBar();show();LibraryCollector.Status s=collector.status();setStatus(s.busy(),s.busy()?s.line():"");}
+                else if(changed(old,built)&&page()!=Kind.SEARCH)refreshPage();   // never under someone typing a search
+            });});
     }
     private static boolean changed(LibraryCatalogue.Catalogue a,LibraryCatalogue.Catalogue b){
         if(a.titles.size()!=b.titles.size()||a.rows.size()!=b.rows.size())return true;
         for(int i=0;i<a.titles.size();i++)if(!a.titles.get(i).stableId.equals(b.titles.get(i).stableId))return true;return false;
     }
-    /** Continue Watching after the player, or a refreshed list: same page, same tile in focus. */
-    private void rebuild(boolean force){
+    /** Continue Watching after the player, or a Favourite changed: same page, same tile in focus. */
+    private void again(){
         int mine=generation;
-        quick.execute(()->{LibraryCatalogue.Catalogue built=build(LibraryIndex.cached(getApplicationContext(),lib));
+        quick.execute(()->{LibraryCatalogue.Catalogue built=build(LibraryIndex.latest(getApplicationContext(),lib));
             handler.post(()->{if(mine!=generation||isFinishing()||built.isEmpty())return;cat=built;refreshPage();});});
     }
     private void refreshPage(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();show();}
@@ -342,10 +374,10 @@ public final class DlnaLibraryActivity extends Screen {
         v.setOnFocusChangeListener((x,f)->{if(f){heroTitle.setText(title);heroMeta.setText(detail);heroText.setText("");focusKey="";wantedBack="";handler.removeCallbacks(backdropLater);toBack(null,"");}});return v;
     }
     /**
-     * The highlighted title's words at once, and its own background asked for at the same moment (module 05 single focus
-     * timing contract: no settle delay; the former 160 ms wait is gone). The picture arrives asynchronously and crossfades in
-     * 280 ms; only the newest request is kept (Posters.latestBackdrop), so fast presses never queue a background per tile.
-     * Never another title's picture.
+     * The highlighted title's words at once; its own background at once when it is in memory, otherwise asked for after
+     * SPEC 7.4's 135 ms settle (owner, build run 99: cheap on focus, fast scrolling doesn't thrash). The picture arrives
+     * asynchronously and crossfades in 280 ms; only the newest request is kept (Posters.latestBackdrop). The TMDB backdrop,
+     * or the title's poster softened; never another title's picture.
      */
     private void hero(LibraryCatalogue.Card c){
         if(c==null){focusKey="";return;}
@@ -360,9 +392,10 @@ public final class DlnaLibraryActivity extends Screen {
         wantedBack=c.key();handler.removeCallbacks(backdropLater);
         Bitmap b=posters.cachedBackdrop(c,light);
         if(b!=null){toBack(b,c.key());return;}
-        // Not ready: fade to the calm neutral scene at once (no stale picture), then the title's own when it arrives.
+        // Not ready: fade to the calm neutral scene at once (no stale picture), then ask for the title's own once focus has
+        // settled (SPEC 7.4, 135 ms), so a run of fast presses decodes one background, not one per tile passed.
         if(!shownBack.isEmpty())toBack(null,"");
-        backdrop(c);
+        handler.postDelayed(backdropLater,BACKDROP_SETTLE_MS);
     }
     private void backdrop(LibraryCatalogue.Card c){
         String key=c.key();
@@ -396,7 +429,7 @@ public final class DlnaLibraryActivity extends Screen {
         new android.app.AlertDialog.Builder(this).setTitle(c.name()+(c.year().isEmpty()?"":" ("+c.year()+")")).setItems(items.toArray(new String[0]),(d,n)->{
             String pick=items.get(n);
             if(pick.equals(PictureFixActivity.ACTION)){fixing=c.key();try{startActivity(PictureFixActivity.intent(this,c,udn));overridePendingTransition(0,0);}catch(RuntimeException e){fixing=null;note("Unable to open Wrong picture?");}}
-            else if(!pick.equals("Cancel")){rememberFocus();boolean now=Favourites.toggle(prefs,c.key());note(now?"Added to Favourites":"Removed from Favourites");rebuild(true);}
+            else if(!pick.equals("Cancel")){rememberFocus();boolean now=Favourites.toggle(prefs,c.key());note(now?"Added to Favourites":"Removed from Favourites");again();}
         }).show();
     }
     private void rememberFocus(){View f=getCurrentFocus();if(f instanceof PosterView&&((PosterView)f).card!=null&&!stack.isEmpty())stack.peek().focus=((PosterView)f).card.key();}

@@ -41,7 +41,7 @@ public class LibraryJourneyTest {
         Posters.reset();Posters.testKey="";Posters.transport=(u,h,l)->{throw new java.io.IOException("no network in tests");};
         LibraryIndex.clear(app);
     }
-    @After public void stop(){LibraryFolders.testStore=null;LibraryIndex.browser=DlnaClient::browse;Posters.testKey=null;Posters.transport=null;Posters.reset();LibraryIndex.clear(app);}
+    @After public void stop(){CountDownLatch g=server.gate;if(g!=null)g.countDown();LibraryCollector.reset();LibraryFolders.testStore=null;LibraryIndex.browser=DlnaClient::browse;Posters.testKey=null;Posters.transport=null;Posters.reset();LibraryIndex.clear(app);}
 
     static void idle(){Shadows.shadowOf(Looper.getMainLooper()).idle();}
     interface Check{boolean ok()throws Exception;}

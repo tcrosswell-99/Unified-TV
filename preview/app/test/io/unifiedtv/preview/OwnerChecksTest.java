@@ -24,7 +24,7 @@ public class OwnerChecksTest {
         for(LiveTvProtection.State d:LiveTvProtection.State.values()){String s=OwnerChecks.liveTv("VPN ● Connected",true,d).toLowerCase();assertFalse(s,s.contains("protected"));
             assertFalse(s,s.contains("verified"));LiveTvProtectionTest.neverClaimsAKillSwitch(s);}
         assertTrue(OwnerChecks.liveTv("VPN ○ Disconnected",false,LiveTvProtection.State.DISCONNECTED).contains("Live TV: disconnected"));
-        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.UNSURE).contains("Live TV: locked. Live TV is locked. Can't tell which VPN is on"));
+        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.UNSURE).contains("Live TV: locked. Live TV is locked. A VPN is connected, but Unified TV can't confirm it's NordVPN"));
         assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.OPEN).contains("Live TV: open. NordVPN is connected."));
         LiveTvProtection.Facts f=new LiveTvProtection.Facts();f.nordInstalled=true;f.notificationAccess=true;f.nordSays=true;
         assertEquals("NordVPN installed: yes. Notification access: allowed. NordVPN's notice: says connected. Apps that can run a VPN: com.nordvpn.android. Live TV safety net: watching; last drop: covered.",

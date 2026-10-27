@@ -50,10 +50,15 @@ Remote interaction outranks animation and network imagery on the Sony and low-me
 | Reduce motion | crossfades instant, no drift, no zoom | all |
 | Keep background still | no drift; crossfade kept | Home |
 | Lightweight | still frames, 200 ms crossfade | Home |
+| Panel over panel | lower panel fades out in 90 ms and is not drawn; back in 120 ms with focus restored; instant with Reduce motion | `OnePanel`, `GlassScreen`, `SettingsActivity` |
 
 ## Settings and setup always use the sidebar (never break)
 
 Owner design principle, 25 October 2026. **Every settings or setup screen opens as the glass sidebar that overlays a still Home screen**: Settings itself, choosing NAS folders and media servers, Home Assistant, football, film posters, phone (QR) setup, household setup, apps and dock management, Kids and profiles, taking over the Home button and returning to the original TV interface (OD-28), and anything added later. Home stays visible and does not move behind it; the sidebar is half the screen, widening to about three quarters only for wide tasks (module 13). A full-screen settings or setup page is a defect, whatever it is for. Content you watch or browse (the film library itself, the player, Wallpaper) is not a settings screen and may use the full screen. The one exception is Home's safe screen (OD-28), shown in place of Home after two crashes within a minute of starting: plain full-screen text and two buttons, deliberately without the glass or anything else from Home that could fail again.
+
+**Only one panel is visible at a time** (owner, 27 October 2026, after TCL build run 99). Glass is see-through, so a sidebar over another sidebar is unreadable. When a settings or setup panel opens another (Build My TV from the guided setup, a folder picker from Settings), the lower panel fades out quickly (at once with Reduce motion) and is not drawn; when the upper one closes, the lower one comes back with focus on the control that opened it. This is built into the sidebar base (`GlassScreen`) and Settings' own sheet (`OnePanel`), not into each screen. The sheet's tint is about 80–85 % opaque for reading from the sofa; Reduce transparency and High contrast stay nearly solid.
+
+**Say what to do first.** Every setup page and guided step starts with one plain line saying what to do there, or "Nothing to do here: press Next". Only things that do something can be focused: words that only explain, or apps that were only found, are text (one summary line), never rows that look like tasks.
 
 ## Interactions that remain hidden until needed
 

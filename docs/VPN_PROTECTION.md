@@ -8,24 +8,38 @@
 
 ### The rule
 
-One rule (`LiveTvProtection`) decides for every route into Live TV: the dock tile, Apps, voice ("Open Live TV"), the Live TV sheet's **Retry** and the notice's **Watch Live TV**. All of them go through the one gate (`Launch.open`), so none is a way round it. Live TV opens only when **Android reports a VPN** and **that VPN is NordVPN's**:
+One rule (`LiveTvProtection`) decides for every route into Live TV: the dock tile, Apps, voice ("Open Live TV"), the Live TV sheet's **Try again** and the notice's **Watch Live TV**. All of them go through the one gate (`Launch.open`), so none is a way round it. Live TV opens only when **Android reports a VPN** and **that VPN is NordVPN's**:
 
 1. NordVPN is installed; and
 2. either **NordVPN's own notification says it is connected** (Unified TV reads only NordVPN's notification, only with the notification access the household allowed, and keeps only "connected or not" and the country code in memory, as for the flag beside the shield); or
-3. without that word, **NordVPN is the only app on the TV that can run a VPN**: the only installed app declaring a service for `android.net.VpnService`. The VPN Android reports can then only be NordVPN's.
+3. without that word, **NordVPN is the only app on the TV that can run a VPN**: the only installed app declaring a service for `android.net.VpnService`. The VPN Android reports can then only be NordVPN's. Two kinds of app don't count (owner's TCL, build run 99): an app that is turned off, and a system app with no app to open (the TV's own plumbing, such as a data saver). Owner diagnostics lists the apps that count and the ones left out, with why.
 
 | What Unified TV reads | Live TV | What the household sees |
 | --- | --- | --- |
 | VPN up, NordVPN's notice says connected | opens | "NordVPN is connected. If NordVPN drops, Unified TV will cover Live TV." |
 | VPN up, NordVPN the only VPN app | opens | the same |
-| VPN up, another VPN app installed, no notification access | locked | "Can't tell which VPN is on. Allow notification access so Unified TV can see NordVPN." The sheet's first button is **Allow access**. |
-| VPN up, another VPN app, NordVPN's notice says nothing | locked | "A VPN is on, but NordVPN doesn't say it's connected. Connect NordVPN first." |
+| VPN up, another VPN app installed, no notification access | locked | "A VPN is connected, but Unified TV can't confirm it's NordVPN because *<that app>* can also run a VPN. Allow notification access…". The sheet offers **Turn on access using the TV's debugging prompt** (when the TV has no notification-access screen, as the TCL) or **Allow access** (when it has), then **Try again** and **Cancel**: never a dead end. |
+| VPN up, another VPN app, NordVPN's notice says nothing | locked | "A VPN is connected, but NordVPN doesn't say it's connected. Connect NordVPN first." |
 | NordVPN's notice says disconnected, connecting or paused | locked | "Connect NordVPN first", with **Connect** (opens NordVPN at its main screen) |
 | No VPN | locked | the same |
 | NordVPN not installed | locked | "It opens when NordVPN is connected, and NordVPN isn't installed on this TV." |
 | Android's answer can't be read | locked | "Unified TV couldn't read the TV's connection. Try again." |
 
 **Kids** rules are unchanged: Live TV, and NordVPN itself, open in Kids only if an adult approved them.
+
+### Connect, then carry on
+
+NordVPN has no public "connect" request another app may send, so **Connect** still opens NordVPN. When it comes from a refused Live TV launch, Unified TV remembers that launch for two minutes and listens to Android's VPN network callback (and NordVPN's own notice). As soon as the rule lets Live TV open, Unified TV comes back by itself ("Display over other apps", as OD-23) and opens Live TV with a short "NordVPN connected — opening Live TV": no Back presses. If the household comes back first, the same happens then; if the rule still refuses, the sheet says why. Settings suggests: "Tip: turn on Auto-connect in NordVPN's settings so it's always connected."
+
+### Notification access on a TV without the screen
+
+The owner's TCL has no notification-access screen. Without access, NordVPN's own notice can't be read, so with another VPN app installed Live TV could never open, and no flag shows. **Turn on access using the TV's debugging prompt** (in the sheet, and in Settings > Live TV & Network Protection) opens a page that, after the adult PIN, uses the Optional clean-up's session link to this TV's own network debugging (the same "Allow USB debugging?" prompt) to send exactly one command, `cmd notification allow_listener <this app>/io.unifiedtv.preview.MediaWatch` (the allowlist refuses any other listener or app). It checks with Android that access is on, closes the link, then guides the owner to turn network debugging off and checks it is off. The same access makes Now Playing work for Amazon Music, because it is the same listener. From a computer instead:
+
+```bash
+adb shell cmd notification allow_listener io.unifiedtv.launcher.devicecheck/io.unifiedtv.preview.MediaWatch
+```
+
+(use `io.unifiedtv.launcher` or `io.unifiedtv.preview` for those apps). Settings shows the exact line for the app it is in.
 
 ### If NordVPN drops while Live TV is on (the safety net)
 

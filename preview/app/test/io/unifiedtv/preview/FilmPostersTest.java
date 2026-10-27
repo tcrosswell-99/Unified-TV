@@ -1,6 +1,7 @@
 package io.unifiedtv.preview;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.widget.Button;
 import org.json.*;
 import org.junit.*;
 import static org.junit.Assert.*;
@@ -33,7 +34,7 @@ public class FilmPostersTest {
                 if(url.contains("query=Other+Film"))r.put(new JSONObject().put("id",77).put("title","Other Film").put("release_date","2020-02-01").put("poster_path","/other.jpg").put("backdrop_path","/otherb.jpg").put("vote_count",900).put("overview","Another film."));
                 return new Tmdb.Response(200,new JSONObject().put("results",r).toString().getBytes("UTF-8"),0);}catch(JSONException|UnsupportedEncodingException e){throw new IOException(e);}};
     }
-    @After public void stop(){Posters.testKey=null;Posters.transport=null;Posters.reset();DlnaClient.opener=original;LibraryIndex.browser=DlnaClient::browse;LibraryFolders.testStore=null;LibraryIndex.clear(app);}
+    @After public void stop(){LibraryCollector.reset();Posters.testKey=null;Posters.transport=null;Posters.reset();DlnaClient.opener=original;LibraryIndex.browser=DlnaClient::browse;LibraryFolders.testStore=null;LibraryIndex.clear(app);}
 
     Bitmap poster(LibraryCatalogue.Card c)throws Exception{
         Bitmap[] got={null};boolean[] done={false};Posters.get(app).poster(c,UDN,true,b->{got[0]=b;done[0]=true;});
@@ -102,7 +103,10 @@ public class FilmPostersTest {
         LibraryFolders.save(app,FakeServer.source(),Collections.singletonList(new LibraryFolders.Folder("f","Films",null,false)));
         try(var c=Robolectric.buildActivity(DlnaLibraryActivity.class).setup()){DlnaLibraryActivity a=c.get();
             LibraryJourneyTest.until("rows",()->a.catalogue()!=null&&!LibraryJourneyTest.all(a.getWindow().getDecorView(),PosterView.class).isEmpty());
-            LibraryJourneyTest.until("the key is read off the main thread",a::keyHintShown);assertTrue(LibraryJourneyTest.says(a,"Add your free TMDB key in Settings > Library & Media > Film posters to see posters"));
+            LibraryJourneyTest.until("the key is read off the main thread",a::keyHintShown);assertTrue(LibraryJourneyTest.says(a,Posters.ROW_HINT));
+            // OK on the line opens Settings' Film posters step (phone setup).
+            Button add=LibraryJourneyTest.button(a,Posters.ROW_HINT);assertNotNull(add);assertTrue(add.isFocusable());add.performClick();
+            android.content.Intent next=Shadows.shadowOf(a).getNextStartedActivity();assertEquals(SettingsActivity.class.getName(),next.getComponent().getClassName());assertEquals(SettingsActivity.PHONE_TMDB,next.getStringExtra("task"));
             assertEquals("Heat",a.catalogue().titles.get(0).name);
             // The key is added on the phone while the library is away; coming back hides the hint and asks TMDB.
             c.pause().stop();Posters.testKey=KEY;c.restart().start().resume();

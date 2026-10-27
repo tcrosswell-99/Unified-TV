@@ -75,6 +75,10 @@ final class MemoryBudget {
     int backdropWidth() { return low() ? 320 : 640; }
     /** Titles the saved library list keeps (LibraryIndex): the walk stops there and the list says it is incomplete. */
     int libraryTitles() { return low() ? 4000 : LibraryIndex.MAX_TITLES; }
+    /** The background library job's rest between two pages from the media server (LibraryCollector): gentler on a 2 GB TV. */
+    long indexGapMs() { return low() ? 60 : 20; }
+    /** Poster lookups the background job queues at once (LibraryCollector); the tile in focus still goes first. */
+    int posterBatch() { return low() ? 4 : 8; }
 
     @Override public String toString() { return low() ? "low (2 GB class: smaller caches, same screens)" : "standard"; }
 }

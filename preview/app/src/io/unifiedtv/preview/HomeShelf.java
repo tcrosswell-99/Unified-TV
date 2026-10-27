@@ -57,16 +57,29 @@ final class HomeShelf {
         List<DlnaClient.Item> out=new ArrayList<>();for(DlnaClient.Item i:items)if(KidsPolicy.allows(CatalogueItem.fromDlna(i,udn,root),kidsRoots,scheme))out.add(i);return out;
     }
     /**
-     * The row for this profile: from the saved list, made first if there is none yet (one walk for the whole app, shared
-     * with the library). Runs off the main thread.
+     * The row for this profile, from the newest list there is: the saved one, or the titles the background job
+     * (LibraryCollector) has found so far while it is still making it (owner's TCL, build run 99: folders saved in first-run
+     * step 4, then Down showed only "View all"). Never waits for the media server: when the list is missing or old, the
+     * job is started and Home hears from it as titles arrive. Runs off the main thread.
      */
     static List<Poster> load(Context c)throws Exception{
         LibraryFolders.Library lib=LibraryFolders.library(c);if(!lib.ready)return new ArrayList<>();
-        DlnaClient.lan=LocalDiscovery.lan(c);
-        LibraryIndex.Index index=LibraryIndex.cached(c,lib);
-        if(index.size()==0||LibraryIndex.due(index,lib,System.currentTimeMillis()))try{index=LibraryIndex.refresh(c,lib,false,null);}catch(Exception e){if(index.size()==0)throw e;}
+        LibraryIndex.Index index=LibraryIndex.latest(c,lib);
+        LibraryCollector job=LibraryCollector.get(c);
+        if(!job.status().busy()&&(index.size()==0||LibraryIndex.due(LibraryIndex.cached(c,lib),lib,System.currentTimeMillis())))job.start();
         LibraryCatalogue.Catalogue cat=LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(c),ResumeStore.load(c),System.currentTimeMillis());
         return fromCatalogue(cat,MAX);
+    }
+    /**
+     * The one line above Home's row, or "" for none: the background job's progress while the list is made or posters are
+     * looked up ("Scanning your film and TV library — 2,000 videos found so far. You can keep watching."); otherwise, for
+     * Adults with titles but no TMDB key, why the tiles have no posters (Posters.ROW_HINT; OK on it opens that setting).
+     * Kids see nothing extra. Pure: Home works out the inputs off the main thread, never per frame.
+     */
+    static String line(LibraryCollector.Status job,boolean kids,boolean titles,boolean postersOn){
+        String progress=job==null?"":job.home();
+        if(!progress.isEmpty())return progress;
+        return !kids&&titles&&!postersOn?Posters.ROW_HINT:"";
     }
     /**
      * Home's one line when the row couldn't be loaded. A VPN in the way is named as the likely cause (owner's TCL,

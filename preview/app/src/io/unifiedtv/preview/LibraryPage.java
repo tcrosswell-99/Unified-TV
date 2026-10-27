@@ -16,9 +16,12 @@ import java.util.concurrent.Executors;
 final class LibraryPage {
     private final SettingsActivity a;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
-    private boolean scanning;private TextView scanLine;
+    private boolean scanning;private TextView scanLine,jobLine;
+    /** The background job's progress ("Getting posters: 80 of 200…"), kept up to date while this page shows. */
+    private final Runnable jobChanged=this::jobChanged;
+    private void jobChanged(){if(jobLine==null)return;String l=LibraryCollector.get(a).status().line();jobLine.setText(l);jobLine.setVisibility(l.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);}
     LibraryPage(SettingsActivity a){this.a=a;}
-    void close(){worker.shutdownNow();}
+    void close(){worker.shutdownNow();LibraryCollector.get(a).unlisten(jobChanged);}
     private SharedPreferences prefs(){return a.getSharedPreferences(HouseholdSettings.PREFS,0);}
 
     /** SET-031: only once a media server is set up (otherwise Library offers "Set up" and nothing else). */
@@ -29,6 +32,7 @@ final class LibraryPage {
         a.text(name+" · "+PrivacyData.count(lib.folders.size(),"folder","folders")+" in your library",18).setFocusable(false);
         String problem=MediaSources.lastProblem(a);
         scanLine=a.text(scanning?"Reading the folders again…":problem!=null?"Last check: "+problem:"",15);if(!scanning&&problem==null)scanLine.setVisibility(android.view.View.GONE);
+        LibraryCollector job=LibraryCollector.get(a);jobLine=a.text("",15);jobChanged.run();job.listen(jobChanged);
         a.button("Name on this TV: "+name,()->EditLock.ask(a,()->rename(lib)));
         if(MediaSources.accountToo(a)){String now=prefs().getString(MediaSources.PREFERRED,MediaSources.FOLDERS);
             a.button("Films & TV come from: "+MediaSources.preferredLabel(now),()->EditLock.ask(a,()->new AlertDialog.Builder(a).setTitle("Films & TV come from").setItems(new String[]{MediaSources.preferredLabel(MediaSources.FOLDERS),MediaSources.preferredLabel(MediaSources.ACCOUNT)},

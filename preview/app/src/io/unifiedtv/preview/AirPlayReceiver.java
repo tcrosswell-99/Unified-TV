@@ -125,6 +125,19 @@ final class AirPlayReceiver {
         t.setDaemon(true); t.start();
     }
 
+    /** Tests only: what a check finds (the advertised name, "" for the direct answer, null for nothing). */
+    static volatile java.util.function.Function<Context, String> probeForTests;
+    /**
+     * One check now, on the calling worker thread (AirPlayStart's watch): the name this TV's receiver is advertised as
+     * ("" when only the direct check answered), or null. Updates ready and advertisedAs.
+     */
+    static String checkNow(Context c) {
+        String name;
+        try { java.util.function.Function<Context, String> p = probeForTests; name = p != null ? p.apply(c) : installed(c) == null ? null : find(c); }
+        catch (RuntimeException e) { name = null; }
+        ready = name != null; advertisedAs = name == null ? "" : name; checkedAt = System.currentTimeMillis();
+        return name;
+    }
     /** The name iPhones see for this TV's receiver ("" when only the direct check answered), or null when none is offered. */
     private static String find(Context c) {
         Set<String> own = ownAddresses(); List<NsdServiceInfo> seen = discover(c, 3000);

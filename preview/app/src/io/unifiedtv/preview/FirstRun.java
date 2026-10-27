@@ -9,9 +9,9 @@ import java.util.*;
 /**
  * SET-010 first-run guided setup, its saved progress (SET-BUILD-06 style: versioned, local, resumable) and when it is
  * offered. Five optional steps in the Settings sidebar ({@link FirstRunActivity}): Welcome, the remote, your apps (Build
- * My TV), your films and TV (the media server), and Finish. Skip is on every step; no account, password or address is
- * asked for. It opens by itself once, on a fresh install in Adults, and never in Kids; it is run again, whole or one part
- * at a time (SET-015), from Settings &gt; Updates &amp; About &gt; Guided setup.
+ * My TV), your films and TV (the media server), and Finish. Skip is on every step with something to choose; no account,
+ * password or address is asked for. It opens by itself once, on a fresh install in Adults, and never in Kids; it is run
+ * again, whole or one part at a time (SET-015), from Settings &gt; Updates &amp; About &gt; Guided setup.
  *
  * Saved under {@link #KEY} as {@code {schemaVersion, status, step}}. Anything unreadable is "not started"; an unknown
  * step resumes at Welcome. Nothing else is stored, and starting over never touches the dock, Build My TV's choices or

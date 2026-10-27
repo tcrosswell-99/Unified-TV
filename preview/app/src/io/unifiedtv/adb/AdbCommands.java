@@ -19,6 +19,10 @@ import java.util.regex.Pattern;
  * entry ({@link #HOME_ENTRY} in the launcher app or its review build), and a stock Home app's own component when Home is
  * handed back ({@link #STOCK_HOMES}). Any other component, or a Home entry in any other package, is refused unsent.
  *
+ * <p>Notification access (owner's TCL, build run 99: the TV has no notification-access screen) adds one more change,
+ * {@code cmd notification allow_listener <app>/io.unifiedtv.preview.MediaWatch}, and only for Unified TV's own listener in
+ * its own apps ({@link #LISTENER_APPS}): it lets Unified TV see NordVPN's "Connected" notice and what is playing.
+ *
  * <p>Never: {@code pm uninstall}, {@code pm hide}, {@code pm clear}, {@code pm grant}, {@code settings put}, a reboot, root
  * ({@code su}), {@code am}, {@code input}, a second command after a {@code ;}, {@code &&} or {@code |}, a redirect, or a
  * package name with anything but letters, digits, '_' and dots. The tested lists do not ask for {@code pm hide} anywhere,
@@ -48,6 +52,11 @@ public final class AdbCommands {
     public static final Set<String> STOCK_HOMES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("com.google.android.tvlauncher",
         "com.google.android.apps.tv.launcherx", "com.google.android.leanbacklauncher", "com.tcl.tvlauncher")));
     static final String SET_HOME = "cmd package set-home-activity --user 0 ";
+    /** Unified TV's own notification listener (the namespace's class, the same in every Unified TV app). */
+    public static final String LISTENER = "io.unifiedtv.preview.MediaWatch";
+    /** The only apps whose listener allow_listener may name: Unified TV's own. */
+    public static final Set<String> LISTENER_APPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview")));
+    static final String ALLOW_LISTENER = "cmd notification allow_listener ";
     /** package/class, the class either ".Relative" or fully named: letters, digits, '_' and dots only (no '$', nothing a shell reads). */
     static final Pattern COMPONENT = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/(\\.?[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)");
     /** The animation scales tools/recovery.py records; read only. */
@@ -78,6 +87,16 @@ public final class AdbCommands {
         return STOCK_HOMES.contains(m.group(1));
     }
 
+    /** Gives Unified TV's own listener notification access: only {@link #LISTENER} in one of {@link #LISTENER_APPS}. */
+    public static String allowListener(String app) {
+        if (!LISTENER_APPS.contains(app)) throw new IllegalArgumentException("not a Unified TV app");
+        return ALLOW_LISTENER + app + "/" + LISTENER;
+    }
+    private static boolean listenerTarget(String component) {
+        int slash = component.indexOf('/');
+        return slash > 0 && LISTENER_APPS.contains(component.substring(0, slash)) && component.substring(slash + 1).equals(LISTENER);
+    }
+
     public static boolean isPackage(String pkg) { return pkg != null && pkg.length() <= PACKAGE_MAX && PACKAGE.matcher(pkg).matches(); }
     private static String pkg(String pkg) { if (!isPackage(pkg)) throw new IllegalArgumentException("not a package name"); return pkg; }
 
@@ -87,11 +106,12 @@ public final class AdbCommands {
         if (FIXED.contains(command)) return true;
         for (String prefix : new String[]{"dumpsys package ", "pm disable-user --user 0 ", "pm enable "})
             if (command.startsWith(prefix) && isPackage(command.substring(prefix.length()))) return true;
+        if (command.startsWith(ALLOW_LISTENER)) return listenerTarget(command.substring(ALLOW_LISTENER.length()));
         return command.startsWith(SET_HOME) && homeTarget(command.substring(SET_HOME.length()));
     }
 
     /** True for the commands that change the TV (disable, enable, set Home); everything else on the list only reads. */
     public static boolean changes(String command) {
-        return allowed(command) && (command.startsWith("pm disable-user ") || command.startsWith("pm enable ") || command.startsWith(SET_HOME));
+        return allowed(command) && (command.startsWith("pm disable-user ") || command.startsWith("pm enable ") || command.startsWith(SET_HOME) || command.startsWith(ALLOW_LISTENER));
     }
 }

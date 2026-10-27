@@ -22,11 +22,17 @@ import android.widget.*;
  * never re-slides or flashes. A screen that shows content full screen in between (the Gallery slideshow) gets the sheet
  * back, sliding in again, on its next page. Back (or Left with nothing further left) is {@link #onBackPressed()}; leaving
  * has no second window animation, because Home underneath is already in place.
+ *
+ * Only one panel is visible at a time (OnePanel): when this screen opens another of Unified TV's screens (another sheet,
+ * or one that leads to a sheet), its own sheet fades out quickly and is not drawn; it comes back, with the control that
+ * opened the other screen in focus, when that screen closes. So text on a lower sheet never shows through an upper one.
  */
 class GlassScreen extends Screen {
     SharedPreferences prefs;float unit=1;int screenWidth=1920;
     FrameLayout sheet;LinearLayout header,body;ScrollView scroll;
     private FrameLayout root;private boolean wide;
+    /** Only one panel at a time: this sheet hides while another panel is open over it (OnePanel). */
+    private final OnePanel panels=new OnePanel();
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);autoFocusButtons=false;prefs=getSharedPreferences(HouseholdSettings.PREFS,0);
@@ -67,6 +73,15 @@ class GlassScreen extends Screen {
     }
     /** The sheet back on screen after content was shown full screen in its place (the Gallery slideshow). */
     private void attach(){if(root.getParent()!=null)return;setContentView(root);slideIn();}
+    /** Opening another of Unified TV's screens hides this sheet first, so only one panel is ever visible (OnePanel). */
+    @Override public void startActivityForResult(android.content.Intent intent,int code,Bundle options){
+        boolean panel=OnePanel.opensPanel(this,intent);if(panel)panels.hide(sheet,calm());
+        try{super.startActivityForResult(intent,code,options);}catch(RuntimeException e){if(panel)panels.show(sheet,true);throw e;}
+    }
+    /** Back from the panel above: this one shows again, focus on the control that opened it (after any onResume redraw). */
+    @Override protected void onPostResume(){super.onPostResume();panels.show(sheet,calm());}
+    /** True when this panel is on screen: not hidden under another panel (OnePanel). */
+    boolean panelShown(){return sheet!=null&&sheet.isAttachedToWindow()&&sheet.getVisibility()==View.VISIBLE&&sheet.getAlpha()>0&&!panels.hidden();}
     /** Leaves with no second window animation: Home underneath is already in place. */
     @Override public void finish(){super.finish();overridePendingTransition(0,0);}
     void close(){finish();}
@@ -133,6 +148,12 @@ class GlassScreen extends Screen {
     }
     boolean isInside(View v){for(View p=v;p!=null;p=p.getParent() instanceof View?(View)p.getParent():null)if(p==body||p==header)return true;return false;}
     static View firstFocusable(ViewGroup g){for(int i=0;i<g.getChildCount();i++){View c=g.getChildAt(i);if(c.getVisibility()!=View.VISIBLE)continue;if(c.isFocusable())return c;if(c instanceof ViewGroup){View f=firstFocusable((ViewGroup)c);if(f!=null)return f;}}return null;}
+    /**
+     * Focus on {@code v} while a page is being built (the card just chosen, say). Focus taken before the new page's first
+     * layout doesn't always survive it, and the page's own first-control focus would then win; so it is asked for again
+     * once the page is in place.
+     */
+    void focusOn(View v){v.requestFocus();v.post(()->{if(v.isAttachedToWindow()&&v.isShown()&&!v.isFocused())v.requestFocus();});}
     /** Focus to the first control of the page, unless something in the sheet already has it. */
     void focusFirst(){body.post(()->{View now=getCurrentFocus();if(now!=null&&isInside(now)&&now.getParent()!=header)return;View f=firstFocusable(body);if(f!=null)f.requestFocus();});}
     @Override public boolean dispatchKeyEvent(KeyEvent e){

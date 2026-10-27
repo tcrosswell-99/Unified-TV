@@ -37,6 +37,8 @@ final class PhotoSource {
     /** One Browse response: picture folders to open and pictures to show. Paging follows the server's counts, as for films. */
     static final class Page {
         final List<DlnaClient.Item> folders=new ArrayList<>();final List<Photo> photos=new ArrayList<>();int returned,total;
+        /** A folder's childCount, when the server sent one (pictures and folders inside it): what "about N photos" counts. */
+        final Map<String,Integer> counts=new HashMap<>();
         boolean more(int offset,int requested){return returned>0&&(total>0?offset+returned<total:returned>=requested);}
         int next(int offset){return Math.max(0,offset)+returned;}
     }
@@ -101,7 +103,7 @@ final class PhotoSource {
             if("container".equals(e.getLocalName())){
                 if(!pictureFolder(cls))continue;
                 DlnaClient.Item f=new DlnaClient.Item();f.id=id;f.folder=true;f.title=DlnaClient.value(e,"title").trim();if(f.title.length()>80)f.title=f.title.substring(0,80);
-                page.folders.add(f);continue;
+                page.folders.add(f);String n=e.getAttribute("childCount").trim();if(n.matches("\\d{1,7}"))page.counts.put(id,Integer.parseInt(n));continue;
             }
             if(!"item".equals(e.getLocalName())||!(cls.isEmpty()||cls.startsWith("object.item.imageItem")))continue;
             List<Rendition> found=new ArrayList<>();NodeList res=e.getElementsByTagNameNS("*","res");
@@ -119,6 +121,25 @@ final class PhotoSource {
         return page;
     }
     private static long parseLong(String s){try{return Math.max(0,Long.parseLong(s.trim()));}catch(Exception e){return 0;}}
+
+    private static final java.util.regex.Pattern PHOTO_NAME=java.util.regex.Pattern.compile("(?i)\\b(photos?|pictures?|pics|images?|gallery|camera|dcim|albums?)\\b");
+    private static final java.util.regex.Pattern OTHER_NAME=java.util.regex.Pattern.compile("(?i)\\b(music|audio|songs?|videos?|movies?|films?|tv|television|podcasts?|playlists?|recordings?|radio)\\b");
+    /**
+     * "Use all my photos" (owner's TCL, build run 99): the media server's own picture folders at its top, in one choice.
+     * Folders named for pictures ("Photo", "Pictures"…) when there are any; otherwise every folder that isn't plainly
+     * music or video. Never the server's top itself ("0"), so the Wallpaper still walks only inside chosen folders (WP-03).
+     */
+    static List<DlnaClient.Item> allPhotos(List<DlnaClient.Item> folders){
+        List<DlnaClient.Item> named=new ArrayList<>(),rest=new ArrayList<>();
+        for(DlnaClient.Item f:folders){if(f==null||f.id==null||f.id.isEmpty()||"0".equals(f.id))continue;String t=f.title==null?"":f.title;
+            if(PHOTO_NAME.matcher(t).find())named.add(f);else if(!OTHER_NAME.matcher(t).find())rest.add(f);}
+        return named.isEmpty()?rest:named;
+    }
+    /** "12 folders, about 3,400 photos" (the photos only when every folder's count is known), or "No folders chosen yet". */
+    static String count(int folders,int photos,boolean photosKnown){
+        if(folders<=0)return "No folders chosen yet";
+        return (folders==1?"1 folder":folders+" folders")+(photosKnown&&photos>0?", about "+String.format(Locale.UK,"%,d",photos)+(photos==1?" photo":" photos"):"");
+    }
 
     /** One folder page from the media server; the Wallpaper passes DlnaClient, tests pass a fake. */
     interface Browser{Page browse(String id,int offset)throws Exception;}

@@ -238,6 +238,17 @@ public final class UnifiedPreviewActivity extends Activity {
         private List<HomeShelf.Poster> posters = new ArrayList<>();
         private final java.util.Map<String, Bitmap> posterArt = java.util.Collections.synchronizedMap(new java.util.HashMap<>());
         private final java.util.concurrent.ExecutorService shelfWorker = java.util.concurrent.Executors.newSingleThreadExecutor();
+        /**
+         * Owner's TCL, build run 99: the row's one line (the background job's progress while the list is made, or why there
+         * are no posters: HomeShelf.line), worked out off the main thread or from the job's status, never per frame.
+         * {@code shelfHint}: focus is on the no-key line (Up from the row), where OK opens Settings' Film posters step.
+         */
+        private String shelfLine = "", shelfUdn = ""; private boolean postersOn, shelfHint;
+        private int shelfFound = -1, shelfPass = -1; private long shelfReloadAt;
+        private final Runnable libraryJob = this::libraryJobChanged;
+        /** The title whose backdrop is asked for once focus has settled (SPEC 7.4, 135 ms). */
+        private HomeShelf.Poster backdropFor;
+        private final Runnable backdropLater = this::askBackdropNow;
         private String message = "";
         private long messageUntil = 0;
         private long inputEvent;
@@ -277,7 +288,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable commitFocus = () -> {
             if (apps || menu || moving) return;
             if (shelf) {
-                if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); }
+                if (shelfHint) commitScene("neutral", Posters.ROW_HINT);
+                else if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); askBackdrop(p); }
                 else commitScene("neutral", libraryReady ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
             } else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
             else commitScene("neutral", "");
@@ -395,7 +407,8 @@ public final class UnifiedPreviewActivity extends Activity {
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
-            formerScene=null;fadeAt=0;if(shelf)loadPosters();offerOnce();stillOnce();airPlayFollowUps();backToGear();invalidate();
+            LibraryCollector.get(activity).listen(libraryJob);
+            formerScene=null;fadeAt=0;if(shelf)loadPosters(false);offerOnce();stillOnce();airPlayFollowUps();backToGear();invalidate();
         }
         /** Back from AirPin (opened from Unified TV): check AirPlay again a few times while its service starts (AirPlayReceiver). */
         private final Runnable airPlayCheck = () -> { AirPlayReceiver.now(activity, Preview.this::postInvalidate); invalidate(); };
@@ -453,6 +466,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
         String currentScene() { return scene; }
         void pause() {
+            LibraryCollector.get(activity).unlisten(libraryJob); handler.removeCallbacks(backdropLater); handler.removeCallbacks(libraryJob);
             if (layer != null) layer.pause();
             handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);handler.removeCallbacks(airPlayCheck);
             handler.removeCallbacks(hold); okDown=false;held=false;
@@ -460,7 +474,7 @@ public final class UnifiedPreviewActivity extends Activity {
             prefs.edit().putInt("focus",Math.max(0,index)).apply();
         }
         void close() {
-            fixtureWorker.shutdownNow();shelfWorker.shutdownNow();
+            fixtureWorker.shutdownNow();shelfWorker.shutdownNow();LibraryCollector.get(activity).unlisten(libraryJob);
             handler.removeCallbacksAndMessages(null);
             handler.removeCallbacks(hold);
             handler.removeCallbacks(commitFocus);
@@ -591,7 +605,13 @@ public final class UnifiedPreviewActivity extends Activity {
             if (code == KeyEvent.KEYCODE_BACK && e.getRepeatCount() > 0) return true;
             handler.removeCallbacks(hold);
             if (shelf) {
-                if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) closeShelf();
+                if (shelfHint) {   // on the no-key line above the row
+                    if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) { shelfHint = false; closeShelf(); }
+                    else if (code == KeyEvent.KEYCODE_DPAD_DOWN) { shelfHint = false; moved(); }
+                    invalidate(); return true;
+                }
+                if (code == KeyEvent.KEYCODE_DPAD_UP && keyLineShown()) { shelfHint = true; moved(); }
+                else if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) closeShelf();
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     int next = Math.max(0, Math.min(posters.size(), posterIndex + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));
                     if (next != posterIndex) { posterIndex = next; shelfMoved = true; moved(); announceForAccessibility(posterIndex < posters.size() ? posters.get(posterIndex).title : "View all"); }
@@ -633,7 +653,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
 
         private void confirm() {
-            if (shelf) { openEntry(); return; }
+            if (shelf) { if (shelfHint) openKeySetting(); else openEntry(); return; }
             if (header) { if (headerIndex >= 0 && headerIndex < pill.size()) utility(pill.get(headerIndex)); invalidate(); return; }
             if (menu) {
                 menu = false;
@@ -698,7 +718,8 @@ public final class UnifiedPreviewActivity extends Activity {
         /** OK on a pill icon opens it directly (UX-UTILITY-03): AirPin LITE, NordVPN, voice, or Settings. */
         private void utility(String id) {
             switch (id) {
-                case HomeUtilities.AIRPLAY: { String error = Launch.visit(activity, airPin, "AirPin LITE"); if (error != null && !error.isEmpty()) info(error); break; }
+                // Ready: the "how to connect" panel, AirPin not opened. Not ready: AirPin starts, and Home comes back (AirPlayStart).
+                case HomeUtilities.AIRPLAY: { String error = AirPlayStart.press(activity, airPin); if (error != null && !error.isEmpty()) info(error); break; }
                 case HomeUtilities.VPN: VpnGate.connect(activity); break;
                 case HomeUtilities.VOICE: activity.startActivity(new Intent(activity, VoiceActivity.class)); break;
                 default: {
@@ -714,16 +735,20 @@ public final class UnifiedPreviewActivity extends Activity {
         private void launch(Item item) {
             if(DockPolicy.LIBRARY.equals(item.id)){Launch.library(activity);return;}
             // SET-BUILD-10: the shared Music tile opens the profile's chosen Music app (Build My TV), still through Launch; with
-            // nothing chosen, or something already playing, it opens Music as before.
+            // nothing chosen, it opens Music (or Now Playing for Amazon Music) as before.
             if("music".equals(item.id)){
                 // OD-27: while Amazon Music is playing or paused, the tile is its remote (Now Playing, not the app); when
                 // Amazon Music is the chosen Music app, the tile opens Music (play by name, Play on). Hold for the app itself.
+                // A chosen Music app other than Amazon Music always opens, even with Amazon Music paused (HubBuilder.musicTile).
                 MusicSessions.Source src=MusicSessions.source;
-                if(src.granted(activity)&&MusicSessions.amazon(activity,src.active(activity))!=null){activity.startActivity(new Intent(activity,NowPlayingActivity.class));return;}
                 String chosen=HubBuilder.musicPackage(prefs,Profiles.current(prefs),launchable());
-                if(chosen!=null&&AmazonMusic.packages(activity).contains(chosen)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
-                if(chosen!=null&&MediaWatch.best(activity)==null){String why=Launch.open(activity,chosen,"Music");if(why!=null&&!why.isEmpty())info(why);return;}
-                activity.startActivity(new Intent(activity,MusicActivity.class));return;}
+                boolean amazonChosen=chosen!=null&&AmazonMusic.packages(activity).contains(chosen);
+                boolean amazonSession=(chosen==null||amazonChosen)&&src.granted(activity)&&MusicSessions.amazon(activity,src.active(activity))!=null;
+                switch(HubBuilder.musicTile(chosen,amazonChosen,amazonSession)){
+                    case CHOSEN_APP:{String why=Launch.open(activity,chosen,"Music");if(why!=null&&!why.isEmpty())info(why);return;}
+                    case NOW_PLAYING:activity.startActivity(new Intent(activity,NowPlayingActivity.class));return;
+                    default:activity.startActivity(new Intent(activity,MusicActivity.class));return;
+                }}
             if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { String no = Launch.kidsRefusal(activity, item.id, item.name); if (no != null) { info(no); return; } HouseholdActivity.action(activity, item.id); return; }
             // Live TV and every other app go through one gate (Launch.open): protection, not appearance (docs/VPN_PROTECTION.md).
             boolean live = "live".equals(item.id);
@@ -931,13 +956,22 @@ public final class UnifiedPreviewActivity extends Activity {
             outline.setColor(0xB3FFFFFF); outline.setStrokeWidth(1.5f); c.drawCircle(x, y, r, outline); outline.setStrokeWidth(2);
         }
         private void shield(Canvas c, float cx, float cy, VpnGate.State state) {
-            iconPaint(state == VpnGate.State.CONNECTED ? 245 : 200, false);
+            // One rule for the pill (HomeUtilities.vpnLook): off is as dim as AirPlay off, with a slash; on is bright, ticked.
+            HomeUtilities.Look look = HomeUtilities.vpnLook(state);
+            iconPaint(look.alpha, false);
             glyph.reset(); glyph.moveTo(cx, cy - 20); glyph.lineTo(cx + 16, cy - 14); glyph.lineTo(cx + 16, cy - 1);
             glyph.quadTo(cx + 15, cy + 14, cx, cy + 21); glyph.quadTo(cx - 15, cy + 14, cx - 16, cy - 1); glyph.lineTo(cx - 16, cy - 14); glyph.close();
             c.drawPath(glyph, icon);
-            if (state == VpnGate.State.CONNECTED) { glyph.reset(); glyph.moveTo(cx - 7, cy); glyph.lineTo(cx - 2, cy + 6); glyph.lineTo(cx + 8, cy - 6); c.drawPath(glyph, icon); }
-            else if (state == VpnGate.State.DISCONNECTED) c.drawLine(cx - 9, cy + 9, cx + 9, cy - 9, icon);
-            else if (state == VpnGate.State.CHECKING) { iconPaint(200, true); c.drawCircle(cx, cy, 3, icon); }
+            mark(c, cx, cy, look);
+        }
+        /** The pill's small marks, the same for every status icon: a tick, an "off" slash across the icon, or a dot. */
+        private void mark(Canvas c, float cx, float cy, HomeUtilities.Look look) {
+            switch (look.mark) {
+                case TICK: glyph.reset(); glyph.moveTo(cx - 7, cy); glyph.lineTo(cx - 2, cy + 6); glyph.lineTo(cx + 8, cy - 6); c.drawPath(glyph, icon); break;
+                case OFF: iconPaint(Math.min(255, look.alpha + 60), false); c.drawLine(cx - 15, cy + 15, cx + 15, cy - 15, icon); break;
+                case DOT: iconPaint(look.alpha, true); c.drawCircle(cx, cy, 3, icon); break;
+                default: break;
+            }
         }
         /** Owner exception to SET-053: the permanent "Alarms off on this TV" notice, top centre. */
         private void alarmsOffNotice(Canvas c) {
@@ -998,10 +1032,13 @@ public final class UnifiedPreviewActivity extends Activity {
         }
         private void airPlay(Canvas c, float cx, float cy) {
             // Installed but not offering AirPlay: dimmed, and its focus label says why (UX-UTILITY-02).
+            // One rule for the pill (HomeUtilities.airPlayLook): dim with a slash until AirPin offers AirPlay, then bright.
+            HomeUtilities.Look look = HomeUtilities.airPlayLook(AirPlayReceiver.ready, AirPlayReceiver.checking());
             if (casting && AirPlayReceiver.ready) { iconPaint(90, false); icon.setShadowLayer(14, 0, 0, 0x8CFFFFFF); airPlayShape(c, cx, cy); }
-            int alpha = !AirPlayReceiver.ready ? 90 : casting ? 255 : 179;
+            int alpha = casting && look.bright() ? 255 : look.alpha;
             iconPaint(alpha, false);
             airPlayShape(c, cx, cy, alpha);
+            if (look.mark != HomeUtilities.Mark.NONE) mark(c, cx, cy - 2, look);
         }
         private void airPlayShape(Canvas c, float cx, float cy) { airPlayShape(c, cx, cy, -1); }
         private void airPlayShape(Canvas c, float cx, float cy, int fillAlpha) {
@@ -1140,7 +1177,13 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (selected && prefs.getBoolean("highContrast", false)) { outline.setColor(0xCCFFFFFF); outline.setStrokeWidth(3); c.drawRoundRect(x - 3, top - 3, x + w + 3, top + h + 3, 24, 24, outline); }
                 c.restore();
             }
-            if (posters.isEmpty() && postersLoading) text(c, "Finding your films and TV…", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
+            if (!shelfLine.isEmpty()) {
+                // The job's progress, or why there are no posters; on the no-key line, Up then OK opens that setting.
+                if (shelfHint) { type.setTextSize(26); float half = type.measureText(shelfLine) / 2 + 28; glass(c, 960 - half, top - 82, 960 + half, top - 26, 28, 0, 0);
+                    outline.setColor(0xCCFFFFFF); outline.setStrokeWidth(3); c.drawRoundRect(960 - half, top - 82, 960 + half, top - 26, 28, 28, outline); }
+                text(c, shelfLine, 960, top - 45, 26, shelfHint ? WHITE : MUTED, shelfHint, Paint.Align.CENTER);
+            }
+            else if (posters.isEmpty() && postersLoading) text(c, "Finding your films and TV…", 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
             // NAV-05: an unreachable or empty library is a friendly state, never an address prompt; OK on the card reconnects.
             else if (posters.isEmpty() && libraryReady && postersAt > 0) text(c, Profiles.kids(prefs) ? "Nothing in the Kids folders yet. Ask an adult to add some." : HomeShelf.unanswered(), 960, top - 40, 26, MUTED, false, Paint.Align.CENTER);
         }
@@ -1150,11 +1193,14 @@ public final class UnifiedPreviewActivity extends Activity {
             Bitmap art = posterArt.get(p.id);
             rect.set(x, top, x + w, top + h);
             if (art == null) {
-                card(c, x, top, x + w, top + h, 22, 0xFF2B3446, 0xFF141A26);
-                String t = p.title.length() > 34 ? p.title.substring(0, 32) + "…" : p.title;
-                int split = t.length() > 16 ? Math.max(t.lastIndexOf(' ', 16), 8) : -1;
-                if (split > 0) { text(c, t.substring(0, split), x + w / 2, top + h / 2 - 4, 24, WHITE, false, Paint.Align.CENTER); text(c, t.substring(split).trim(), x + w / 2, top + h / 2 + 26, 24, WHITE, false, Paint.Align.CENTER); }
-                else text(c, t, x + w / 2, top + h / 2 + 8, 24, WHITE, false, Paint.Align.CENTER);
+                // A dark glass card with the title laid out inside it (TileText: two lines at most, then an ellipsis) and
+                // its year on a small line of its own; never a flat grey box, never text outside the card.
+                glass(c, x, top, x + w, top + h, 22, 0, 0);
+                paint.setShader(null); paint.setColor(0x73060A12); c.drawRoundRect(rect, 22, 22, paint);
+                List<String> lines = tileLines(p.title, w); float size = tileSize;
+                float lh = size * 1.2f, block = lh * lines.size() + (p.year.isEmpty() ? 0 : 30), y = top + h / 2 - block / 2 + size;
+                for (int i = 0; i < lines.size(); i++) text(c, lines.get(i), x + w / 2, y + lh * i, Math.round(size), WHITE, true, Paint.Align.CENTER);
+                if (!p.year.isEmpty()) text(c, p.year, x + w / 2, y + lh * lines.size() + 4, 20, MUTED, false, Paint.Align.CENTER);
                 return;
             }
             cardClip.reset(); cardClip.addRoundRect(rect, 22, 22, Path.Direction.CW);
@@ -1165,6 +1211,15 @@ public final class UnifiedPreviewActivity extends Activity {
             c.restore();
         }
 
+        /** A title's lines on a Home tile (padding 16 each side), measured in the type they are drawn in; sets {@link #tileSize}. */
+        private float tileSize = 24;
+        List<String> tileLines(String title, float w) {
+            float inner = w - 32;
+            type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            tileSize = TileText.size(title, inner, 26, 18, (size, t) -> { type.setTextSize(size); return (double) type.measureText(t); });
+            type.setTextSize(tileSize);
+            return TileText.lines(title, inner, TileText.LINES, t -> type.measureText(t));
+        }
         /** NAV-03: the first meaningful title (Continue Watching when there is one, by default), else the Library card. */
         private boolean shelfMoved;
         private int landingPoster() {
@@ -1175,37 +1230,91 @@ public final class UnifiedPreviewActivity extends Activity {
             if (menu || moving) return;
             shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis(); shelfMoved = false;
             libraryReady = HomeShelf.configured(activity);   // once per opening, never per frame (it reads the encrypted store)
-            posterIndex = landingPoster();
-            moved(); loadPosters(); invalidate();
+            posterIndex = landingPoster(); shelfHint = false;
+            moved(); loadPosters(false); invalidate();
         }
         private void closeShelf() {
-            shelf = false; shelfAt = calm() ? 0 : SystemClock.uptimeMillis();
+            shelf = false; shelfHint = false; shelfAt = calm() ? 0 : SystemClock.uptimeMillis(); handler.removeCallbacks(backdropLater);
             moved(); invalidate();
         }
-        /** The saved collections' first titles, then each title's own artwork. Memory stays bounded: 18 posters at most. */
-        private void loadPosters() {
+        /**
+         * The newest list's first titles (the saved one, or what the background job has found so far), then each title's own
+         * poster: TMDB's when the household has added its key, the media server's own picture (albumArtURI) until then, else
+         * a glass title card. Backgrounds are asked for on focus (askBackdrop). Memory stays bounded: 18 posters at most.
+         * {@code force}: again now (the job found more titles, or finished).
+         */
+        private void loadPosters(boolean force) {
             long now = SystemClock.uptimeMillis();
-            if (postersLoading || (!posters.isEmpty() && now - postersAt < 10 * 60_000L)) return;
-            postersLoading = true; invalidate();
+            if (postersLoading || (!force && !posters.isEmpty() && now - postersAt < 10 * 60_000L)) return;
+            postersLoading = true; shelfReloadAt = now; invalidate();
+            boolean kids = Profiles.kids(prefs);
             try { shelfWorker.execute(() -> {
                 List<HomeShelf.Poster> found;
                 try { found = HomeShelf.load(activity); } catch (Exception e) { found = new ArrayList<>(); }
+                // The key and the server's id come from the encrypted store: read here, never on the main thread.
+                boolean on = Posters.get(activity).usable(); String udn = LibraryFolders.library(activity).udn();
                 final List<HomeShelf.Poster> ready = found;
-                handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis();
-                    posterIndex = shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate(); });
-                // Each title's own poster (TMDB when the household added a key, else the server's picture) and, from it, a
-                // softened backdrop: the library's cache (Posters), asked in row order, delivered on the main thread.
-                handler.post(() -> {
-                    Posters art = Posters.get(activity); String udn = LibraryFolders.library(activity).udn();
+                handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis(); postersOn = on; shelfUdn = udn;
+                    shelfLine = HomeShelf.line(LibraryCollector.get(activity).status(), kids, !ready.isEmpty(), on); if (!keyLineShown()) shelfHint = false;
+                    posterIndex = shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate();
+                    // Each title's own poster, asked in row order and delivered on the main thread (Posters' cache).
+                    Posters art = Posters.get(activity);
                     for (HomeShelf.Poster p : ready) {
                         if (p.card == null || posterArt.containsKey(p.id)) continue;
                         art.poster(p.card, udn, false, b -> { if (b != null) { posterArt.put(p.id, b); invalidate(); } });
-                        art.backdrop(p.card, udn, true, b -> { if (b == null) return; backdrops.put("poster:" + p.id, b);
-                            // A title already in focus gets its own backdrop with a dissolve, not a pop.
-                            if (scene.equals("poster:" + p.id)) { formerScene = "neutral"; fadeAt = fadeMs() == 0 ? 0 : SystemClock.uptimeMillis(); } invalidate(); });
                     }
                 });
             }); } catch (java.util.concurrent.RejectedExecutionException e) { postersLoading = false; }
+        }
+        /** Whether the row's line is the no-key one (Adults with titles and no TMDB key), which Up reaches and OK opens. */
+        private boolean keyLineShown() { return Posters.ROW_HINT.equals(shelfLine); }
+        /** Settings > Library & Media > Film posters: the phone setup step for the key (Settings asks for the adult PIN). */
+        private void openKeySetting() {
+            try { activity.startActivity(new Intent(activity, SettingsActivity.class).putExtra("category", SettingsActivity.LIBRARY).putExtra("task", SettingsActivity.PHONE_TMDB)); }
+            catch (RuntimeException e) { info("Unable to open Settings"); }
+        }
+        /**
+         * The background job moved on (at most twice a second): the row's line at once; the titles found so far again while
+         * the row is open (every couple of seconds while it isn't full, then rarely), and once more when the job is done,
+         * so new posters show. A closed row just reloads the next time it opens.
+         */
+        private void libraryJobChanged() {
+            LibraryCollector.Status s = LibraryCollector.get(activity).status();
+            String line = HomeShelf.line(s, Profiles.kids(prefs), !posters.isEmpty(), postersOn);
+            if (!line.equals(shelfLine)) { shelfLine = line; if (!keyLineShown()) shelfHint = false; invalidate(); }
+            boolean ended = !s.busy() && s.pass != shelfPass && s.phase != LibraryCollector.Phase.IDLE;
+            if (ended) shelfPass = s.pass;
+            if (!shelf) { if (s.busy() || ended) postersAt = 0; return; }
+            long now = SystemClock.uptimeMillis(), gap = s.scanning() ? (posters.size() < HomeShelf.MAX ? 2000 : 15_000) : 10_000;
+            boolean due = (s.scanning() && s.found != shelfFound) || s.phase == LibraryCollector.Phase.POSTERS;
+            handler.removeCallbacks(libraryJob);
+            if (ended || (due && now - shelfReloadAt >= gap)) { shelfFound = s.found; loadPosters(true); }
+            else if (due) handler.postDelayed(libraryJob, gap - (now - shelfReloadAt));   // looked again once the gap is over
+        }
+        /**
+         * The focused title's own background (owner, build run 99): its TMDB backdrop, or its poster softened; never another
+         * title's picture (rule 4). At once when it is in memory; otherwise asked for once focus has settled (SPEC 7.4,
+         * 135 ms), only the newest kept (Posters.latestBackdrop), decoded at the backdrop size (RGB_565 on a 2 GB TV).
+         */
+        private void askBackdrop(HomeShelf.Poster p) {
+            handler.removeCallbacks(backdropLater); backdropFor = null;
+            if (p.card == null || backdrops.get("poster:" + p.id) != null) return;
+            Bitmap ready = Posters.get(activity).cachedBackdrop(p.card, lightBackdrop());
+            if (ready != null) { backdrops.put("poster:" + p.id, ready); invalidate(); return; }
+            backdropFor = p; handler.postDelayed(backdropLater, DlnaLibraryActivity.BACKDROP_SETTLE_MS);
+        }
+        private void askBackdropNow() {
+            HomeShelf.Poster p = backdropFor; backdropFor = null;
+            if (p == null || !shelf || !scene.equals("poster:" + p.id)) return;
+            Posters.get(activity).latestBackdrop(p.card, shelfUdn, lightBackdrop(), b -> { if (b == null) return; backdrops.put("poster:" + p.id, b);
+                // A title already in focus gets its own backdrop with a dissolve, not a pop.
+                if (scene.equals("poster:" + p.id)) { formerScene = "neutral"; fadeAt = fadeMs() == 0 ? 0 : SystemClock.uptimeMillis(); } invalidate(); });
+        }
+        /** As the library: Lightweight rendering or a low-RAM TV takes the softened poster (one small picture). */
+        private Boolean lowRam;
+        private boolean lightBackdrop() {
+            if (lowRam == null) { android.app.ActivityManager am = (android.app.ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE); lowRam = am != null && am.isLowRamDevice(); }
+            return light() || lowRam;
         }
         /** OK on a title plays it or opens its collection; the last card opens the full library or setup. A fade, never a flash. */
         private void openEntry() {
