@@ -21,6 +21,8 @@ final class FakeServer implements LibraryIndex.Browser {
     FakeServer video(String parent,String id,String title,String... ratings){
         DlnaClient.Item i=new DlnaClient.Item();i.id=id;i.title=DlnaClient.title(title);i.parent=parent;i.url="http://"+HOST+":50002/v/"+id+".mkv";i.ratings.addAll(Arrays.asList(ratings));
         children.computeIfAbsent(parent,k->new ArrayList<>()).add(i);return this;}
+    /** A video with the server's res@size (bytes) and res@duration (ms), as Synology Media Server sends them. */
+    FakeServer video(String parent,String id,String title,long size,long durationMs){video(parent,id,title);DlnaClient.Item i=find(id);i.size=size;i.duration=durationMs;return this;}
     /** The same file seen in another folder (a server's virtual view or a nested chosen folder): same stream. */
     FakeServer alias(String parent,String id,String sameAs){
         DlnaClient.Item from=find(sameAs);DlnaClient.Item i=new DlnaClient.Item();i.id=id;i.title=from.title;i.parent=parent;i.url=from.url;i.ratings.addAll(from.ratings);

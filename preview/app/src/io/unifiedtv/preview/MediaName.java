@@ -14,7 +14,12 @@ import java.util.regex.*;
  * "Show S01E02 Episode Name.mkv"           Show · season 1, episode 2 · Episode Name
  * "Show.1x02.mkv", "Show - Season 1 Episode 2"
  * "Season 1", "Series 2", "S03", "Specials" (folders)  a season number
+ * "www.site.com - Title.2019.1080p", "Title-2019-1080p"   Title · 2019
+ * "Title - Extended Edition (2019)"        Title · 2019 (an edition is not part of the title; the year after it still counts)
  * </pre>
+ *
+ * Samples and extras (owner's TCL, 27 October 2026: a film's folder often holds "sample.mkv" or "Title-sample.mkv"):
+ * {@link #sample}, {@link #extra} and {@link #extrasFolder} name them, so the library can leave them out.
  *
  * A number at the very start is part of the title ("1917", "2001 A Space Odyssey"): a year only counts after a title.
  */
@@ -35,13 +40,24 @@ final class MediaName {
         "webrip","web-dl","webdl","web","hdtv","pdtv","dvdrip","dvd","dvdscr","hdrip","x264","x265","h264","h265","h.264","h.265","hevc","avc","xvid","divx",
         "aac","aac2","ac3","eac3","dd5","ddp5","dts","dts-hd","truehd","atmos","flac","mp3","5.1","7.1","2.0","10bit","8bit","proper","repack","extended",
         "unrated","uncut","remastered","imax","multi","multisub","subs","subbed","dubbed","limited","internal","complete","yify","yts","rarbg","amzn","nf","dsnp","hmax","atvp","itunes"));
+    /** A leading web address that some downloads carry: "www.site.org - " or "[ www.site.org ] ". */
+    private static final Pattern WEB=Pattern.compile("(?i)^\\s*[\\[(]?\\s*www\\.[^\\s\\])]+\\s*[\\])]?\\s*[-–:]?\\s*");
+    /** "Director's Cut", "Extended Edition"...: an edition, never part of the title (cut there like a release tag). */
+    private static final Pattern EDITION=Pattern.compile("(?i)(?<=\\s)(?:director'?s|directors|extended|theatrical|ultimate|special|collector'?s|collectors|anniversary|uncut|unrated|remastered|criterion|imax)\\s+(?:cut|edition|version)(?=$|[\\s)\\]])");
+    private static final Pattern SAMPLE=Pattern.compile("(?i)(?:^|[^\\p{L}\\p{N}])samples?(?:$|[^\\p{L}\\p{N}])");
+    private static final Pattern EXTRA=Pattern.compile("(?i)(?:^|[^\\p{L}\\p{N}])(?:trailers?|featurettes?|extras)(?:$|[^\\p{L}\\p{N}])");
+    private static final Set<String> EXTRAS_FOLDERS=new HashSet<>(Arrays.asList("sample","samples","extra","extras","trailer","trailers","featurette","featurettes",
+        "behind the scenes","deleted scenes","interviews","bonus","bonus features","special features"));
+    private static final Pattern FILM_FOLDER=Pattern.compile("(?i)^(?:my |our |the )?(?:films?|movies?|cinema|feature films?)$");
     private static final Set<String> GENERIC=new HashSet<>(Arrays.asList("movie","film","video","main","feature","sample","trailer","title","episode","disc","dvd","bluray"));
 
     /** A file name (or a server's title, which is often the file name). */
     static Parsed parse(String raw){
         Parsed p=new Parsed();String s=raw==null?"":raw.trim();
         Matcher ext=EXT.matcher(s);if(ext.find()&&ext.start()>0)s=s.substring(0,ext.start());
+        String web=WEB.matcher(s).replaceFirst("");if(!web.trim().isEmpty())s=web;
         s=spaces(s);
+        s=EDITION.matcher(s).replaceAll("extended");
         // Bracketed tags such as [1080p] or {GRP} go, except a bracketed year.
         s=s.replaceAll("\\[(?!(?:19|20)\\d{2}\\])[^\\]]*\\]"," ").replaceAll("\\{[^}]*\\}"," ").replaceAll("\\s+"," ").trim();
         Matcher m=SXE.matcher(s);Matcher n=NXN.matcher(s);Matcher w=WORDS.matcher(s);int at=-1,end=-1;
@@ -54,9 +70,11 @@ final class MediaName {
             if(p.episodeTitle.matches("(?i)(?:episode|ep|part)\\s*\\d*"))p.episodeTitle="";
             return p;
         }
-        s=cutJunk(s);
-        p.title=tidy(yearOff(s,p));
-        if(p.title.isEmpty()){p.title=tidy(s);p.year="";}
+        String cut=cutJunk(s);
+        p.title=tidy(yearOff(cut,p));
+        if(p.title.isEmpty()){p.title=tidy(cut);p.year="";}
+        // "Title - Extended Edition (2019)": the year sits after a tag that was cut; it is still this title's year.
+        if(p.year.isEmpty()&&!p.title.isEmpty()&&cut.length()<s.length()){Parsed whole=new Parsed();yearOff(s,whole);p.year=whole.year;}
         return p;
     }
     /**
@@ -87,6 +105,8 @@ final class MediaName {
         if(s.isEmpty())return s;
         boolean file=s.contains("_");
         if(!file&&!s.contains(" ")&&s.contains(".")){for(String part:s.split("\\."))if(part.length()>=2){file=true;break;}}
+        // "Title-2019-1080p": words joined by two or more hyphens and nothing else ("Spider-Man" keeps its one hyphen).
+        if(!file&&!s.contains(" ")&&!s.contains(".")&&s.indexOf('-')!=s.lastIndexOf('-'))return s.replaceAll("-+"," ").replaceAll("\\s+"," ").trim();
         if(!file)return s.replaceAll("\\s+"," ").trim();
         String[] parts=s.split("[._]+");StringBuilder out=new StringBuilder();
         for(int i=0;i<parts.length;i++){String part=parts[i];if(part.isEmpty())continue;
@@ -120,6 +140,24 @@ final class MediaName {
         m=Pattern.compile("(?i)(?:^|\\s)(?:episode|ep)\\s*(\\d{1,3})(?=$|\\s)").matcher(s);
         return m.find()?num(m.group(1)):-1;
     }
+    /** A sample: "sample" (or "samples") as a word anywhere in the name, in any case ("sample.mkv", "Film-sample.mkv"). */
+    static boolean sample(String name){return name!=null&&SAMPLE.matcher(name).find();}
+    /**
+     * A trailer, featurette or extras clip by its name: the word after the start of the name, or the whole name
+     * ("Title - Trailer.mkv", "trailer.mkv"). A name that starts with it is a title ("Trailer Park Boys"), and an episode
+     * (S01E02) never counts, so a programme called "Extras" stays.
+     */
+    static boolean extra(String name){
+        if(name==null)return false;String s=name.trim();Matcher ext=EXT.matcher(s);if(ext.find()&&ext.start()>0)s=s.substring(0,ext.start());
+        s=spaces(s);if(s.isEmpty())return false;
+        boolean hit=EXTRAS_FOLDERS.contains(s.toLowerCase(Locale.ROOT));
+        for(Matcher m=EXTRA.matcher(s);!hit&&m.find();)hit=s.substring(0,m.start()).replaceAll("[^\\p{L}\\p{N}]","").length()>0;
+        return hit&&!parse(name).episodic();
+    }
+    /** A folder that holds only extras or samples ("Sample", "Extras", "Featurettes", "Behind The Scenes"...), by its whole name. */
+    static boolean extrasFolder(String name){return name!=null&&EXTRAS_FOLDERS.contains(spaces(name.trim()).replaceAll("\\s+"," ").toLowerCase(Locale.ROOT));}
+    /** A folder named for films as a kind ("Films", "Movies", "My Films"): never one film's own name. */
+    static boolean filmsFolder(String name){return name!=null&&FILM_FOLDER.matcher(spaces(name.trim())).matches();}
     /** A generic word that tells nothing about the title ("movie.mkv" in a folder named after the film). */
     static boolean generic(String title){return title==null||title.trim().isEmpty()||GENERIC.contains(title.trim().toLowerCase(Locale.ROOT));}
 

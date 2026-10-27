@@ -78,6 +78,9 @@
     <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- OD-19: setup and check screens open as the glass sidebar over a still Home (GlassScreen). -->
     <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Optional clean-up (OD-19: the glass sidebar). Adults only; talks only to this TV's own network debugging, and only
+         while the page is open (CleanupActivity, io.unifiedtv.adb.AdbLink). -->
+    <activity android:name=".CleanupActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- SET-043: an adult resets a forgotten PIN from a computer (PinReset says why this is safe). Only a sender holding
          WRITE_SECURE_SETTINGS (the ADB shell; never a store app) can reach it. -->
     <receiver android:name=".PinReset" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">

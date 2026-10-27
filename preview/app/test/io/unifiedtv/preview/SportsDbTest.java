@@ -86,15 +86,23 @@ public class SportsDbTest {
         assertEquals(Arrays.asList("sdb:2","sdb:1"),Arrays.asList(m.get(0).id,m.get(1).id));assertEquals(2,m.size());
     }
 
-    // Only the one HTTPS host, and only league names from the table or team numbers, are ever sent.
-    @Test public void onlyLeagueNamesAndTeamNumbersAreSent()throws Exception{
+    // Only the one HTTPS host, and only league names and numbers, team numbers, rounds and seasons, or a club's name.
+    @Test public void onlyLeaguesTeamNumbersRoundsAndClubNamesAreSent()throws Exception{
         assertTrue(SportsDb.BASE.startsWith("https://www.thesportsdb.com/api/v1/json/"));
         assertEquals("search_all_teams.php?l=English%20Premier%20League",SportsDb.teamsOf("English Premier League"));
         for(SportsDb.League l:SportsDb.LEAGUES)for(String n:l.names)assertTrue(n,SportsDb.allowed(SportsDb.teamsOf(n)));
         assertTrue(SportsDb.allowed(SportsDb.upcoming("133616")));assertTrue(SportsDb.allowed(SportsDb.recent("133616")));assertTrue(SportsDb.allowed("lookupteam.php?id=133616"));
-        for(String bad:new String[]{"searchteams.php?t=Spurs","eventsnext.php?id=1&x=2","eventsnext.php?id=abc","search_all_teams.php?l=a&s=Soccer","../v2/json/x","https://example.invalid/x",null})
+        for(String ok:new String[]{SportsDb.nextInLeague(4328),SportsDb.round(4328,11,"2026-2027"),SportsDb.season(4329,"2026-2027"),SportsDb.lookup("133616"),SportsDb.searchTeams("Brighton & Hove Albion"),SportsDb.searchTeams("Atlético Madrid")})
+            assertTrue(ok,SportsDb.allowed(ok));
+        assertEquals("searchteams.php?t=Brighton%20%26%20Hove%20Albion",SportsDb.searchTeams("Brighton & Hove Albion"));
+        assertEquals("only letters, digits and a few marks; at most 40","searchteams.php?t=Spurs%20x%201",SportsDb.searchTeams("Spurs?x=1"));
+        assertNull(SportsDb.searchTeams("  ?!  "));assertNull(SportsDb.searchTeams(null));
+        for(String bad:new String[]{"searchteams.php?t=Spurs&x=1","eventsnext.php?id=1&x=2","eventsnext.php?id=abc","search_all_teams.php?l=a&s=Soccer","eventsround.php?id=1&r=1",
+                "eventsround.php?id=1&r=1&s=x","eventsseason.php?id=x&s=2026-2027","eventsnextleague.php?id=","../v2/json/x","https://example.invalid/x",null})
             assertFalse(bad,SportsDb.allowed(bad));
-        try{SportsDb.fetch("searchteams.php?t=Spurs");fail();}catch(IllegalArgumentException expected){}catch(Exception e){fail(e.toString());}
+        try{SportsDb.fetch("eventsnext.php?id=abc");fail();}catch(IllegalArgumentException expected){}catch(Exception e){fail(e.toString());}
+        assertEquals("2026-2027",SportsDb.seasonOf(Instant.parse("2026-10-27T12:00:00Z").toEpochMilli()));
+        assertEquals("2025-2026",SportsDb.seasonOf(Instant.parse("2026-05-01T12:00:00Z").toEpochMilli()));
     }
 
     @Test public void allUkLeaguesAreOffered()throws Exception{
@@ -108,7 +116,7 @@ public class SportsDbTest {
     @Test public void theTeamListIsBuiltLeagueByLeagueTryingAnotherNameWhenOneIsEmpty()throws Exception{
         JSONObject cat=new JSONObject();int requests=0;
         for(String r=SportsDb.next(cat);r!=null;r=SportsDb.next(cat)){
-            assertTrue(r,SportsDb.allowed(r));assertTrue("never more than two names a league",++requests<=2*SportsDb.LEAGUES.length);
+            assertTrue(r,SportsDb.allowed(r));assertTrue("at most two names, a next event and a round a league",++requests<=4*SportsDb.LEAGUES.length);
             JSONObject reply=r.equals(SportsDb.teamsOf("English Premier League"))?new JSONObject(PREMIER)
                 :r.equals(SportsDb.teamsOf("Scottish Premier League"))?new JSONObject("{\"teams\":["+team(133647,"Heart of Midlothian","HEA","Hearts","Soccer",254,"#7A263A","#FFFFFF")+"]}")
                 :new JSONObject("{\"teams\":null}");
@@ -116,6 +124,7 @@ public class SportsDbTest {
             SportsDb.apply(cat,r,reply,42);
         }
         assertEquals(42,cat.optLong("fetchedAt"));assertArrayEquals(new int[]{11,11},SportsDb.progress(cat));
+        assertEquals("no round named: none asked for",0,cat.getJSONArray("leagues").getJSONObject(0).optInt("round",-1));
         List<JSONObject> leagues=TeamList.leagues(cat);assertEquals("leagues with no teams are left out of the picker",2,leagues.size());
         assertEquals("Premier League",leagues.get(0).optString("name"));assertEquals("England",leagues.get(0).optString("country"));assertEquals(4328,leagues.get(0).optLong("sdb"));
         assertEquals("the second name was tried for Scotland's top flight","Premiership",leagues.get(1).optString("name"));

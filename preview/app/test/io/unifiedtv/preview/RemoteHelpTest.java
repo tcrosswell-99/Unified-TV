@@ -13,7 +13,9 @@ public class RemoteHelpTest {
         Map<String,String> k=keys(false,false);
         assertEquals(Arrays.asList("OK","Hold OK","Up","Down","Left and Right","Back","Menu","Home","Volume, mute, power, input and voice"),new ArrayList<>(k.keySet()));
         assertTrue(k.get("Up").contains("top right"));assertTrue(k.get("Down").contains("Films & TV"));
-        assertTrue(k.get("Hold OK").contains("move or remove"));assertTrue(k.get("Back").contains("never closes itself"));
+        assertTrue(k.get("Hold OK").contains("move or remove"));assertTrue("the preview is an ordinary app",k.get("Back").contains("closes this preview"));
+        assertTrue("HRC-03: the launcher app stays",keys(true,false).get("Back").contains("never closes itself"));assertTrue(keys(true,false).get("Back").contains("press Home"));
+        assertFalse("as the Home button's, Home is Unified TV",keys(true,true).get("Back").contains("press Home"));
         assertTrue("OS-reserved keys stay the TV's",k.get("Volume, mute, power, input and voice").contains("TV's own"));
     }
     @Test public void homeIsDescribedAsItReallyIs(){

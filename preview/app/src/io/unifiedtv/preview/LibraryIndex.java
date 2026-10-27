@@ -34,18 +34,19 @@ final class LibraryIndex {
     static volatile Browser browser=DlnaClient::browse;
     interface Progress{void found(int titles,int folders);}
 
+    /** One video. size (bytes) and duration (ms) are the server's, 0 when unknown: they tell a film from its sample. */
     static final class Entry {
-        String id="",root="",title="",url="",art="",upnpClass="";final List<String> ratings=new ArrayList<>(),pathNames=new ArrayList<>(),pathIds=new ArrayList<>();long seen;
+        String id="",root="",title="",url="",art="",upnpClass="";final List<String> ratings=new ArrayList<>(),pathNames=new ArrayList<>(),pathIds=new ArrayList<>();long seen,size,duration;
         JSONObject json()throws JSONException{
             JSONObject o=new JSONObject().put("i",id).put("t",title).put("u",url).put("s",seen);
-            if(!art.isEmpty())o.put("a",art);if(!upnpClass.isEmpty())o.put("c",upnpClass);
+            if(!art.isEmpty())o.put("a",art);if(!upnpClass.isEmpty())o.put("c",upnpClass);if(size>0)o.put("z",size);if(duration>0)o.put("d",duration);
             if(!ratings.isEmpty())o.put("r",new JSONArray(ratings));if(!pathIds.isEmpty()){o.put("pn",new JSONArray(pathNames));o.put("pi",new JSONArray(pathIds));}
             return o;
         }
         static Entry of(JSONObject o,String root){return of(o,root,null);}
         /** With {@code pool}, repeated words (folder names and ids, ratings, classes) are kept once for the whole list. */
         static Entry of(JSONObject o,String root,Map<String,String> pool){
-            Entry e=new Entry();e.id=o.optString("i");e.root=root;e.title=o.optString("t");e.url=o.optString("u");e.art=o.optString("a");e.upnpClass=one(pool,o.optString("c"));e.seen=o.optLong("s");
+            Entry e=new Entry();e.id=o.optString("i");e.root=root;e.title=o.optString("t");e.url=o.optString("u");e.art=o.optString("a");e.upnpClass=one(pool,o.optString("c"));e.seen=o.optLong("s");e.size=Math.max(0,o.optLong("z"));e.duration=Math.max(0,o.optLong("d"));
             strings(o.optJSONArray("r"),e.ratings,pool);strings(o.optJSONArray("pn"),e.pathNames,pool);strings(o.optJSONArray("pi"),e.pathIds,pool);
             while(e.pathIds.size()<e.pathNames.size())e.pathNames.remove(e.pathNames.size()-1);while(e.pathNames.size()<e.pathIds.size())e.pathIds.remove(e.pathIds.size()-1);
             return e;
@@ -112,7 +113,7 @@ final class LibraryIndex {
                 if(out.entries.size()>=maxTitles){out.complete=false;break;}
                 String rel=rel(i.url);if(rel.isEmpty()||!urls.add(rel))continue;
                 Entry e=new Entry();e.id=i.id;e.root=rootId;e.title=i.title==null?"":i.title;e.url=rel;e.art=rel(i.art);e.upnpClass=i.upnpClass==null?"":i.upnpClass;
-                e.ratings.addAll(i.ratings);e.pathNames.addAll(f.names);e.pathIds.addAll(f.ids);Long s=seenBefore.get(i.id);e.seen=s==null?now:s;
+                e.size=i.size;e.duration=i.duration;e.ratings.addAll(i.ratings);e.pathNames.addAll(f.names);e.pathIds.addAll(f.ids);Long s=seenBefore.get(i.id);e.seen=s==null?now:s;
                 out.entries.add(e);
             }
             // Depth first, in the server's own order.

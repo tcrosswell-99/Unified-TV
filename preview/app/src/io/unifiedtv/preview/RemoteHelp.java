@@ -27,11 +27,16 @@ final class RemoteHelp {
         k.add(new Key("Up","From the apps on Home, straight to the small icons at the top right (Settings is always there)."));
         k.add(new Key("Down","From the apps on Home, your Films & TV."));
         k.add(new Key("Left and Right","Along a row. In Settings, Left also steps back."));
-        k.add(new Key("Back","One step back. On Home it returns to the apps; Unified TV never closes itself from Home."));
+        k.add(new Key("Back",back(launcherApp,isHome)));
         k.add(new Key("Menu","On Home, All apps."));
         k.add(new Key("Home",home(launcherApp,isHome)));
         k.add(new Key("Volume, mute, power, input and voice","The TV's own. Unified TV doesn't change them."));
         return k;
+    }
+    /** What Back does on Home (HRC-03): the launcher app stays open; the preview is an ordinary app and closes. */
+    static String back(boolean launcherApp,boolean isHome){
+        if(!launcherApp)return "One step back. On Home it closes this preview, as any TV app does; open Unified TV again from the TV's apps.";
+        return "One step back. On Home it goes to the first app; Unified TV never closes itself from Home."+(isHome?"":" To use the TV's own Home screen, press Home.");
     }
     /** What the Home button does on this TV, honestly. */
     static String home(boolean launcherApp,boolean isHome){

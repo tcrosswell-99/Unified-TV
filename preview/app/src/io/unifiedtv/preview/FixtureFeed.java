@@ -23,7 +23,7 @@ import java.util.*;
 final class FixtureFeed {
     private FixtureFeed(){}
     static final String TEAM="team",TRACK="fixtureTrack",BUDGET="apiFootballBudget";
-    private static final Object LOCK=new Object();
+    private static final Object LOCK=new Object(),READING=new Object();
 
     static SharedPreferences prefs(Context c){return c.getSharedPreferences(HouseholdSettings.PREFS,0);}
     /** API-Football last refused this TV because of its VPN (ApiFootball.Refused.vpn); cleared by the next good read. */
@@ -72,6 +72,10 @@ final class FixtureFeed {
      * ones when nothing was due or the read failed: an unreachable source never invents or clears a card by itself).
      */
     static List<Fixtures.Fixture> refresh(Context c){
+        // One read at a time (Home's card and Settings' check after a pick may ask together); the second finds it done.
+        synchronized(READING){return refreshNow(c);}
+    }
+    private static List<Fixtures.Fixture> refreshNow(Context c){
         long now=System.currentTimeMillis();Fixtures.Team team=team(c);
         JSONObject cache=load(c,"fixtures.json");List<Fixtures.Fixture> cached=read(cache);
         Fixtures.FixtureSource source=source(c,team);
@@ -103,11 +107,19 @@ final class FixtureFeed {
         return out;
     }
     static JSONObject track(Context c){try{return new JSONObject(prefs(c).getString(TRACK,"{}"));}catch(Exception e){return new JSONObject();}}
+    /**
+     * True when the household's team has been read from its source and nothing was found ("No fixtures found yet for
+     * <club>" in Settings): a club TheSportsDB doesn't know by that name, or none of its free replies included it yet.
+     */
+    static boolean noneFound(Context c){
+        Fixtures.Team t=team(c);if(t==null||!t.listed())return false;
+        JSONObject cache=load(c,"fixtures.json");return cache.optLong("fetchedAt")>0&&!cache.optString("source").isEmpty()&&read(cache).isEmpty();
+    }
     /** The household's source, or null when none is set up. */
     static Fixtures.FixtureSource source(Context c,Fixtures.Team team){
         if(team!=null&&team.listed()){
             String sdb=team.at("sdb"),api=team.at("api"),key=api==null?"":key(c);
-            Fixtures.FixtureSource free=sdb==null?null:sportsDb(sdb);
+            Fixtures.FixtureSource free=sdb==null&&!Fixtures.Team.CLUB.equals(team.id)?null:sportsDb(c,team);
             if(api!=null&&!key.isEmpty())return api(c,key,api,free);
             if(free!=null)return free;
             // An API-Football team whose key was removed: the calendar, if any, as before.
@@ -117,12 +129,36 @@ final class FixtureFeed {
         if(!calendar.matches("calendar\\.[a-z0-9_]+"))return null;
         return new Fixtures.HaCalendar(calendar,HouseholdSettings.zone(c),entity->LocalApi.get(ha,"/api/states/"+LocalApi.segment(entity)).getJSONObject("attributes"));
     }
-    /** TheSportsDB: no key, nothing about the household sent but the team's number. */
-    static Fixtures.FixtureSource sportsDb(String teamId){
+    /** Each league's rounds as last read (SportsDb.league), so a league is read once per refresh interval. */
+    static final String LEAGUES="leagues-sdb.json";
+    /**
+     * TheSportsDB: no key. Sends the team's number, its league's number and, for a bundled club whose number isn't known
+     * yet, its names. What the read learns (the number, the league) is saved with the team, keeping everything else.
+     */
+    static Fixtures.FixtureSource sportsDb(Context c,Fixtures.Team team){
         return new Fixtures.FixtureSource(){
             @Override public String id(){return SportsDb.SOURCE;}
-            @Override public List<Fixtures.Fixture> fetch(Instant now)throws Exception{return SportsDb.read(teamId,now.toEpochMilli());}
+            @Override public List<Fixtures.Fixture> fetch(Instant now)throws Exception{
+                long ms=now.toEpochMilli();String sdb=team.at("sdb"),league=team.league;
+                if(league.isEmpty()&&sdb!=null)league=TeamList.leagueOf(catalogue(c),Long.parseLong(sdb));
+                List<String> names=new ArrayList<>();names.add(team.displayName);names.addAll(team.aliases);
+                JSONObject leagues=load(c,LEAGUES);
+                long maxAge=SportsDb.interval(read(load(c,"fixtures.json")),ms);
+                SportsDb.Found found=SportsDb.read(sdb,league.isEmpty()?null:league,names,leagues,maxAge,ms);
+                store(c,LEAGUES,leagues);
+                learn(c,team,found);
+                return found.fixtures;
+            }
         };
+    }
+    /** Saves what a read learnt about the team, unless the household chose another team meanwhile. Keeps the change record. */
+    static void learn(Context c,Fixtures.Team asked,SportsDb.Found found){
+        if(found==null)return;
+        synchronized(LOCK){
+            Fixtures.Team now=team(c);if(now==null||!now.id.equals(asked.id)||!now.displayName.equals(asked.displayName))return;
+            Fixtures.Team learnt=now.learnt(found.team,found.league==null?now.league:found.league);
+            if(!learnt.json().toString().equals(now.json().toString()))prefs(c).edit().putString(TEAM,learnt.json().toString()).apply();
+        }
     }
     /**
      * API-Football with the household's key, then TheSportsDB (fallback, may be null) whenever API-Football refuses, has no
@@ -150,7 +186,9 @@ final class FixtureFeed {
     interface Progress{void update(JSONObject catalogue,String problem);}
     static final String TEAMS="teams-sdb.json",TEAMS_NEXT="teams-sdb-next.json";
     static final String UNREACHABLE="TheSportsDB couldn't be reached. The list carries on next time you open this page.";
-    /** The saved team list (possibly partial). */
+    /** The team list completed with Unified TV's own clubs (TeamList.merged): what the picker shows and searches. */
+    static JSONObject teams(Context c){return TeamList.merged(catalogue(c),TeamList.bundle(c));}
+    /** The saved team list as read from TheSportsDB (possibly partial). */
     static JSONObject catalogue(Context c){return load(c,TEAMS);}
     /**
      * Worker thread only: continues building the team list, one paced request at a time, until it is complete, TheSportsDB
@@ -167,7 +205,14 @@ final class FixtureFeed {
             String request=SportsDb.next(cat);
             if(request==null){if(refreshing){store(c,TEAMS,cat);forget(c,TEAMS_NEXT);}progress.update(cat,null);return;}
             JSONObject shown=refreshing?current:cat;
-            try{SportsDb.apply(cat,request,SportsDb.http.get(request),System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
+            JSONObject reply;
+            try{reply=SportsDb.http.get(request);}
+            catch(SportsDb.Answered e){
+                // A league's next event or round refused (not "too many requests"): recorded as empty, the list goes on.
+                if(!SportsDb.optional(request)||e.code==429){progress.update(shown,UNREACHABLE);return;}
+                reply=new JSONObject();
+            }catch(Exception e){progress.update(shown,UNREACHABLE);return;}
+            try{SportsDb.apply(cat,request,reply,System.currentTimeMillis());store(c,name,cat);if(!refreshing)progress.update(cat,null);}
             catch(Exception e){progress.update(shown,UNREACHABLE);return;}
             long pace=SportsDb.paceMs;
             if(pace>0)try{Thread.sleep(pace);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}

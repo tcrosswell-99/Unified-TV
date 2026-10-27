@@ -78,7 +78,7 @@ final class PhoneService {
                     Future<String> found = background.submit(() -> PhoneSetup.found(c));
                     return new PhoneFlows.Ha(() -> { try { return found.get(9, TimeUnit.SECONDS); } catch (Exception e) { return null; } },
                         new HaSignIn(c), (base, token, consent, how) -> PhoneSetup.saveHa(c, base, token, consent, how), progress, new java.security.SecureRandom(), PhoneSetup.clientName(c),
-                        PhoneSetup::haName);
+                        PhoneSetup::haName, step -> PhoneSetup.haProblem(c, step));
                 });
             case FOOTBALL: return football(values -> {
                 String key = values.get("key");

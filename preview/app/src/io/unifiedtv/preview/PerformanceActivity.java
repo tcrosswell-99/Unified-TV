@@ -26,7 +26,8 @@ public final class PerformanceActivity extends GlassScreen {
         if(Measure.result!=null){text(Measure.result,17);if(Measure.savedTo!=null)text("Also saved on the TV as "+Measure.savedTo,16);}
         if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));
         text("These are local, partial measurements. They do not measure another app's decoder, HDMI input delay or network performance. Run the same owner test on each TV before comparing.",20);
-        text("Cleanup is unavailable in this preview. Any later cleanup needs exact model/firmware rules, a proposed change list, separate owner approval and independent rollback. Native Tizen and the Frame's Android streamer are separate targets.",20);
+        text("Optional clean-up is separate and off until you choose: it works only on a TV whose firmware has a tested list, reads everything first, changes only the apps you confirm one by one, saves an undo record before the first change and can put everything back. Native Tizen and the Frame's Android streamer are separate targets.",20);
+        button("Optional clean-up",()->startActivity(new Intent(this,CleanupActivity.class)));
         button("Refresh baseline",this::recreate);button("Back",this::finish);
     }
     private void measure(){

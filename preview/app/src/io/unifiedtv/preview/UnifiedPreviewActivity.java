@@ -116,6 +116,10 @@ public final class UnifiedPreviewActivity extends Activity {
         if (hasWindowFocus() && surface != null && surface.key(event)) return true;
         return super.dispatchKeyEvent(event);
     }
+    /** Back that reaches Android's own handling (the window not yet focused): Home's own Back, never Android's finish. */
+    @Override public void onBackPressed() { if (surface != null) { surface.key(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); return; } super.onBackPressed(); }
+    /** HRC-03: said once, the first time Back is pressed on the main screen of the launcher app. */
+    static final String BACK_HINT = "backHint", STAYS_OPEN = "Unified TV stays open. To use the TV's own Home screen, press Home.";
 
     /**
      * Memory pass (owner's TCL, 25 October 2026): Home hidden or memory short gives back what it can rebuild. Hidden
@@ -575,6 +579,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 return true;
             }
             if (!down) return true;
+            // A long Back is one Back: the repeats it sends never step further out (HRC-03).
+            if (code == KeyEvent.KEYCODE_BACK && e.getRepeatCount() > 0) return true;
             handler.removeCallbacks(hold);
             if (shelf) {
                 if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP) closeShelf();
@@ -661,10 +667,21 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 beforeMove = null;
             } else if (apps) apps = false;
-            // At the main screen: as the TV's chosen Home, Back stays put with focus where it was (spec 28.3). Otherwise
-            // Unified TV is just an app, so Back leaves it, the way any TV app does.
-            else if (!DefaultHome.isDefault(activity)) { activity.finish(); return; }
+            // At the main screen. The launcher app never leaves on Back (HRC-03; owner's TCL, run 93: Back took him to the
+            // TV's old Home while Unified TV wasn't the chosen Home): focus goes back to the first tile. The preview is an
+            // ordinary app that can never be the Home screen, so Back leaves it as any TV app does (owner, 25 October).
+            else if (DefaultHome.available(activity)) stayHome();
+            else { activity.finish(); return; }
             invalidate();
+        }
+        /**
+         * Back at the main screen of the launcher app: the first tile, and the first time only (while the TV's own Home
+         * is still the Home button's), one short line saying how to reach the TV's own Home.
+         */
+        private void stayHome() {
+            if (!dock.isEmpty() && index != 0) { index = 0; announceForAccessibility(dock.get(0).name); moved(); }
+            if (prefs.getBoolean(BACK_HINT, false) || DefaultHome.isDefault(activity)) return;
+            prefs.edit().putBoolean(BACK_HINT, true).apply(); info(STAYS_OPEN, 6000L);
         }
 
         /** OK on a pill icon opens it directly (UX-UTILITY-03): AirPin LITE, NordVPN, voice, or Settings. */

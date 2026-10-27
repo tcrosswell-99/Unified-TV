@@ -29,6 +29,8 @@ final class SetupPages {
     private String haShown; private boolean haNaming;
     /** Team picker inside its task: a league opened, or the letters searched; Back clears them first. */
     private int teamLeague; private String teamQuery, teamProblem; private int teamReady = -1;
+    /** The last name looked up on TheSportsDB from the picker (only when an adult pressed for it) and what it found. */
+    private String teamAsked; private List<TeamList.Entry> teamAnswer; private boolean teamAsking;
     private final TeamList.Listener teamListener;
 
     SetupPages(SettingsActivity activity) {
@@ -71,14 +73,14 @@ final class SetupPages {
     /** Called on every render: a phone session lives only while its own page is showing. */
     void showing(String task) {
         if (phone != null && !(task != null && task.equals("phone-" + phone.kind))) { phone.stop(); phone = null; }
-        if (!SettingsActivity.TEAM.equals(task)) { teamLeague = 0; teamQuery = null; }
+        if (!SettingsActivity.TEAM.equals(task)) { teamLeague = 0; teamQuery = null; teamAsked = null; teamAnswer = null; }
         if (!SettingsActivity.HOUSEHOLD.equals(task)) household.reset();
     }
     /** A detail opened from the root: look again this visit. */
     void entered(int category) { if (category == SettingsActivity.SMART_HOME) { haChecked = null; haFound = null; } }
     /** Back inside a task's own sub-page (a league, a search); true when handled. */
     boolean back(String task) {
-        if (SettingsActivity.TEAM.equals(task) && (teamLeague != 0 || teamQuery != null)) { teamLeague = 0; teamQuery = null; a.redraw(); return true; }
+        if (SettingsActivity.TEAM.equals(task) && (teamLeague != 0 || teamQuery != null)) { teamLeague = 0; teamQuery = null; teamAsked = null; teamAnswer = null; a.redraw(); return true; }
         return false;
     }
     /** The screen left (Home pressed, another app): an unfinished phone session ends now. */
@@ -303,6 +305,7 @@ final class SetupPages {
         boolean calendar = false; try { calendar = !new Vault(a).read("household").optString("calendar").isEmpty(); } catch (Exception ignored) {}
         a.text(team == null ? "Football fixtures: choose your team" : listed ? "Football fixtures: " + team.displayName : "Football fixtures: " + team.displayName + ", from your calendar", 19).setFocusable(false);
         a.chevron(a.button("Your team: " + (listed ? team.displayName : "choose from the UK teams"), () -> EditLock.ask(a, () -> a.expandTask(SettingsActivity.TEAM))));
+        if (listed && FixtureFeed.noneFound(a)) a.text(noFixtures(team.displayName), 15).setFocusable(false);
         if (calendar || (team != null && !listed)) a.button("Use your calendar instead" + (team != null && !listed ? ": " + team.displayName : ""), () -> EditLock.ask(a, this::calendarTeam));
         if (team != null) {
             a.button("Badge: " + team.shortName + " on " + Fixtures.colourName(team.primary) + " and " + Fixtures.colourName(team.secondary), () -> badgeColours(team));
@@ -344,12 +347,20 @@ final class SetupPages {
     }
 
     // ------------------------------------------------------------------ Team picker (a task in the sheet)
-    /** By league (country, then league, then team) or by a few letters; no account or key needed (TheSportsDB). */
+    static String noFixtures(String club) { return "No fixtures found yet for " + club + "."; }
+    static final String ASK_NOTE = "Sends the name you typed to TheSportsDB, which finds a club by its full name.";
+    /**
+     * By league (country, then league, then team) or by a few letters; no account or key needed (TheSportsDB). The
+     * Premier League, Championship and League One are complete at once from Unified TV's own list (TheSportsDB's free key
+     * lists only about 10 teams a league); every league is completed from one round of its fixtures as it is read. A
+     * club in none of them can be looked up on TheSportsDB by its full name.
+     */
     private void teams() {
         TeamList.ensure(a);
-        JSONObject cat = FixtureFeed.catalogue(a); List<JSONObject> leagues = TeamList.leagues(cat); teamReady = leagues.size();
+        JSONObject cat = FixtureFeed.catalogue(a), all = FixtureFeed.teams(a); List<JSONObject> leagues = TeamList.leagues(all); teamReady = leagues.size();
         Fixtures.Team current = FixtureFeed.team(a);
         if (current != null) a.text("Now: " + current.displayName, 17).setFocusable(false);
+        if (current != null && FixtureFeed.noneFound(a)) a.text(noFixtures(current.displayName), 15).setFocusable(false);
         teamProgress = a.text(progress(cat), 15);
         if (teamLeague != 0) {
             JSONObject league = null; for (JSONObject l : leagues) if (l.optInt("id") == teamLeague) league = l;
@@ -361,10 +372,19 @@ final class SetupPages {
         }
         a.button(teamQuery == null ? "Search by name" : "Search: " + teamQuery, this::search);
         if (teamQuery != null) {
-            List<TeamList.Entry> found = TeamList.search(cat, teamQuery, 30);
-            if (found.isEmpty()) a.text(leagues.isEmpty() ? "The team list is still being read." : "No team matches \"" + teamQuery + "\".", 16);
+            List<TeamList.Entry> found = TeamList.search(all, teamQuery, 30);
+            if (found.isEmpty()) a.text("No team in the list matches \"" + teamQuery + "\".", 16);
             for (TeamList.Entry e : found) a.button(e.name + " · " + e.league, () -> pick(e));
-            a.button("Show all leagues", () -> { teamQuery = null; a.redraw(); });
+            // A club the list lacks (or only half matches) can be asked for by its full name; one it has needs no asking.
+            boolean exact = false; for (TeamList.Entry e : found) for (String n : e.names()) if (TeamList.key(n).equals(TeamList.key(teamQuery))) exact = true;
+            if (!exact && SportsDb.searchName(teamQuery) != null && !Profiles.kids(a)) {
+                if (teamQuery.equals(teamAsked) && teamAnswer != null) {
+                    if (teamAnswer.isEmpty()) a.text("TheSportsDB has no club called \"" + teamQuery + "\". Try its full name, for example Hartlepool United.", 15);
+                    for (TeamList.Entry e : teamAnswer) a.button(e.name + " · " + (e.league.isEmpty() ? "TheSportsDB" : e.league), () -> pick(e));
+                } else if (teamAsking) a.text("Asking TheSportsDB…", 15);
+                else { a.button("Look up \"" + teamQuery + "\" on TheSportsDB", this::ask); a.text(ASK_NOTE, 14).setFocusable(false); }
+            }
+            a.button("Show all leagues", () -> { teamQuery = null; teamAsked = null; teamAnswer = null; a.redraw(); });
             return;
         }
         for (String country : SportsDb.COUNTRIES) {
@@ -382,29 +402,57 @@ final class SetupPages {
         if (teamProblem != null) return teamProblem;
         if (cat.optLong("fetchedAt") > 0) return "All UK leagues are ready.";
         int[] p = SportsDb.progress(cat);
-        return p[0] == 0 ? "Reading the list of UK teams from TheSportsDB. This takes about a minute the first time and is kept for a week." : "Reading the list of UK teams: " + p[0] + " of " + p[1] + " leagues so far.";
+        return p[0] == 0 ? "Reading the rest of the UK teams from TheSportsDB. This takes a minute or two the first time and is kept for a week." : "Reading the UK teams: " + p[0] + " of " + p[1] + " leagues so far.";
     }
     private void teamsChanged(JSONObject cat, String problem) {
         teamProblem = problem;
         if (!a.on(-1, SettingsActivity.TEAM)) return;
-        if (TeamList.leagues(cat).size() != teamReady && teamLeague == 0 && teamQuery == null) a.refresh();
+        if (TeamList.leagues(FixtureFeed.teams(a)).size() != teamReady && teamLeague == 0 && teamQuery == null) a.refresh();
         else if (teamProgress != null) teamProgress.setText(progress(cat));
     }
     private void search() {
         EditText f = field("A few letters, for example spurs or hearts", false); if (teamQuery != null) f.setText(teamQuery);
         new AlertDialog.Builder(a).setTitle("Search for your team").setView(f).setNegativeButton("Cancel", null)
-            .setPositiveButton("Search", (d, w) -> { String q = f.getText().toString().trim(); teamQuery = q.isEmpty() ? null : q; a.redraw(); }).show();
+            .setPositiveButton("Search", (d, w) -> { String q = f.getText().toString().trim(); teamQuery = q.isEmpty() ? null : q; teamAnswer = null; teamAsked = null; a.redraw(); }).show();
     }
-    /** The team, with its API-Football number when TheSportsDB knows it, and its own colours unless the household chose some. */
+    /** Only when pressed: the typed name to TheSportsDB (searchteams; the free key matches full names only). */
+    private void ask() {
+        String q = teamQuery, request = q == null ? null : SportsDb.searchTeams(q);
+        if (request == null || teamAsking) return;
+        teamAsking = true; a.redraw();
+        worker.execute(() -> {
+            List<TeamList.Entry> found = new ArrayList<>(); String problem = null;
+            try {
+                for (SportsDb.TeamEntry e : SportsDb.teams(SportsDb.http.get(request))) {
+                    SportsDb.League known = null; for (SportsDb.League l : SportsDb.LEAGUES) if (l.sdb > 0 && l.sdb == e.leagueId) known = l;
+                    found.add(new TeamList.Entry(e.id, e.name, e.code, e.also, known != null ? known.name : e.league, known != null ? known.country : "", e.api, e.c1, e.c2, null, e.leagueId));
+                }
+            } catch (Exception e) { problem = "TheSportsDB couldn't be reached. Try again in a minute."; }
+            String p = problem;
+            a.runOnUiThread(() -> { teamAsking = false; if (!q.equals(teamQuery)) return; teamAsked = q; teamAnswer = p == null ? found : null; if (p != null) a.note(p); if (a.on(-1, SettingsActivity.TEAM)) a.redraw(); });
+        });
+    }
+    /**
+     * The team, with its API-Football number when TheSportsDB knows it, its league and other names (for finding its
+     * fixtures), and its own colours unless the household chose some. A bundled club whose TheSportsDB number isn't known
+     * yet is saved as "club" and numbered by the first read. Its fixtures are then read once in the background, so
+     * Settings can say if none were found.
+     */
     private void pick(TeamList.Entry e) {
         Fixtures.Team old = FixtureFeed.team(a);
-        boolean keep = old != null && old.id.equals("sdb:" + e.id);
+        String id = e.id > 0 ? "sdb:" + e.id : Fixtures.Team.CLUB;
+        boolean keep = old != null && old.id.equals(id) && old.displayName.equals(e.name);
         int c1 = keep ? old.primary : e.c1 != 0 ? e.c1 : old == null ? Fixtures.COLOURS[0] : old.primary;
         // The second colour: the club's own when it differs from the first, else lettering that reads on the first.
         int c2 = keep ? old.secondary : e.c1 == 0 ? (old == null ? Fixtures.COLOURS[1] : old.secondary) : e.c2 != 0 && e.c2 != e.c1 ? e.c2 : Fixtures.ink(e.c1);
-        FixtureFeed.saveTeam(a, new Fixtures.Team("sdb:" + e.id, e.name, e.code, c1, c2, Fixtures.Sport.FOOTBALL, null, e.api > 0 ? "api:" + e.api : ""));
-        teamLeague = 0; teamQuery = null;
+        List<String> names = new ArrayList<>(e.names()); names.remove(e.name);
+        FixtureFeed.saveTeam(a, new Fixtures.Team(id, e.name, e.code, c1, c2, Fixtures.Sport.FOOTBALL, names, e.api > 0 ? "api:" + e.api : "", e.sdbLeague > 0 ? String.valueOf(e.sdbLeague) : ""));
+        teamLeague = 0; teamQuery = null; teamAsked = null; teamAnswer = null;
         a.note("Your team: " + e.name + ". Fixtures appear on Home on matchday. You can change the badge colours in Smart Home.");
+        android.content.Context app = a.getApplicationContext();
+        // Its own thread: a slow TheSportsDB never holds up this page's Home Assistant check.
+        Thread check = new Thread(() -> { try { FixtureFeed.refresh(app); } catch (RuntimeException ignored) {} a.runOnUiThread(() -> { if (!a.isDestroyed() && a.on(SettingsActivity.SMART_HOME, null)) a.refresh(); }); }, "football-check");
+        check.setDaemon(true); check.start();
         a.back();
     }
 }

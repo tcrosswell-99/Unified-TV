@@ -31,6 +31,9 @@ final class Tmdb {
     interface Transport{Response get(String url,Map<String,String> headers,int limit)throws IOException;}
     /** TMDB is rate-limited; it said "slow down" (HTTP 429). */
     static final class Busy extends IOException{final long waitMs;Busy(long waitMs){super("busy");this.waitMs=waitMs;}}
+    /** TMDB answered with another HTTP status: 401 or 403 means the key was refused ({@link #refused}). */
+    static final class HttpError extends IOException{final int code;HttpError(String what,int code){super(what+" "+code);this.code=code;}
+        boolean refused(){return code==401||code==403;}}
 
     /** One accepted match. */
     static final class Match {
@@ -63,7 +66,7 @@ final class Tmdb {
         String url=searchUrl(tv,title,year);if(!allowed(url))throw new IOException("not allowed");
         Response r=transport.get(url,headers(),MAX_JSON);
         if(r.code==429)throw new Busy(Math.max(1000,r.retryAfterMs));
-        if(r.code!=200)throw new IOException("TMDB "+r.code);
+        if(r.code!=200)throw new HttpError("TMDB",r.code);
         try{return new JSONObject(new String(r.body,StandardCharsets.UTF_8)).optJSONArray("results");}catch(JSONException e){throw new IOException("TMDB reply unreadable");}
     }
     /** Looks a title up and returns the cautious match, or null for no match. */
@@ -81,7 +84,7 @@ final class Tmdb {
         String url=IMAGES+size+path;if(!allowed(url))throw new IOException("not allowed");
         Response r=transport.get(url,Collections.emptyMap(),MAX_IMAGE);
         if(r.code==429)throw new Busy(Math.max(1000,r.retryAfterMs));
-        if(r.code!=200)throw new IOException("TMDB image "+r.code);
+        if(r.code!=200)throw new HttpError("TMDB image",r.code);
         return r.body;
     }
 

@@ -10,8 +10,12 @@ import java.util.*;
 /** Bounded local SSDP discovery and read-only ContentDirectory browsing. */
 final class DlnaClient {
     static final class Device {String name,location,control,service,udn;JSONObject json()throws Exception{return new JSONObject().put("name",name).put("location",location).put("control",control).put("service",service).put("udn",udn).put("enabled",true);}}
-    /** One entry. parent is the server's own parentID; ratings are its content ratings (upnp:rating), as sent. */
-    static final class Item {String id,title,url="",art="",year="",parent="",upnpClass="";boolean folder;final List<String> ratings=new ArrayList<>();}
+    /**
+     * One entry. parent is the server's own parentID; ratings are its content ratings (upnp:rating), as sent. size (bytes)
+     * and duration (milliseconds) come from the played resource's res@size and res@duration; 0 when the server sent none.
+     * The library uses them only to tell a film from its sample (LibraryCatalogue.mains).
+     */
+    static final class Item {String id,title,url="",art="",year="",parent="",upnpClass="";boolean folder;long size,duration;final List<String> ratings=new ArrayList<>();}
     /** One Browse response. Paging follows the server's own counts: filtered entries must not end the list early. */
     static final class Page {final List<Item> items=new ArrayList<>();int returned,total;
         boolean more(int offset){return returned>0&&(total>0?offset+returned<total:returned>=PAGE);}
@@ -236,7 +240,7 @@ final class DlnaClient {
         Element envelope=xml(soap).getDocumentElement();Page page=new Page();page.returned=count(value(envelope,"NumberReturned"));page.total=count(value(envelope,"TotalMatches"));
         String result=value(envelope,"Result");if(result.isEmpty())return page;Element didl=xml(result.getBytes(StandardCharsets.UTF_8)).getDocumentElement();
         for(Node node=didl.getFirstChild();node!=null&&page.items.size()<PAGE;node=node.getNextSibling()){if(!(node instanceof Element))continue;Element e=(Element)node;Item item=new Item();item.id=e.getAttribute("id");item.title=title(value(e,"title"));item.folder="container".equals(e.getLocalName());if(item.id.isEmpty()||item.id.length()>1024)continue;
-            if(!item.folder){NodeList resources=e.getElementsByTagNameNS("*","res");for(int i=0;i<resources.getLength();i++){Element res=(Element)resources.item(i);String protocol=res.getAttribute("protocolInfo");if(protocol.startsWith("http-get:")&&protocol.contains("video/")){String u=sameHost(origin,res.getTextContent());if(!u.isEmpty()){item.url=u;break;}}}if(item.url.isEmpty())continue;}
+            if(!item.folder){NodeList resources=e.getElementsByTagNameNS("*","res");for(int i=0;i<resources.getLength();i++){Element res=(Element)resources.item(i);String protocol=res.getAttribute("protocolInfo");if(protocol.startsWith("http-get:")&&protocol.contains("video/")){String u=sameHost(origin,res.getTextContent());if(!u.isEmpty()){item.url=u;item.size=bytes(res.getAttribute("size"));item.duration=durationMs(res.getAttribute("duration"));break;}}}if(item.url.isEmpty())continue;}
             item.art=sameHost(origin,value(e,"albumArtURI"));String date=value(e,"date");if(date.matches("\\d{4}.*"))item.year=date.substring(0,4);
             item.parent=e.getAttribute("parentID");if(item.parent.length()>1024)item.parent="";item.upnpClass=value(e,"class").trim();
             // upnp:rating is the content rating (UPnP ContentDirectory); star scores live in other fields and are not read.
@@ -258,5 +262,14 @@ final class DlnaClient {
         return stem.isEmpty()?t:stem;
     }
     static int count(String s){try{return Math.max(0,Integer.parseInt(s.trim()));}catch(Exception e){return 0;}}
+    /** res@size: a whole number of bytes; 0 when missing or unreadable. */
+    static long bytes(String s){try{return s==null?0:Math.max(0,Long.parseLong(s.trim()));}catch(NumberFormatException e){return 0;}}
+    private static final java.util.regex.Pattern DURATION=java.util.regex.Pattern.compile("\\+?(\\d{1,5}):(\\d{1,2}):(\\d{1,2})(?:\\.(\\d{1,3})\\d*)?(?:/\\d+)?");
+    /** res@duration, "H+:MM:SS[.F+]" (UPnP ContentDirectory), in milliseconds; 0 when missing or unreadable. */
+    static long durationMs(String s){
+        if(s==null)return 0;java.util.regex.Matcher m=DURATION.matcher(s.trim());if(!m.matches())return 0;
+        String f=m.group(4)==null?"0":(m.group(4)+"00").substring(0,3);
+        return ((Long.parseLong(m.group(1))*60+Long.parseLong(m.group(2)))*60+Long.parseLong(m.group(3)))*1000+Long.parseLong(f);
+    }
     static String sameHost(URI origin,String ref){try{if(ref==null||ref.trim().isEmpty())return "";URI u=origin.resolve(ref.trim());local(u.toString());return origin.getHost().equalsIgnoreCase(u.getHost())?u.toString():"";}catch(Exception e){return "";}}
 }

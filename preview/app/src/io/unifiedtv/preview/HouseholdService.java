@@ -32,6 +32,8 @@ public final class HouseholdService extends Service {
     static volatile boolean alarmOnScreen;
     /** Waiting for the one large get_states reply; any other oversized message is still refused. */
     private volatile boolean statesPending;
+    /** False once a VPN refused a connection bound to the home network: later connections take the default route. */
+    private volatile boolean direct=true;
     private final Runnable timeout=this::dismiss,reconnect=this::connect;
     /** A camera asked for while Home Assistant was away is only opened if the connection returns within this time. */
     private static final long CAMERA_REQUEST_MS=45000;
@@ -48,7 +50,7 @@ public final class HouseholdService extends Service {
         // Owner exception to SET-053: "Stop alerts" no longer stops anything by itself. It opens Unified TV's Settings,
         // which asks for the adult PIN and a confirmation first.
         Intent stop=new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.NOTIFICATIONS).putExtra("stopAlerts",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent end=PendingIntent.getActivity(this,2,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent end=PendingIntent.getActivities(this,2,Launch.overHome(this,stop),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);   // Back from it: Home
         Notification notification=new Notification.Builder(this,"household").setContentTitle("Unified TV household alerts").setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).addAction(new Notification.Action.Builder(null,"Dismiss camera",close).build())
             .addAction(new Notification.Action.Builder(null,"Stop alerts",end).build()).build();startForeground(NOTIFICATION,notification);
@@ -73,14 +75,18 @@ public final class HouseholdService extends Service {
             getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.SHOWN,house.optBoolean("alarms",true)).apply();
             if(!config.optBoolean("enabled")||config.optString("token").isEmpty()||!Settings.canDrawOverlays(this))throw new IllegalArgumentException();
             String base=config.getString("base");if(base.startsWith("http:")&&!config.optBoolean("httpConsent"))throw new IllegalArgumentException();
-            String url=base.replaceFirst("^http","ws")+"/api/websocket";
-            socket=client.newWebSocket(new Request.Builder().url(url).build(),new WebSocketListener(){
+            String url=HaSignIn.socketUrl(base);
+            // Owner's TCL with NordVPN (run 93): Home Assistant at home is reached straight over Wi-Fi/Ethernet when Android
+            // allows it, as phone setup reached it; a VPN that refuses that (EPERM) is left to its own route from then on.
+            android.net.Network lan=direct&&LocalDiscovery.homeHost(java.net.URI.create(base).getHost())?LocalDiscovery.lan(this):null;
+            OkHttpClient route=lan==null?client:client.newBuilder().socketFactory(lan.getSocketFactory()).build();
+            socket=route.newWebSocket(new Request.Builder().url(url).build(),new WebSocketListener(){
                 @Override public void onMessage(WebSocket ws,String text){
                     if(text.length()<=65536){main.post(()->message(ws,text));return;}
                     // A whole house of states can be large: read only the sounding alarms here, off the main thread.
                     if(!statesPending||text.length()>STATES_MAX)return;List<String[]> all=AlertPolicy.detectorsIn(text,STATES);if(all!=null)main.post(()->snapshot(ws,all));
                 }
-                @Override public void onFailure(WebSocket ws,Throwable t,Response response){main.post(()->lost(ws));}
+                @Override public void onFailure(WebSocket ws,Throwable t,Response response){if(lan!=null&&LocalDiscovery.refused(t))direct=false;main.post(()->lost(ws));}
                 @Override public void onClosed(WebSocket ws,int code,String reason){main.post(()->lost(ws));}
             });
         }catch(Exception e){

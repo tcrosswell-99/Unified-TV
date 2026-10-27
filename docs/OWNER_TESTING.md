@@ -154,6 +154,21 @@ Leave Home on screen for the first run, then repeat while moving along the dock,
 
 **Expected:** one line every 15 seconds (`PSS … MB  native …  java …  graphics …  CPU …%  frames … janky …%  TV free … MB  pressure …`), then a summary. The target for Home left alone on the 2 GB TCL is a few per cent of CPU (not yet measured on the TV): the background's drift is the only thing still drawing, and it rests after ten minutes without a key. Paste the summary into your report. Settings > Updates & About > Advanced > Owner diagnostics also says, under **Home background**, whether the light was moving and at how many frames a second, and shows the TV's own animation scales.
 
+## Optional clean-up on the TV (only when you choose to try it)
+
+**Not tested on a real TV yet.** Read [INSTALLATION_AND_RECOVERY.md](INSTALLATION_AND_RECOVERY.md#optional-clean-up-on-the-tv-itself-android-preview-and-launcher) first. It needs network debugging (ADB on port 5555) switched on, as you already have it for the PC. Before you start, take photos of the TV's Home, Settings > Apps, and a working HDMI input with sound, so you have a baseline.
+
+1. **Skipping:** open Settings > Updates & About > Advanced > **Optional clean-up**, read the first page, choose **Not now**. Expected: nothing on the TV changed, and nothing asks you again (AT-18).
+2. **Read-only check:** open it again and choose **Start the read-only check**. The first time, the TV shows **Allow USB debugging?** for `unifiedtv@tv`: tick **Always allow from this computer** and choose **OK**. Expected: the page names your TV and firmware and says *Tested list: TCL 50C725K, on this exact firmware*; each listed app shows on/off, version, risk and *Recommended* or *Optional, your choice*; every switch is off; TalkBack, Live TV, Settings and the launcher are listed as kept. From the PC, `adb shell pm list packages -d` is unchanged (AT-20).
+3. **One small batch:** turn on the switches for two low-risk apps (for example *TCL analytics* and *Store demo sticker*), choose **Review my choices**, check the summary, then **Turn off these 2 apps**. Expected: progress one by one, then both *off*. From the PC: `adb shell pm list packages -d` now lists them. The undo record was saved on the TV before the first one.
+4. **Check the TV still works** (AT-21): follow the page's list (streaming apps, remote and microphone, NordVPN, each HDMI input with sound, doorbell alerts, standby and wake). Note anything that broke.
+5. **Undo:** choose **Undo all**. Expected: both apps *on* again; `pm list packages -d` back to step 2.
+6. **Undo files:** do step 3 again, then **Save the undo files on your phone**; download both files. On the PC, put them in one folder and run `$env:TV_HOST = $tv; python preview\tools\cleanup_restore.py <folder>\unifiedtv-cleanup-record.json`, then the `tools/restore.sh` line it prints (Git Bash). Expected: both apps on again, Home unchanged.
+7. **Without any computer:** do step 3 again, then on the TV open Settings > Apps > See all apps > Show system apps > *TCL analytics* > **Enable**. Expected: it is on again.
+8. **End:** choose **Finish**, follow the steps to turn off USB debugging, then **Check that it's off**. Expected: "nothing answers on port 5555". (Turn it back on afterwards if you still need ADB from the PC.)
+
+Report the model, firmware, build, each step's result and any app that misbehaved. **Never** test with the stock launcher, Live TV, the inputs or the remote's services: the page refuses them, and that refusal is part of the test.
+
 ## Reporting back
 
 Reply in the chat, or open a GitHub issue **without** addresses, account names or family photos, using:

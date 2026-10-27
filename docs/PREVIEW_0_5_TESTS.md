@@ -74,7 +74,25 @@ The player keeps a short, private record of the last playback (time to first pic
    - Repeat, waiting more than 30 seconds.
    - **Pass:** the reminder is dropped.
 
-Signing in still needs the long-lived access token typed once. A phone sign-in for Home Assistant is not built yet.
+### Home Assistant by phone (owner's TCL, build run 93: "it does not work")
+
+Settings → Smart Home → Home Assistant → set up on the phone. Scan the code, tap **Sign in with Home Assistant**, sign in on Home Assistant's own page.
+
+- **Pass:** the phone comes back to "Connected", the TV says "Connected to Home Assistant", and Home Assistant's profile (Security) lists a token named "Unified TV on the …".
+- The phone always opens Home Assistant at its number address (for example `192.168.1.5:8123`), even when it was found or typed as `homeassistant.local`; the name is only shown as words.
+- If something fails, the phone and the TV say which step. Write down the exact words, then open **Updates & About → Advanced → Owner diagnostics** and copy the "Last phone setup problem" line:
+
+| What you see | Which step | What to try |
+| --- | --- | --- |
+| "The TV couldn't reach Home Assistant — NordVPN may be blocking your home network" | The TV checking the address, finishing the sign-in or creating its key | In NordVPN's settings, allow devices on your local network (Local network discovery), or disconnect NordVPN for a moment; then start again |
+| "The TV couldn't reach Home Assistant at …" (no VPN named) | The same, with no VPN in the way | Check Home Assistant is on and on the same network; if you typed a name, type its number address instead |
+| "Something answered at …, but it isn't Home Assistant" | The address check | Check the address and port (usually 8123) |
+| "Didn't Home Assistant open?" on the phone | The phone opening Home Assistant's page | Put the phone on the home Wi-Fi (not mobile data or a VPN) and tap Try again |
+| "Home Assistant refused the sign-in code" | The TV trading the code for a sign-in | Start again; each code works once, for ten minutes |
+| "Couldn't create the TV's key in Home Assistant" | The TV creating its own long-lived key | Try again, or paste a long-lived token instead |
+| "Home Assistant didn't accept the TV's new key" / "didn't accept that token" | The final check | Create a new token and paste all of it |
+
+Repeat once with NordVPN connected on the TV, with and without its local-network setting. **Pass:** either it connects, or it names NordVPN; never a bare "didn't answer".
 
 ## Your media account (Jellyfin)
 

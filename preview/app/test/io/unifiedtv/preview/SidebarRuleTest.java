@@ -34,6 +34,7 @@ public class SidebarRuleTest {
     /** Settings and setup: the GlassScreen sidebar over a still Home (half width; wide() for about three quarters). */
     static final Set<String> SETUP=new TreeSet<>(Arrays.asList(
         "BuildMyTvActivity",         // Build My TV: choosing services and arranging Home (wide)
+        "CleanupActivity",           // Updates & About > Advanced > Optional clean-up (wide for its list)
         "ConnectionsActivity",       // signing in to a media server by typing (advanced)
         "FirstRunActivity",          // the guided setup (SET-010): Welcome, remote, apps, media server, finish
         "GalleryActivity",           // Gallery settings (its slideshow is shown full screen in place of the sheet)

@@ -95,6 +95,15 @@ final class Launch {
         for(String n:names){String l=n.toLowerCase(java.util.Locale.ROOT);if(!l.contains("setting")&&!l.contains("preference")&&!l.contains("option")&&!l.contains("config"))return n;}
         return names.get(0);
     }
+    /**
+     * A Unified TV screen opened from outside Home (a notification's action): Home first, then the screen on top, so Back
+     * from the screen lands on Unified TV's Home and never skips past it to the TV's own (HRC-03). Home is single-task:
+     * an open Home comes forward with whatever was over it closed. For PendingIntent.getActivities.
+     */
+    static Intent[] overHome(Context c,Intent screen){
+        Intent top=new Intent(screen);top.setFlags(top.getFlags()&~Intent.FLAG_ACTIVITY_NEW_TASK);
+        return new Intent[]{new Intent(c,UnifiedPreviewActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),top};
+    }
     static void info(Activity a,String pkg){system(a,new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.fromParts("package",pkg,null)),"App information isn't available on this TV");}
     /**
      * The one Kids check (KidsPolicy): null when allowed, else a friendly reason. Package names and Unified TV's own HDMI

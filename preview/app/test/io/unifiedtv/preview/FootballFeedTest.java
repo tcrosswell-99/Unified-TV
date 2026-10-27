@@ -45,7 +45,10 @@ public class FootballFeedTest {
         assertFalse("no key saved",FixtureFeed.apiConfigured(app));assertTrue(FixtureFeed.listed(app));
         List<Fixtures.Fixture> f=FixtureFeed.refresh(app);
         assertEquals(1,f.size());assertEquals("sdb:2070001",f.get(0).id);assertEquals(SportsDb.SOURCE,f.get(0).source);
-        assertEquals("only the team's number is sent",Arrays.asList("eventsnext.php?id=133616","eventslast.php?id=133616"),sent);
+        assertEquals("only the team's number is sent: its record once (for its league), its next and last match",
+            Arrays.asList("lookupteam.php?id=133616","eventsnext.php?id=133616","eventslast.php?id=133616"),sent);
+        Fixtures.Team learnt=FixtureFeed.team(app);
+        assertEquals("no league in the reply: not asked again","0",learnt.league);assertEquals("sdb:133616",learnt.id);assertEquals("api:47",learnt.alt);assertEquals(0xFF132257,learnt.primary);
         assertTrue("API-Football is never asked without a key",apiSent.isEmpty());
         assertEquals(SportsDb.SOURCE,FixtureFeed.lastSource(app));
         // Kept on the TV: the next look inside six hours sends nothing and shows the same fixture.
@@ -94,13 +97,48 @@ public class FootballFeedTest {
         apiReply="{\"errors\":[],\"response\":["+ApiFootballTest.fixture(9001,kick/1000,"NS","Not Started")+"]}";
         assertEquals("api:9001",FixtureFeed.refresh(app).get(0).id);assertTrue(sent.isEmpty());
     }
+    /** Replies by request, for the tests below; anything else is TheSportsDB's "nothing". */
+    private void replies(Map<String,String> r){
+        SportsDb.http=path->{sent.add(path);if(!SportsDb.allowed(path))throw new AssertionError("not an allowed request: "+path);String b=r.get(path);return new JSONObject(b==null?"{\"events\":null}":b);};
+    }
+    static String wrexham(long id,long home,String homeName,long away,String awayName,long kickMs,int round){
+        String ts=Instant.ofEpochMilli(kickMs).atOffset(ZoneOffset.UTC).toLocalDateTime().toString();
+        return "{\"idEvent\":\""+id+"\",\"strSport\":\"Soccer\",\"strLeague\":\"English League Championship\",\"idHomeTeam\":\""+home+"\",\"idAwayTeam\":\""+away+"\","
+            +"\"strHomeTeam\":\""+homeName+"\",\"strAwayTeam\":\""+awayName+"\",\"strTimestamp\":\""+ts+"\",\"strStatus\":\"Not Started\",\"intRound\":\""+round+"\",\"strSeason\":\"2026-2027\"}";
+    }
+    @Test public void aBundledClubIsNumberedByItsFirstReadAndItsAwayMatchFoundInItsLeague(){
+        Fixtures.Team club=new Fixtures.Team(Fixtures.Team.CLUB,"Wrexham","WRE",0xFFD71920,0xFFFFFFFF,Fixtures.Sport.FOOTBALL,Collections.singletonList("Wrexham AFC"),"","4329");
+        FixtureFeed.saveTeam(app,club);assertTrue("picked from the list",FixtureFeed.listed(app));
+        Map<String,String> r=new HashMap<>();
+        r.put("eventsnextleague.php?id=4329","{\"events\":["+wrexham(1,133500,"Hull City",133600,"Derby County",kick,14)+"]}");
+        r.put("eventsround.php?id=4329&r=14&s=2026-2027","{\"events\":["+wrexham(1,133500,"Hull City",133600,"Derby County",kick,14)+","+wrexham(2,133000,"Leicester City",134000,"Wrexham",kick,14)+"]}");
+        r.put("eventsnext.php?id=134000","{\"events\":["+wrexham(3,134000,"Wrexham",133500,"Hull City",kick+7*86_400_000L,15)+"]}");
+        replies(r);
+        List<Fixtures.Fixture> f=FixtureFeed.refresh(app);
+        assertEquals("the away match (league round) first, then the home one (team's own)",Arrays.asList("sdb:2","sdb:3"),Arrays.asList(f.get(0).id,f.get(1).id));
+        Fixtures.Team now=FixtureFeed.team(app);
+        assertEquals("numbered from its league's round, no name sent","sdb:134000",now.id);assertEquals("4329",now.league);assertEquals("Wrexham",now.displayName);assertEquals(0xFFD71920,now.primary);
+        for(String s:sent)assertFalse(s,s.startsWith("searchteams"));
+        assertNotNull("the change record is kept",FixtureFeed.track(app).optJSONObject("seen").opt("sdb:2"));
+        assertFalse(FixtureFeed.noneFound(app));
+        assertTrue("each league's rounds are kept",FixtureFeed.load(app,FixtureFeed.LEAGUES).has("4329"));
+    }
+    @Test public void aClubWithNoFixturesFoundIsSaidPlainly(){
+        FixtureFeed.saveTeam(app,new Fixtures.Team(Fixtures.Team.CLUB,"Nowhere Town","",0,0,Fixtures.Sport.FOOTBALL,null,"","4396"));
+        SportsDb.http=path->{throw new IOException("offline");};
+        assertTrue(FixtureFeed.refresh(app).isEmpty());assertFalse("unreachable is not \"none found\"",FixtureFeed.noneFound(app));
+        replies(new HashMap<>());
+        assertTrue(FixtureFeed.refresh(app).isEmpty());assertTrue("answered, and nothing for this club",FixtureFeed.noneFound(app));
+        assertEquals("No fixtures found yet for Nowhere Town.",SetupPages.noFixtures("Nowhere Town"));
+        assertTrue(sent.contains("searchteams.php?t=Nowhere%20Town"));assertEquals("still known only by name",Fixtures.Team.CLUB,FixtureFeed.team(app).id);
+    }
     @Test public void theTeamListIsBuiltWithoutAKeyAndCarriesOnAfterAnOutage(){
         SportsDb.paceMs=0;
         try{
             int[] calls={0};
             SportsDb.http=path->{if(++calls[0]==3)throw new IOException("offline");sent.add(path);return path.contains("English%20Premier%20League")?new JSONObject(SportsDbTest.PREMIER):new JSONObject("{\"teams\":null}");};
             String[] problem={null};FixtureFeed.build(app,(cat,p)->problem[0]=p);
-            assertEquals(FixtureFeed.UNREACHABLE,problem[0]);assertEquals(2,SportsDb.progress(FixtureFeed.catalogue(app))[0]);
+            assertEquals(FixtureFeed.UNREACHABLE,problem[0]);assertEquals("the Premier League's list and its next event",1,SportsDb.progress(FixtureFeed.catalogue(app))[0]);
             FixtureFeed.build(app,(cat,p)->problem[0]=p);
             assertNull(problem[0]);JSONObject cat=FixtureFeed.catalogue(app);assertTrue(cat.optLong("fetchedAt")>0);
             assertEquals("each league asked once, an empty one under its other names too",new HashSet<>(sent).size(),sent.size());

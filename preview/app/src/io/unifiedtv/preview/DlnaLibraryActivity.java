@@ -26,7 +26,8 @@ import java.util.concurrent.*;
  *
  * Loading always says so: the first list shows a spinner and how many titles have been found; a later refresh shows a
  * small "Checking for new titles" while the saved list stays usable. Focus never waits for the network: pictures arrive
- * when ready (Posters), and a tile without one is a clean title card.
+ * when ready (Posters), and a tile without one is a clean title card. With no TMDB key, Adults see one line saying where
+ * to add it (Posters.HINT); a key added meanwhile (phone setup) is picked up when this screen comes back.
  *
  * Profiles (owner, 25 October 2026): Kids see only titles in folders marked for Kids, within the Kids ratings; with no
  * Kids folders they see "Ask an adult". Adults see everything, with a Kids row. The player checks Kids again at play time.
@@ -45,7 +46,7 @@ public final class DlnaLibraryActivity extends Screen {
     private LibraryFolders.Library lib;private LibraryCatalogue.Catalogue cat;private Posters posters;private String udn="";
     private float unit;private boolean light,calm,postersOn;private int generation;
     private ImageView[] backs=new ImageView[2];private int front=0;private String shownBack="",focusKey="",wantedBack="";
-    private TextView heroTitle,heroMeta,heroText,status;private ProgressBar statusSpin;
+    private TextView heroTitle,heroMeta,heroText,status,keyHint;private ProgressBar statusSpin;
     private FrameLayout area;private LinearLayout bar;
     private final ArrayDeque<Place> stack=new ArrayDeque<>();
     private boolean refreshing,firstLoad;
@@ -64,7 +65,7 @@ public final class DlnaLibraryActivity extends Screen {
         light=prefs.getBoolean("lightweight",false)||((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).isLowRamDevice();
         posters=Posters.get(this);postersOn=Posters.on(this);   // read once: never a Vault read per focus move
         lib=LibraryFolders.library(this);udn=lib.udn();
-        frame();
+        frame();keyHint();
         if(kids&&!lib.ready){message(KidsPolicy.ASK_ADULT,"An adult chooses the folders for Kids in the Adults profile.",null,null);return;}
         if(!lib.ready){message("Your Films & TV isn't set up yet.","Unified TV finds the media server on your home network. Choose the folders that hold your films and programmes.","Set up Your Films & TV",this::setup);return;}
         String search=in.getStringExtra("search");
@@ -76,7 +77,16 @@ public final class DlnaLibraryActivity extends Screen {
     }
     @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)rebuild(false);}   // Continue Watching may have changed
     /** Back from "Wrong picture?" (a sidebar: this screen was only paused): the tiles and background ask for the chosen picture. */
-    @Override protected void onResume(){super.onResume();if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}}
+    @Override protected void onResume(){super.onResume();
+        if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();return;}
+        // A key added (or changed) while this screen was away, perhaps by phone setup: every tile asks again.
+        if(posters==null||lib==null)return;boolean changed=posters.refreshKey(),on=posters.usable();
+        if(changed||on!=postersOn){postersOn=on;keyHint();if(cat!=null){handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();}}
+    }
+    /** The one-line "add your TMDB key" hint: Adults only (Kids can't add one), and only while there is no key. */
+    private void keyHint(){if(keyHint!=null)keyHint.setVisibility(!postersOn&&lib!=null&&lib.ready&&!lib.kids?View.VISIBLE:View.GONE);}
+    /** For tests: whether the no-key hint is showing. */
+    boolean keyHintShown(){return keyHint!=null&&keyHint.getVisibility()==View.VISIBLE;}
     /** The tile whose picture is being corrected, while "Wrong picture?" is open. */
     private String fixing;
     /** The focused view straight from the window's views (as SettingsActivity reads it), so a refresh keeps the same tile. */
@@ -109,6 +119,7 @@ public final class DlnaLibraryActivity extends Screen {
         heroTitle=words("Your Films & TV",48,0xFFF4F7FB,true,1);heroMeta=words("",24,0xFFC3CEDD,false,1);heroText=words("",22,0xFFDCE4EE,false,3);
         heroMeta.setPadding(0,px(6),0,px(8));hero.addView(heroTitle);hero.addView(heroMeta);hero.addView(heroText,new LinearLayout.LayoutParams(px(1000),-2));
         content.addView(hero,new LinearLayout.LayoutParams(-1,px(250)));
+        keyHint=words(Posters.HINT,22,0xFFC3CEDD,false,1);keyHint.setPadding(px(6),0,0,px(6));keyHint.setVisibility(View.GONE);content.addView(keyHint);
         area=new FrameLayout(this);content.addView(area,new LinearLayout.LayoutParams(-1,0,1));
         root.addView(content,new FrameLayout.LayoutParams(-1,-1));
         setContentView(root);column=null;
@@ -338,7 +349,7 @@ public final class DlnaLibraryActivity extends Screen {
         if(c.resume>0)meta.add("Resume from "+PlaybackPolicy.clock(c.resume)+" (on this TV)");
         heroMeta.setText(String.join("  ·  ",meta));
         String[] details=posters.details(c,udn);String overview=details==null?"":details[0];
-        heroText.setText(!overview.isEmpty()?overview:postersOn?"":Posters.HINT);
+        heroText.setText(overview);
         wantedBack=c.key();handler.removeCallbacks(backdropLater);
         Bitmap b=posters.cachedBackdrop(c,light);
         if(b!=null){toBack(b,c.key());return;}

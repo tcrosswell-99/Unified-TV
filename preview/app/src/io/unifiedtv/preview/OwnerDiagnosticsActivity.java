@@ -49,6 +49,9 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
             String status=HaStatus.before(config);
             if(status==null){Exception error=null;try{LocalApi.get(config,"/api/");}catch(Exception e){error=e;}status=HaStatus.after(error);}
             out.append("Home Assistant: ").append(status).append(". ").append(HaStatus.explain(status));
+            // Owner's TCL, run 93: which phone-setup step failed last, in plain words (no address, no secret).
+            String problem=prefs.getString(PhoneSetup.HA_PROBLEM,"");
+            out.append("\nLast phone setup problem: ").append(problem.isEmpty()?"none":problem+", "+OwnerChecks.when(this,prefs.getLong(PhoneSetup.HA_PROBLEM_AT,0)));
             JSONObject names=house.optJSONObject("names");
             out.append("\nDoorbell: ").append(name(names,"door",house.optString("door"))).append("\nPerson sensor: ").append(name(names,"person",house.optString("person"))).append("\nCamera: ").append(name(names,"camera",house.optString("camera")));
             out.append("\nLast doorbell event on this TV: ").append(prefs.getString("householdLastEvent","none")).append(", ").append(OwnerChecks.when(this,prefs.getLong("householdLastEventAt",0)));
@@ -65,6 +68,10 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
         group("Home background");card();
         text(AmbientLayer.diagnosis(prefs,AmbientLayer.tvAnimations(),android.os.SystemClock.uptimeMillis())+"\n"+OwnerChecks.animationScales(scale(Settings.Global.WINDOW_ANIMATION_SCALE),scale(Settings.Global.TRANSITION_ANIMATION_SCALE),scale(Settings.Global.ANIMATOR_DURATION_SCALE))
             +"\nMemory class: "+MemoryBudget.get(this)+"; pictures in memory "+(Posters.get(this).cacheUsed()>>20)+" of "+(Posters.get(this).cacheLimit()>>20)+" MB.",17);
+
+        // Owner's TCL, 27 October 2026: no posters showed. Whether a key is saved, what TMDB said last, and what didn't match.
+        group("Film posters");card();TextView film=text("Checking…",17);
+        worker.execute(()->post(film,Posters.get(getApplicationContext()).diagnosis(TmdbKey.saved(this),at->OwnerChecks.when(this,at))));
 
         group("This app");card();
         text(app(),17);

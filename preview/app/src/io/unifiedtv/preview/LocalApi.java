@@ -12,7 +12,11 @@ final class LocalApi {
         if (!config.optBoolean("enabled")) throw new IOException("Not configured");
         URI target = Endpoint.resolve(config.getString("base"), path);
         if ("http".equals(target.getScheme()) && !config.optBoolean("httpConsent")) throw new IOException("HTTP consent required");
-        HttpURLConnection c = (HttpURLConnection)target.toURL().openConnection();
+        // A home-network server (Home Assistant, Jellyfin at home) is reached straight over Wi-Fi/Ethernet under a VPN when
+        // Android allows it, as DLNA is (owner's TCL with NordVPN, run 93); anything else takes the default route.
+        android.content.Context app = LocalDiscovery.app;
+        android.net.Network lan = app != null && LocalDiscovery.homeHost(target.getHost()) ? LocalDiscovery.lan(app) : null;
+        HttpURLConnection c = (HttpURLConnection)(lan != null ? lan.openConnection(target.toURL()) : target.toURL().openConnection());
         c.setConnectTimeout(5000); c.setReadTimeout(8000); c.setInstanceFollowRedirects(false); c.setRequestMethod(method);
         String token = config.optString("token");
         if (!token.isEmpty()) c.setRequestProperty(config.optString("kind").equals("ha") ? "Authorization" : "X-Emby-Token",

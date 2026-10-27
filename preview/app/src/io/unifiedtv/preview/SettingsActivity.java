@@ -538,7 +538,9 @@ public final class SettingsActivity extends Screen {
         button("Performance check",()->startActivity(new Intent(this,PerformanceActivity.class)));
         // Spec 6.1: hardware key logging only in owner-authorised debug builds (the review build is one).
         if(RemoteCheckActivity.allowed(this))button("Check your remote's buttons",()->startActivity(new Intent(this,RemoteCheckActivity.class)));
-        text("No automatic cleanup or factory package changes are performed.",15);
+        // Optional clean-up (SPEC "Optional TV Performance & Cleanup"): off until an adult chooses each app; asks for the PIN itself.
+        button("Optional clean-up",()->startActivity(new Intent(this,CleanupActivity.class)));
+        text("Nothing is cleaned up automatically. Optional clean-up turns off only the apps you choose, one by one, and can undo it.",15);
         // Spec 30: deliberately small and last; adult only; plain words. Only in the app that can be Home.
         if(DefaultHome.available(this)){Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(21));original.setMinHeight(0);original.setMinimumHeight(px(52));original.setAlpha(.85f);}
     }

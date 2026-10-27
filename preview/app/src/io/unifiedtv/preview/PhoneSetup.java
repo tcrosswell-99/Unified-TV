@@ -127,8 +127,17 @@ final class PhoneSetup {
         try { old = new Vault(c).read("ha"); } catch (Exception e) { old = new JSONObject(); }
         old.put("base", base).put("enabled", true).put("kind", "ha").put("token", token).put("user", "").put("httpConsent", httpConsent).put("how", how);
         new Vault(c).save("ha", old);
+        c.getSharedPreferences(HouseholdSettings.PREFS, 0).edit().remove(HA_PROBLEM).remove(HA_PROBLEM_AT).apply();
         EventLog.record(c, EventLog.CONNECTION, "Home Assistant connected");
         restartAlerts(c);
+    }
+    /** The last Home Assistant setup step that failed and when (Owner diagnostics): plain words, never an address or a secret. */
+    static final String HA_PROBLEM = "haSetupProblem", HA_PROBLEM_AT = "haSetupProblemAt";
+    /** Records which Home Assistant setup step failed (PhoneFlows.STEP_*), for Owner diagnostics and the event log. */
+    static void haProblem(Context c, String step) {
+        if (c == null || step == null || step.isEmpty()) return;
+        try { c.getSharedPreferences(HouseholdSettings.PREFS, 0).edit().putString(HA_PROBLEM, step).putLong(HA_PROBLEM_AT, System.currentTimeMillis()).apply(); } catch (RuntimeException ignored) {}
+        EventLog.record(c, EventLog.CONNECTION, "Home Assistant: " + step);
     }
     /** The household alert service uses the saved connection: restart it if alerts are meant to be on. */
     static void restartAlerts(Context c) {

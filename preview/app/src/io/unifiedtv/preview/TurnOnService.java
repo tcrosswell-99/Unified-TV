@@ -51,7 +51,7 @@ public final class TurnOnService extends Service {
         NotificationManager manager=getSystemService(NotificationManager.class);
         if(manager!=null)manager.createNotificationChannel(new NotificationChannel(CHANNEL,TurnOn.TITLE,NotificationManager.IMPORTANCE_LOW));
         Intent settings=new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.APPEARANCE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent open=PendingIntent.getActivity(this,OPEN_SETTINGS,settings,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent open=PendingIntent.getActivities(this,OPEN_SETTINGS,Launch.overHome(this,settings),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);   // Back from it: Home
         startForeground(NOTIFICATION,new Notification.Builder(this,CHANNEL).setContentTitle(TurnOn.TITLE).setContentText("On. Change it in Settings > Appearance & Home.")
             .setSmallIcon(android.R.drawable.ic_lock_power_off).setOngoing(true).setContentIntent(open).build());
         screen=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){heard(i==null?null:i.getAction());}};

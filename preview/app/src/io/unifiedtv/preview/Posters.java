@@ -25,11 +25,21 @@ import java.util.concurrent.*;
  * SET-034 manual correction: the household can choose a tile's picture itself ("Wrong picture?", PictureFixActivity): one
  * of TMDB's candidates, or no picture at all. The choice is kept per item (server UDN and item id, or the programme's key)
  * in its own file, wins over any automatic match and over the server's own picture, and survives clearing the cache.
+ *
+ * A key added later (owner's TCL, 27 October 2026): a title shown without a key has nothing saved against it, so it is
+ * looked up as soon as there is one; when the key changes ({@link #refreshKey}, the library calls it on coming back),
+ * pictures held in memory (perhaps the server's own) are dropped so every tile asks again. A refused key or no internet
+ * pauses lookups briefly instead of asking for every tile. Owner diagnostics read what happened ({@link #diagnosis}).
  */
 final class Posters {
     static final long DISK=80L*1024*1024,MISS_RETRY_MS=14L*24*60*60*1000,KEY_TTL_MS=60_000,GAP_MS=120;
     static final int MATCH_MAX=6000,POSTER_W=300,POSTER_H=450,BACK_W=960,BACK_H=540;
-    static final String HINT="Posters and backgrounds can be added in Settings > Library & Media.";
+    static final String HINT="Add your free TMDB key in Settings > Library & Media > Film posters to see posters";
+    /** After TMDB refused the key, or couldn't be reached: lookups wait this long (or until the key changes). */
+    static final long REFUSED_PAUSE_MS=10*60_000L,OFFLINE_PAUSE_MS=30_000L;
+    /** The last TMDB request's result, for Owner diagnostics. */
+    static final String OK="ok",REFUSED="refused",OFFLINE="offline",BUSY="busy",ERROR="error",NO_KEY="no key";
+    static final int UNMATCHED_KEPT=5;
 
     interface Callback{void done(Bitmap b);}
     /** Tests only: a fake TMDB and key (no network in tests). */
@@ -50,7 +60,10 @@ final class Posters {
     private final Map<String,List<Callback>> waiting=new HashMap<>();
     /** Summaries of matched titles for the main thread: filled as matches are read, never locked against the disk. */
     private final ConcurrentHashMap<String,String[]> summaries=new ConcurrentHashMap<>();
-    private JSONObject matches,fixes;private boolean dirty;private long savedAt,lastCall,keyAt;private String key="";
+    private JSONObject matches,fixes;private boolean dirty,keyRead;private long savedAt,lastCall,keyAt;private String key="";
+    private volatile long pausedUntil;
+    /** Owner diagnostics: the last request's result and HTTP status, when, and the last titles TMDB had no match for. */
+    private String lastResult;private int lastCode;private long lastAt;private final ArrayDeque<String> unmatched=new ArrayDeque<>();
 
     private Posters(Context app){
         this.app=app;dir=new File(app.getFilesDir(),"posters");disk=new PhotoCache(new File(dir,"img"),DISK);
@@ -86,10 +99,27 @@ final class Posters {
         return new Tmdb(key(c),null).usable()?"On: posters and backgrounds come from TMDB, matched by title":"Off: add your free TMDB key from your phone to show posters";
     }
     static boolean on(Context c){return new Tmdb(key(c),null).usable();}
-    private synchronized Tmdb tmdb(){
-        long now=System.currentTimeMillis();if(now-keyAt>KEY_TTL_MS||now<keyAt){key=key(app);keyAt=now;}
-        Tmdb t=new Tmdb(key,transport);return t.usable()?t:null;
+    private Tmdb tmdb(){
+        boolean changed=false;Tmdb t;
+        synchronized(this){long now=System.currentTimeMillis();
+            if(now-keyAt>KEY_TTL_MS||now<keyAt){String k=key(app);changed=keyRead&&!k.equals(key);key=k;keyAt=now;keyRead=true;}
+            t=new Tmdb(key,transport);}
+        if(changed)keyChanged();
+        return t.usable()?t:null;
     }
+    /**
+     * Reads the key again now (the library calls this when it comes back to the front, perhaps after phone setup added
+     * one). True when it changed: then the pictures held in memory are dropped so every tile asks again.
+     */
+    boolean refreshKey(){
+        String k=key(app);boolean changed;
+        synchronized(this){changed=keyRead&&!k.equals(key);key=k;keyAt=System.currentTimeMillis();keyRead=true;}
+        if(changed)keyChanged();
+        return changed;
+    }
+    /** Whether the key last read is one TMDB could accept (no Vault read: see {@link #refreshKey}). */
+    synchronized boolean usable(){if(!keyRead){key=key(app);keyAt=System.currentTimeMillis();keyRead=true;}return new Tmdb(key,null).usable();}
+    private void keyChanged(){pausedUntil=0;memory.evictAll();summaries.clear();}
 
     // --- public: tiles and backgrounds
     /** A picture already in memory for this tile, or null (then ask with {@link #poster}). */
@@ -174,17 +204,22 @@ final class Posters {
             if(!m.optBoolean("miss")){summaries.put(id,new String[]{m.optString("o"),m.optString("y")});return new Tmdb.Match(m.optString("t"),m.optLong("id"),m.optString("p"),m.optString("b"),"","");}
             if(now-m.optLong("at")<MISS_RETRY_MS)return null;
         }
-        Tmdb t=tmdb();if(t==null||MediaName.normal(j.title).isEmpty())return null;
+        if(MediaName.normal(j.title).isEmpty())return null;
+        Tmdb t=tmdb();if(t==null){note(NO_KEY,0,null);return null;}   // nothing saved: looked up once there is a key
+        if(System.currentTimeMillis()<pausedUntil)return null;
         for(int attempt=0;attempt<2;attempt++){
             try{
                 long gap=lastCall+GAP_MS-System.currentTimeMillis();if(gap>0)Thread.sleep(gap);lastCall=System.currentTimeMillis();
                 Tmdb.Match found=t.find(j.tv,j.title,j.year);
                 JSONObject rec=new JSONObject().put("q",q).put("at",now);
                 if(found==null)rec.put("miss",true);else rec.put("t",found.type).put("id",found.id).put("p",found.poster).put("b",found.backdrop).put("o",found.overview).put("y",found.year);
+                note(OK,200,found==null?j.title+(j.year.isEmpty()?"":" ("+j.year+")"):null);
                 remember(id,rec);if(found!=null)summaries.put(id,new String[]{found.overview,found.year});return found;
-            }catch(Tmdb.Busy b){try{Thread.sleep(Math.min(15_000,b.waitMs));}catch(InterruptedException e){Thread.currentThread().interrupt();return null;}}
+            }catch(Tmdb.Busy b){note(BUSY,429,null);try{Thread.sleep(Math.min(15_000,b.waitMs));}catch(InterruptedException e){Thread.currentThread().interrupt();return null;}}
+            catch(Tmdb.HttpError e){   // refused (401/403) or a TMDB error: nothing is cached, so it is tried again later
+                note(e.refused()?REFUSED:ERROR,e.code,null);if(e.refused())pausedUntil=System.currentTimeMillis()+REFUSED_PAUSE_MS;return null;}
             catch(InterruptedException e){Thread.currentThread().interrupt();return null;}
-            catch(Exception e){return null;}   // offline or refused: nothing is cached, so it is tried again next time
+            catch(Exception e){note(OFFLINE,0,null);pausedUntil=System.currentTimeMillis()+OFFLINE_PAUSE_MS;return null;}   // offline: tried again shortly
         }
         return null;
     }
@@ -243,7 +278,64 @@ final class Posters {
     /** For tests: the match saved for a tile, or null. */
     synchronized JSONObject saved(String udn,String lookupKey){return matches().optJSONObject(id(udn,lookupKey));}
     /** Settings > Privacy (or a reset): forget matches and pictures. The household's own corrections (SET-034) stay. */
-    synchronized void clear(){memory.evictAll();summaries.clear();matches=new JSONObject();dirty=true;save();disk.clear();}
+    synchronized void clear(){memory.evictAll();summaries.clear();matches=new JSONObject();dirty=true;save();disk.clear();
+        lastResult="";lastCode=0;lastAt=0;unmatched.clear();new File(dir,"status.json").delete();}
+
+    // --- Owner diagnostics: what happened with TMDB on this TV
+    /** Keeps the last request's result; saved when it changes or a title had no match (cleaned titles only, never a file name). */
+    private synchronized void note(String result,int code,String missed){
+        status();boolean changed=!result.equals(lastResult)||code!=lastCode;
+        lastResult=result;lastCode=code;lastAt=System.currentTimeMillis();
+        if(missed!=null&&!missed.trim().isEmpty()){unmatched.remove(missed);unmatched.addFirst(missed);while(unmatched.size()>UNMATCHED_KEPT)unmatched.removeLast();changed=true;}
+        if(changed)saveStatus();
+    }
+    private synchronized void status(){
+        if(lastResult!=null)return;lastResult="";
+        try(InputStream in=new FileInputStream(new File(dir,"status.json"))){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);
+            JSONObject o=new JSONObject(out.toString("UTF-8"));lastResult=o.optString("r");lastCode=o.optInt("c");lastAt=o.optLong("at");
+            JSONArray u=o.optJSONArray("u");if(u!=null)for(int i=0;i<u.length()&&unmatched.size()<UNMATCHED_KEPT;i++)unmatched.addLast(u.optString(i));}
+        catch(Exception ignored){/* none yet */}
+    }
+    private synchronized void saveStatus(){
+        try{if(!dir.isDirectory()&&!dir.mkdirs())return;File tmp=new File(dir,"status.tmp"),f=new File(dir,"status.json");
+            JSONObject o=new JSONObject().put("r",lastResult).put("c",lastCode).put("at",lastAt).put("u",new JSONArray(new ArrayList<>(unmatched)));
+            try(OutputStream out=new FileOutputStream(tmp)){out.write(o.toString().getBytes(StandardCharsets.UTF_8));}
+            if(!tmp.renameTo(f))tmp.delete();}catch(Exception ignored){}
+    }
+    /** The last request's result ("" when there was none), its HTTP status and when (ms), for tests and diagnostics. */
+    synchronized String lastResult(){status();return lastResult;}
+    synchronized int lastCode(){status();return lastCode;}
+    synchronized long lastAt(){status();return lastAt;}
+    synchronized List<String> unmatched(){status();return new ArrayList<>(unmatched);}
+    /** {matched, looked up}: titles TMDB matched, of all those looked up on this TV (saved matches and no-matches). */
+    synchronized int[] matchCounts(){
+        int hit=0,all=0;JSONObject m=matches();for(Iterator<String> it=m.keys();it.hasNext();){JSONObject r=m.optJSONObject(it.next());if(r==null)continue;all++;if(!r.optBoolean("miss"))hit++;}
+        return new int[]{hit,all};
+    }
+    /** Owner diagnostics' "Film posters" lines (reads this TV's storage: off the main thread). {@code when} words lastAt. */
+    String diagnosis(boolean keySaved,java.util.function.LongFunction<String> when){
+        int[] n=matchCounts();long at=lastAt();
+        return report(keySaved,lastResult(),lastCode(),at>0&&when!=null?when.apply(at):"",n[0],n[1],unmatched());
+    }
+    /** Pure: the lines themselves. Never the key, a file name or an address: the cleaned titles only. */
+    static String report(boolean keySaved,String result,int code,String when,int matched,int total,List<String> unmatched){
+        StringBuilder b=new StringBuilder("TMDB key: ").append(keySaved?"saved":"not saved. "+HINT+".");
+        b.append("\nLast TMDB request: ").append(plain(result,code)).append(when==null||when.isEmpty()?"":" ("+when+")");
+        b.append("\nMatched: ").append(matched).append(" of ").append(total).append(total==1?" title looked up":" titles looked up");
+        if(unmatched!=null&&!unmatched.isEmpty())b.append("\nNo match lately: ").append(String.join("; ",unmatched));
+        return b.toString();
+    }
+    static String plain(String result,int code){
+        if(result==null||result.isEmpty())return "none yet on this TV";
+        switch(result){
+            case OK:return "ok, HTTP "+code;
+            case REFUSED:return "refused, HTTP "+code+": TMDB didn't accept the key. Add it again from your phone";
+            case OFFLINE:return "offline: TMDB couldn't be reached. Check this TV's internet connection";
+            case BUSY:return "busy, HTTP 429: TMDB asked Unified TV to slow down";
+            case NO_KEY:return "not sent: no TMDB key on this TV";
+            default:return "error, HTTP "+code;
+        }
+    }
 
     // --- SET-034: the household's own choice of picture
     /** The saved choice for this tile ({"none":true}, or a TMDB match), or null when the picture is chosen automatically. */

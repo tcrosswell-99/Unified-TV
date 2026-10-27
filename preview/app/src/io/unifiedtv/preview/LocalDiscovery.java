@@ -56,6 +56,40 @@ final class LocalDiscovery {
     /** Best effort: a VPN that forbids bypass refuses this, and discovery then uses the default route as before. */
     static void bind(Context c,DatagramSocket socket){Network n=c==null?null:lan(c);if(n!=null)try{n.bindSocket(socket);}catch(Exception ignored){}}
     static HttpURLConnection open(Context c,URL url)throws IOException{Network n=c==null?null:lan(c);return (HttpURLConnection)(n!=null?n.openConnection(url):url.openConnection());}
+    /** One request on a connection that request() opened; the connection is closed afterwards. */
+    interface Call<T>{T run(HttpURLConnection h)throws IOException;}
+    /**
+     * One request to a home-network server, as DlnaClient.exchange does it: straight over Wi-Fi/Ethernet under a VPN when
+     * Android allows it (lan), otherwise the default route; a VPN that refuses the bound connection (EPERM) gets one retry
+     * over the default route at once, which is what lets NordVPN's own local-network allowance work.
+     */
+    static <T> T request(Context c,URL url,Call<T> call)throws IOException{
+        Network n=c==null?null:lan(c);
+        if(n!=null){HttpURLConnection h=(HttpURLConnection)n.openConnection(url);
+            try{return call.run(h);}catch(IOException e){if(!refused(e))throw e;blocked=true;}finally{h.disconnect();}}
+        HttpURLConnection h=(HttpURLConnection)url.openConnection();
+        try{return call.run(h);}finally{h.disconnect();}
+    }
+    /**
+     * The application, for requests made where no screen is at hand (LocalApi); set once by PreviewApp. Null in plain JVM
+     * tests, where requests take the default route.
+     */
+    static volatile Context app;
+    /**
+     * Whether a host is on the home network by its own form, without looking anything up: a private, link-local or
+     * unique-local address, or a .local name. Only these are sent straight over Wi-Fi/Ethernet past a VPN.
+     */
+    static boolean homeHost(String host){
+        if(host==null||host.isEmpty())return false;
+        String h=host.toLowerCase(Locale.ROOT).replaceAll("^\\[|\\]$","");
+        if(h.endsWith(".local")||h.endsWith(".local."))return true;
+        if(h.matches("\\d{1,3}(\\.\\d{1,3}){3}")||(h.contains(":")&&h.matches("[0-9a-f:.]+(%[a-z0-9_.-]+)?")))
+            try{InetAddress a=InetAddress.getByName(h.replaceAll("%.*$",""));
+                if(a.isSiteLocalAddress()||a.isLinkLocalAddress())return true;
+                byte[] b=a.getAddress();return b.length==16&&(b[0]&0xfe)==0xfc;   // fc00::/7, IPv6's private range
+            }catch(Exception e){return false;}
+        return false;
+    }
     /** The TV's own private IPv4 address on the home network, or null. */
     static Inet4Address address(Context c){
         try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=home(c);LinkProperties link=n==null||cm==null?null:cm.getLinkProperties(n);

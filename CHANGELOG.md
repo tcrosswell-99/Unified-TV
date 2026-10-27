@@ -10,6 +10,11 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **Optional TV clean-up (OD-25, Android):** Settings > Updates & About > Advanced > Optional clean-up. Adults only, and only on a TV whose firmware matches a tested list (TCL BeyondTV4/6 first); other TVs get read-only guidance. After the TV's own "Allow debugging?" prompt it reads the TV first, changes nothing until each app is chosen and confirmed, writes a recovery record before the first change, turns apps off (never uninstalls), and offers Undo all and a restore record for a PC via the phone. The TV's own Home, Live TV, inputs, updater, network, Play, keyboards, accessibility, VPN and Unified TV are never offered. It then guides you to turn debugging off and checks it is closed. **Not tested** on a television.
+- **Back stays in Unified TV (OD-24, launcher):** Back at Home closes any open layer and returns to the first dock tile instead of dropping to the TV's old Home; a held Back counts once. Notifications that open Settings now put Home underneath. **Not tested** on a television.
+- **Films, not folders (Android library):** a NAS folder holding one film shows as that film, so one OK plays it, titled from the folder. Samples (by name, a Sample folder, a much smaller file or a very short clip), trailers and extras are left out. **Not tested** on a television.
+- **Football: every club in the top three English leagues:** the Premier League (20), Championship (24) and League One (24) come from a bundled list (2025–26 season, corrected from TheSportsDB's fixtures), beyond TheSportsDB's 10-team free limit. Fixtures are read round by round. "No fixtures found yet" shows when a club has none. **Not tested** on a television.
+
 - **Football with no account (OD-22):** pick your UK team from TheSportsDB's league lists and fixtures appear; no sign-up, key or phone step. API-Football is optional for more detail, used first when a key is saved. **Not tested** on a television; TheSportsDB's free service was not reachable from the build environment.
 - **Open Unified TV when the TV turns on (OD-23, launcher only):** an opt-in setting. After start-up or standby, Unified TV comes to the front once, never over playback, a call, Live TV or an alarm. It uses the "Display over other apps" permission and never catches remote buttons. **Not tested** on a television.
 - **Disney+ tile:** Disney's own wordmark in white, from the owner's SVG.
@@ -62,6 +67,9 @@ Nothing in a release has been tested on a television unless the entry says so. P
 - **Register status names** follow the v3.3 developer pack, as the owner chose on 25 October 2026: `test_passed_nonphysical`, `physical_verified` and `unsupported_verified` replace `automated_pass`, `hardware_pass` and `unsupported`. The pack has no failed or deferred status, so a failed TV test stays `implemented_unverified` with the failure written down. The 44 rows whose automated tests pass are now `test_passed_nonphysical`; none is `physical_verified`.
 
 ### Fixed
+
+- **Home Assistant sign-in (phone setup):** with NordVPN on, the TV's alerts and status checks now reach Home Assistant over the home network; phones are sent to Home Assistant's number address instead of `homeassistant.local`; a repeat attempt no longer fails to create the TV's key; every failure says which step failed, on the phone and on the TV, and Owner diagnostics shows the last one. **Not tested** on a television.
+- **Film posters:** a TMDB key added on the phone now takes effect without restarting; edition names, web-address prefixes and hyphen-joined names are cleaned before matching; the library says when no key is saved; Owner diagnostics has a Film posters section. **Not tested** on a television.
 
 - **From the owner's second TCL test (25 October 2026):**
   - With NordVPN connected, the library now explains that Nord is blocking the home network, instead of saying the media server is off, and reaches the NAS where Nord allows local devices.

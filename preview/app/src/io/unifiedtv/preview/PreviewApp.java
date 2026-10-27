@@ -2,7 +2,7 @@ package io.unifiedtv.preview;
 /** Household stream paths must never appear in library diagnostics. */
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public final class PreviewApp extends android.app.Application {
-    @Override public void onCreate(){super.onCreate();MemoryBudget.get(this);HouseholdSettings.ensure(this);TurnOn.track(this);androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF);}
+    @Override public void onCreate(){super.onCreate();LocalDiscovery.app=this;MemoryBudget.get(this);HouseholdSettings.ensure(this);TurnOn.track(this);androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF);}
 
     /**
      * Memory pass (owner's TCL: 2 GB, lmkd and kswapd busy, 25 October 2026): the app-wide caches give memory back when

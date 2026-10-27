@@ -17,9 +17,20 @@ import java.util.*;
  * Series: a name with S01E02 (or 1x02, "Season 1 Episode 2") is an episode; so is a file inside a "Season 1" folder, or
  * inside a programme's own folder in a folder named like TV ("TV", "Series", "Shows", "Programmes"). Episodes of one
  * programme share one tile. Anything else is a film.
+ *
+ * Films in folders (owner's TCL, 27 October 2026, Synology Media Server): many films sit in a folder of their own
+ * ("Films/Title (2019)/Title.2019.1080p.mkv", perhaps with "sample.mkv"). Samples, trailers and extras are left out
+ * ({@link #mains}), and a folder that comes down to one main video is that film: one tile, one OK plays it, named and
+ * dated from the folder when the folder says more than the file ({@link #folderSaysMore}). A folder with several main
+ * videos (a season, a collection) shows each one, as before. Inside a folder named for TV, programmes work as before;
+ * a "Films" folder inside one is films.
  */
 final class LibraryCatalogue {
     static final int ROW_MAX=30,CONTINUE_MAX=20,RECENT_MAX=30;
+    /** A sample by size: under a tenth of its folder's largest video and under 300 MB. */
+    static final long SAMPLE_MAX_BYTES=300L*1024*1024;static final int SAMPLE_SHARE=10;
+    /** A sample by length: under five minutes beside a main video over forty. */
+    static final long SHORT_MS=5*60_000L,FEATURE_MS=40*60_000L;
     static final long RECENT_GRACE_MS=60_000;
     enum Kind{FILM,EPISODE}
 
@@ -97,9 +108,15 @@ final class LibraryCatalogue {
                 newBy.merge(k,root.created>0&&e.seen>root.created+RECENT_GRACE_MS?e.seen:0L,Math::max);
             }
         }
+        // Folder by folder: samples and extras out; a folder that comes down to one main video is that film.
+        Map<String,List<LibraryIndex.Entry>> byFolder=new LinkedHashMap<>();
+        for(LibraryIndex.Entry e:byStream.values())byFolder.computeIfAbsent(e.root+"\n"+(e.pathIds.isEmpty()?"":e.pathIds.get(e.pathIds.size()-1)),k->new ArrayList<>()).add(e);
+        Set<LibraryIndex.Entry> kept=Collections.newSetFromMap(new IdentityHashMap<>()),sole=Collections.newSetFromMap(new IdentityHashMap<>());
+        for(List<LibraryIndex.Entry> group:byFolder.values()){List<LibraryIndex.Entry> mains=mains(group);kept.addAll(mains);if(mains.size()==1&&!mains.get(0).pathIds.isEmpty())sole.add(mains.get(0));}
         for(Map.Entry<String,LibraryIndex.Entry> me:byStream.entrySet()){
             LibraryIndex.Entry e=me.getValue();boolean kids=kidsBy.getOrDefault(me.getKey(),false);
-            Title t=classify(e,rootNames.get(e.root),origin,udn);t.kids=kids;t.seen=newBy.getOrDefault(me.getKey(),0L);
+            if(!kept.contains(e))continue;
+            Title t=classify(e,rootNames.get(e.root),origin,udn,sole.contains(e));t.kids=kids;t.seen=newBy.getOrDefault(me.getKey(),0L);
             if(lib.kids){
                 // Kids: inside a Kids folder, and no rating Kids may not watch. The player checks again with the server.
                 if(!kids||!KidsPolicy.allows(t.item(udn),lib.kidsIds,scheme))continue;
@@ -164,8 +181,55 @@ final class LibraryCatalogue {
         return out;
     }
 
+    /**
+     * The main videos of one folder (all its entries share one path): never a sample or an extra by name ("sample.mkv",
+     * "Title-sample.mkv", "Title - Trailer.mkv", anything in a "Sample" or "Extras" folder), nor one far smaller than the
+     * folder's largest (under a tenth and under 300 MB), nor one under five minutes beside a main video over forty. Sizes
+     * and lengths are the server's (DLNA res@size, res@duration); without them only the names count.
+     */
+    static List<LibraryIndex.Entry> mains(List<LibraryIndex.Entry> folder){
+        List<LibraryIndex.Entry> out=new ArrayList<>();if(folder==null||folder.isEmpty())return out;
+        // One path for the whole folder: an extras folder in it (a "Sample" one always; "Extras" unless seasons sit below it,
+        // as in a programme called Extras).
+        List<String> path=folder.get(0).pathNames;boolean sampleFolder=false,extrasFolder=false;
+        for(int i=0;i<path.size();i++){String n=path.get(i);if(!MediaName.extrasFolder(n))continue;if(MediaName.sample(n))sampleFolder=true;else if(!seasonBelow(path,i))extrasFolder=true;}
+        if(sampleFolder)return out;
+        List<LibraryIndex.Entry> named=new ArrayList<>();long biggest=0,longest=0;
+        for(LibraryIndex.Entry e:folder){
+            if(MediaName.sample(e.title)||MediaName.extra(e.title))continue;
+            if(extrasFolder&&!MediaName.parse(e.title).episodic())continue;
+            named.add(e);biggest=Math.max(biggest,e.size);longest=Math.max(longest,e.duration);
+        }
+        for(LibraryIndex.Entry e:named){
+            if(e.size>0&&e.size*SAMPLE_SHARE<biggest&&e.size<SAMPLE_MAX_BYTES)continue;
+            if(e.duration>0&&e.duration<SHORT_MS&&longest>FEATURE_MS)continue;
+            out.add(e);
+        }
+        return out;
+    }
+    /** A numbered clip rather than a title: "01 - Part one", "2. Second half", "Part 1", "Disc 2". */
+    private static final java.util.regex.Pattern NUMBERED=java.util.regex.Pattern.compile("(?i)^(?:\\d{1,3}\\s*[-.:)]\\s*\\S|(?:episode|ep|part|pt|disc|cd)\\s*\\d)");
+    private static boolean seasonBelow(List<String> path,int at){for(int j=at+1;j<path.size();j++)if(MediaName.seasonFolder(path.get(j))>=0)return true;return false;}
+    /**
+     * For a folder holding one film: whether the folder's name is the better title. Yes when the file's is generic
+     * ("movie.mkv"), the same title, a scene name that no longer reads as one ("grp-ttl1080p"), a numbered clip ("01 -
+     * Part one"), or the folder's title with more after it ("Title 3D"); and when the folder gives a year the file agrees
+     * with or lacks. Never a folder named for films as a kind ("Films") or a season.
+     */
+    static boolean folderSaysMore(MediaName.Parsed file,String fileRaw,MediaName.Parsed folder,String folderRaw){
+        if(folder==null||MediaName.normal(folder.title).isEmpty()||MediaName.generic(folder.title)||MediaName.filmsFolder(folderRaw)||MediaName.seasonFolder(folderRaw)>=0)return false;
+        String f=MediaName.normal(file.title),d=MediaName.normal(folder.title);
+        if(MediaName.generic(file.title)||f.isEmpty()||f.equals(d))return true;
+        if(!folder.year.isEmpty()&&(file.year.isEmpty()||Math.abs(Integer.parseInt(file.year)-Integer.parseInt(folder.year))<=1))return true;
+        String stem=fileRaw==null?"":fileRaw.trim();
+        if(!stem.contains(" ")&&stem.equals(stem.toLowerCase(Locale.ROOT))&&stem.contains("-"))return true;
+        if(NUMBERED.matcher(stem).find()&&!f.startsWith(d))return true;
+        return f.startsWith(d+" ");
+    }
     /** One saved file as a film or an episode, with a clean name (MediaName). */
-    static Title classify(LibraryIndex.Entry e,String rootName,URI origin,String udn){
+    static Title classify(LibraryIndex.Entry e,String rootName,URI origin,String udn){return classify(e,rootName,origin,udn,false);}
+    /** {@code sole}: the only main video in its folder, so a film there may take its folder's name (folderSaysMore). */
+    static Title classify(LibraryIndex.Entry e,String rootName,URI origin,String udn,boolean sole){
         Title t=new Title();t.id=e.id;t.root=e.root;t.stableId="dlna:"+(udn==null?"":udn)+":"+e.id;t.url=LibraryIndex.absolute(e.url,origin);t.art=LibraryIndex.absolute(e.art,origin);
         t.upnpClass=e.upnpClass;t.ratings.addAll(e.ratings);t.depth=e.pathIds.size();
         MediaName.Parsed p=MediaName.parse(e.title);
@@ -174,7 +238,8 @@ final class LibraryCatalogue {
         for(int i=e.pathNames.size()-1;i>=0;i--){int s=MediaName.seasonFolder(e.pathNames.get(i));if(s>=0){if(seasonAt<0)seasonAt=i;continue;}showAt=i;break;}
         MediaName.Parsed folder=showAt>=0?MediaName.parse(e.pathNames.get(showAt)):null;
         int folderSeason=seasonAt>=0?MediaName.seasonFolder(e.pathNames.get(seasonAt)):-1;
-        boolean tvRoot=tvRoot(rootName);
+        // A folder named for TV holds programmes, except under a "Films" folder inside it.
+        boolean tvRoot=tvRoot(rootName);if(tvRoot)for(String n:e.pathNames)if(MediaName.filmsFolder(n)){tvRoot=false;break;}
         if(p.episodic()){
             t.kind=Kind.EPISODE;t.season=p.season;t.episode=p.episode;t.episodeName=p.episodeTitle;
             boolean useFolder=folder!=null&&(MediaName.generic(p.title)||MediaName.normal(p.title).equals(MediaName.normal(folder.title)));
@@ -189,7 +254,8 @@ final class LibraryCatalogue {
         }else{
             t.kind=Kind.FILM;t.name=p.title;t.year=p.year;
             // "Title (2019)/Title.mkv": the folder knows the year; "Title (2019)/movie.mkv": the folder knows the title.
-            if(folder!=null&&(MediaName.generic(p.title)||(p.year.isEmpty()&&MediaName.normal(p.title).equals(MediaName.normal(folder.title))))){
+            if(sole&&folder!=null&&folderSaysMore(p,e.title,folder,e.pathNames.get(showAt))){t.name=folder.title;if(!folder.year.isEmpty())t.year=folder.year;}
+            else if(folder!=null&&(MediaName.generic(p.title)||(p.year.isEmpty()&&MediaName.normal(p.title).equals(MediaName.normal(folder.title))))){
                 if(MediaName.generic(p.title))t.name=folder.title;if(t.year.isEmpty())t.year=folder.year;}
         }
         if(t.kind==Kind.EPISODE){
