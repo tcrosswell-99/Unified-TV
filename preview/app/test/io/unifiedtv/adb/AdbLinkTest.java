@@ -184,7 +184,7 @@ public class AdbLinkTest {
 
     /** Build run 99: notification access through the TV's debugging, only for Unified TV's own listener. */
     @Test public void notificationAccessOnlyForUnifiedTvsOwnListener() {
-        for (String app : new String[]{"io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview"}) {
+        for (String app : new String[]{"io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview", "io.unifiedtv.preview.devicecheck"}) {
             String c = AdbCommands.allowListener(app);
             assertEquals("cmd notification allow_listener " + app + "/io.unifiedtv.preview.MediaWatch", c);
             assertTrue(c, AdbCommands.allowed(c)); assertTrue("it changes the TV", AdbCommands.changes(c));

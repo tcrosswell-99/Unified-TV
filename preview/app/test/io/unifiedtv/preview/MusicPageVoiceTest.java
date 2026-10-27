@@ -57,7 +57,21 @@ public class MusicPageVoiceTest {
         MusicLibraryActivity.library = (c, l) -> new Library(l, null);   // refused unless a test says otherwise
         MusicFakes.installAmazon(app(), true, false);
     }
-    @After public void restore() { MusicLibraryActivity.library = factory; Echoes.finder = finder; MusicSessions.source = sessions; }
+    @After public void restore() { MusicLibraryActivity.library = factory; Echoes.finder = finder; MusicSessions.source = sessions; org.robolectric.shadows.ShadowSpeechRecognizer.reset(); }
+
+    /** The TV's speech service, usable inside the page, and the microphone allowed. */
+    private static void speechService() {
+        ComponentName service = new ComponentName("com.example.speech", "com.example.speech.Service");
+        Shadows.shadowOf(app().getPackageManager()).addServiceIfNotPresent(service);
+        Shadows.shadowOf(app().getPackageManager()).addIntentFilterForService(service, new IntentFilter(android.speech.RecognitionService.SERVICE_INTERFACE));
+        Shadows.shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.RECORD_AUDIO);
+    }
+    private static org.robolectric.shadows.ShadowSpeechRecognizer recogniser() {
+        return Shadows.shadowOf(org.robolectric.shadows.ShadowSpeechRecognizer.getLatestSpeechRecognizer());
+    }
+    private static android.os.Bundle heard(String w) {
+        android.os.Bundle b = new android.os.Bundle(); b.putStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION, new ArrayList<>(Arrays.asList(w))); return b;
+    }
 
     private static void speechScreen() {
         ShadowPackageManager spm = Shadows.shadowOf(app().getPackageManager());
@@ -110,6 +124,37 @@ public class MusicPageVoiceTest {
             assertEquals(MusicFakes.AMAZON, sent.getPackage());
             assertEquals(MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE, sent.getStringExtra(MediaStore.EXTRA_MEDIA_FOCUS));
             assertEquals("Rumours", sent.getStringExtra(MediaStore.EXTRA_MEDIA_ALBUM));
+        }
+    }
+
+    @Test public void stopCancelsAndALateAnswerPlaysNothing() {
+        speechService();
+        try (ActivityController<MusicActivity> c = Robolectric.buildActivity(MusicActivity.class).setup()) {
+            MusicActivity a = c.get(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Button mic = button(root(a), "Speak"); mic.performClick(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertTrue("listening inside the page", a.listeningForTest());
+            button(root(a), "Stop").performClick(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertFalse(a.listeningForTest());
+            recogniser().triggerOnPartialResults(heard("Rum"));
+            recogniser().triggerOnResults(heard("Rumours")); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals("nothing heard after Stop is used", "", field(root(a)).getText().toString());
+            assertNull("nothing plays", sentToAmazon(Shadows.shadowOf(a)));
+            assertNull("and no voice screen opens instead", Shadows.shadowOf(a).getNextStartedActivityForResult());
+        }
+    }
+
+    @Test public void leavingThePageWhileListeningCancelsIt() {
+        speechService();
+        try (ActivityController<MusicActivity> c = Robolectric.buildActivity(MusicActivity.class).setup()) {
+            MusicActivity a = c.get(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            button(root(a), "Speak").performClick(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertTrue(a.listeningForTest());
+            c.pause(); Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertFalse("the TV's Home (or anything else) over the page stops the microphone", a.listeningForTest());
+            recogniser().triggerOnResults(heard("Rumours")); recogniser().triggerOnError(android.speech.SpeechRecognizer.ERROR_NO_MATCH);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertNull("nothing starts Amazon Music from the background", sentToAmazon(Shadows.shadowOf(a)));
+            assertNull(Shadows.shadowOf(a).getNextStartedActivityForResult());
         }
     }
 

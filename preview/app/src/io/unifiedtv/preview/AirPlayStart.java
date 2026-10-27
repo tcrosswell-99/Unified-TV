@@ -49,28 +49,37 @@ final class AirPlayStart {
         if (AirPlayReceiver.ready) { panel(a, airPin, true); return null; }
         Toast.makeText(a, STARTING, Toast.LENGTH_SHORT).show();
         // Back on this screen: the panel, once the watch has an answer (an early return keeps waiting for it).
-        Comeback.arm(a, WINDOW_MS + 60_000, on -> { if (watching) return false; panel(on, airPin, AirPlayReceiver.ready); return true; });
+        // The step keeps only AirPin's package, never a screen, and expires: if AirPlay never starts, the plain panel shows
+        // whenever the household comes back to this screen within the window, and Unified TV never pulls them out of anything.
+        Comeback.Token t = Comeback.arm(a, WINDOW_MS + EXPIRES_MS, on -> { if (watching) return false; panel(on, airPin, AirPlayReceiver.ready); return true; });
         String why = Launch.open(a, airPin, "AirPin LITE");
-        if (why != null) { Comeback.disarm(); return why; }
-        watch(a.getApplicationContext());
+        if (why != null) { Comeback.disarm(t); return why; }
+        watch(a.getApplicationContext(), t);
         return null;
     }
     /** Checks for AirPin's service until it appears or the window ends, then brings Unified TV back (Comeback). */
-    static void watch(Context app) {
+    /** How long after the window the "didn't start" answer waits for the household to come back. */
+    static final long EXPIRES_MS = 10 * 60_000;
+    static void watch(Context app, Comeback.Token t) {
         watching = true;
         Runnable job = () -> {
-            long start = System.nanoTime();
+            long start = System.nanoTime(); boolean found = false;
             try {
                 for (int i = 0; i < ATTEMPTS && (System.nanoTime() - start) / 1_000_000 < WINDOW_MS; i++) {
-                    if (AirPlayReceiver.checkNow(app) != null) break;
+                    if (AirPlayReceiver.checkNow(app) != null) { found = true; break; }
                     long pause = pauseMs; if (pause > 0) Thread.sleep(pause);
                 }
             } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-            finally { MAIN.post(() -> { watching = false; Comeback.deliver(app); }); }
+            finally {
+                boolean ready = found;
+                // Only AirPlay actually appearing brings Unified TV back. Otherwise the household stays where it is (AirPin's
+                // own first-run or permission prompts, or another app it moved on to), and the step waits for its return.
+                MAIN.post(() -> { watching = false; if (ready) Comeback.deliver(app, t); });
+            }
         };
         Executor e = workerForTests;
         if (e != null) e.execute(job);
-        else { Thread t = new Thread(job, "airplay-start"); t.setDaemon(true); t.start(); }
+        else { Thread thread = new Thread(job, "airplay-start"); thread.setDaemon(true); thread.start(); }
     }
     /** For tests: the watch is running. */
     static boolean watching() { return watching; }

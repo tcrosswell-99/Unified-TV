@@ -172,6 +172,8 @@ final class LibraryIndex {
     /** One walk at a time for the whole app (WALK); reading the saved list never waits for a walk (MEMORY). */
     private static final Object WALK=new Object(),MEMORY=new Object();
     private static String memoryKey;private static Index memory;
+    /** Moves on with every {@link #clear}; a walk that started before one never writes its list back. Guarded by MEMORY. */
+    private static volatile int clears;
     /** Titles found so far by a walk in progress anywhere in the app (Home's row and the library share one walk). */
     static volatile int walking=-1;
 
@@ -222,7 +224,7 @@ final class LibraryIndex {
     static Index refresh(Context c,LibraryFolders.Library lib,boolean force,Progress progress)throws Exception{
         File f=file(c,lib.source);
         synchronized(WALK){
-            Index all;synchronized(MEMORY){all=f.getPath().equals(memoryKey)&&memory!=null?memory:read(f);}long now=System.currentTimeMillis();
+            Index all;int at;synchronized(MEMORY){at=clears;all=f.getPath().equals(memoryKey)&&memory!=null?memory:read(f);}long now=System.currentTimeMillis();
             if(!force&&!due(all,lib,now))return keep(all,lib);
             Index next=new Index();Exception failure=null;Set<String> chosen=new LinkedHashSet<>();for(LibraryFolders.Folder x:lib.folders)chosen.add(x.id);
             int[] before={0};String key=f.getPath();
@@ -232,7 +234,7 @@ final class LibraryIndex {
                     if(!force&&old!=null&&now-old.at<=FRESH_MS&&now>=old.at){next.roots.put(folder.id,old);before[0]+=old.entries.size();continue;}
                     Set<String> others=new HashSet<>(chosen);others.remove(folder.id);
                     int base=before[0];walking=base;
-                    java.util.function.Consumer<Root> live=r->{Index shown=new Index();
+                    java.util.function.Consumer<Root> live=r->{if(clears!=at)return;Index shown=new Index();
                         for(LibraryFolders.Folder x:lib.folders){Root have=next.roots.get(x.id);if(have==null)have=x.id.equals(folder.id)?r:all.roots.get(x.id);if(have!=null)shown.roots.put(x.id,have);}
                         partial=new Partial(key,shown);};
                     try{Root r=walk(lib.source,folder.id,others,old,(t,n)->{walking=base+t;if(progress!=null)progress.found(base+t,n);},now,live);next.roots.put(folder.id,r);before[0]+=r.entries.size();}
@@ -240,7 +242,9 @@ final class LibraryIndex {
                     catch(Exception e){if(old!=null){next.roots.put(folder.id,old);next.stale=true;before[0]+=old.entries.size();}else{failure=e;next.stale=true;}}
                 }
                 if(next.roots.isEmpty()&&failure!=null)throw failure;
-                synchronized(MEMORY){try{write(f,next);}catch(Exception ignored){/* Still shown this time. */}memoryKey=f.getPath();memory=next;}
+                synchronized(MEMORY){
+                    if(clears!=at)throw new InterruptedIOException("cleared");   // Privacy, a reset or a forgotten server meanwhile
+                    try{write(f,next);}catch(Exception ignored){/* Still shown this time. */}memoryKey=f.getPath();memory=next;}
             }finally{walking=-1;partial=null;}   // the saved list now holds everything the walk found
             return keep(next,lib);
         }
@@ -251,5 +255,5 @@ final class LibraryIndex {
      */
     static void trim(){synchronized(MEMORY){memory=null;memoryKey=null;}}
     /** Settings > Privacy (or a reset): forget every saved list. */
-    static void clear(Context c){synchronized(MEMORY){memory=null;memoryKey=null;partial=null;File[] fs=new File(c.getFilesDir(),"library").listFiles();if(fs!=null)for(File x:fs)x.delete();}}
+    static void clear(Context c){LibraryCollector.cancel();synchronized(MEMORY){clears++;memory=null;memoryKey=null;partial=null;File[] fs=new File(c.getFilesDir(),"library").listFiles();if(fs!=null)for(File x:fs)x.delete();}}
 }

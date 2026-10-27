@@ -32,7 +32,8 @@ public class PhotoFoldersTest {
         pages.put("0",top);pages.put("p",photo);pages.put("h",empty);pages.put("f",empty);
         PhotoFoldersActivity.lister=(server,id,offset)->{PhotoSource.Page p=pages.get(id);if(p==null)throw new DlnaClient.Failure(DlnaClient.Failure.MISSING);return p;};
     }
-    @After public void stop(){PhotoFoldersActivity.lister=original;Vault.testKey=null;}
+    @After public void stop(){PhotoFoldersActivity.lister=original;PhotoFoldersActivity.finder=originalFinder;Vault.testKey=null;}
+    final PhotoFoldersActivity.Finder originalFinder=PhotoFoldersActivity.finder;
     JSONArray roots()throws Exception{JSONArray r=new Vault(app).read("photos").optJSONArray("roots");return r==null?new JSONArray():r;}
     List<String> ids(JSONArray roots){List<String> out=new ArrayList<>();for(int i=0;i<roots.length();i++)out.add(roots.optJSONObject(i).optString("id"));return out;}
     static void right(Button b){b.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT));b.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_RIGHT));}
@@ -86,6 +87,30 @@ public class PhotoFoldersTest {
             LibraryJourneyTest.button(a,"Change folders").performClick();
             LibraryJourneyTest.until("folders",()->LibraryJourneyTest.button(a,"Photo")!=null);
             assertEquals(Arrays.asList("p","h"),a.ticked());
+        }
+    }
+    // Review, 27 October 2026: looking at another media server and ticking nothing there never wipes the saved folders.
+    @Test public void anotherServerWithNothingTickedKeepsTheSavedFolders()throws Exception{
+        JSONObject saved=FakeServer.source();saved.put("roots",new JSONArray().put(new JSONObject().put("id","p").put("name","Photo").put("count",2)));new Vault(app).save("photos",saved);
+        DlnaClient.Device other=new DlnaClient.Device();other.name="Other NAS";other.control="http://other.test:50001/ctl";other.service="urn:schemas-upnp-org:service:ContentDirectory:1";other.udn="uuid:other";other.location="http://other.test:50001/desc.xml";
+        PhotoFoldersActivity.finder=(c,report,search)->Collections.singletonList(other);
+        try(var c=Robolectric.buildActivity(PhotoFoldersActivity.class).setup()){PhotoFoldersActivity a=c.get();LibraryJourneyTest.idle();
+            LibraryJourneyTest.button(a,"Use another media server").performClick();
+            LibraryJourneyTest.until("both servers",()->LibraryJourneyTest.button(a,"Other NAS")!=null);
+            LibraryJourneyTest.button(a,"Other NAS").performClick();
+            LibraryJourneyTest.until("its folders",()->LibraryJourneyTest.button(a,"Photo")!=null);
+            assertTrue("nothing ticked there",a.ticked().isEmpty());
+            a.onBackPressed();LibraryJourneyTest.idle();
+            assertEquals("the saved folders stay",Collections.singletonList("p"),ids(roots()));
+            assertEquals("uuid:test-nas",new Vault(app).read("photos").optString("udn"));
+            assertEquals("Nothing ticked on Other NAS, so your photo folders on Synology Media Server stay as they were.",ShadowToast.getTextOfLatestToast());
+            assertFalse(a.choosing());assertNotNull("the summary still lists them",LibraryJourneyTest.button(a,"Photo"));
+            // Leaving by Home from the other server's list: still nothing wiped.
+            LibraryJourneyTest.button(a,"Use another media server").performClick();
+            LibraryJourneyTest.until("servers",()->LibraryJourneyTest.button(a,"Other NAS")!=null);LibraryJourneyTest.button(a,"Other NAS").performClick();
+            LibraryJourneyTest.until("its folders",()->a.choosing()&&LibraryJourneyTest.button(a,"Photo")!=null);
+            c.pause().stop();
+            assertEquals(Collections.singletonList("p"),ids(roots()));assertEquals("uuid:test-nas",new Vault(app).read("photos").optString("udn"));
         }
     }
 }

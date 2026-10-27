@@ -68,23 +68,26 @@ final class VpnGate {
         return why==null;
     }
     static final String TRY_AGAIN="Try again",DEBUG_ACCESS="Turn on access using the TV's debugging prompt",ALLOW_ACCESS="Allow access";
-    static void show(Activity a){show(a,null);}
+    static void show(Activity a){show(a,null,null);}
     /**
      * The Live TV sheet: what the one rule (LiveTvProtection, OD-26) says now, in plain words, and never a dead end (owner's
      * TCL, build run 99). When only notification access would let Unified TV tell whose VPN is up: "Turn on access using the
      * TV's debugging prompt" when the TV has no notification-access screen, else "Allow access"; otherwise Connect (opens
-     * NordVPN). Then Try again and Cancel. {@code retry}: the route that was refused (Launch.open); Try again runs it once the
-     * rule opens, and after Connect or access Unified TV carries on into Live TV by itself (NordConnect, Comeback).
+     * NordVPN). Then Try again and Cancel. {@code livePkg}/{@code label}: the Live TV launch that was refused (null from
+     * Settings); Try again runs it once the rule opens, and after Connect or access Unified TV carries on into Live TV by
+     * itself (NordConnect, Comeback). A waiting step keeps only those two strings, never a screen.
      */
-    static void show(Activity a,Runnable retry){
+    static void show(Activity a,String livePkg,String label){
+        Runnable retry=livePkg==null?null:()->NordConnect.open(a,livePkg,label);
+        Comeback.Step carryOn=on->{NordConnect.open(on,livePkg,label);return true;};
         LiveTvProtection.State now=LiveTvProtection.now(a);
         java.util.List<String> names=new java.util.ArrayList<>();java.util.List<Runnable> actions=new java.util.ArrayList<>();
         Dialog[] dialog=new Dialog[1];TextView[] state=new TextView[1];
         if(now==LiveTvProtection.State.UNSURE){
             android.content.Intent screen=MediaWatch.accessScreen(a);
-            if(screen==null){names.add(DEBUG_ACCESS);actions.add(()->{dialog[0].dismiss();if(retry!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,on->{retry.run();return true;});NotificationAccessActivity.open(a);});}
-            else{names.add(ALLOW_ACCESS);actions.add(()->{dialog[0].dismiss();if(retry!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,on->{retry.run();return true;});Launch.system(a,screen,"This TV doesn't offer notification access");});}
-        }else{names.add("Connect");actions.add(()->{dialog[0].dismiss();if(connect(a)&&retry!=null)NordConnect.after(a,retry);});}
+            if(screen==null){if(NotificationAccessActivity.available(a)){names.add(DEBUG_ACCESS);actions.add(()->{dialog[0].dismiss();if(livePkg!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,carryOn);NotificationAccessActivity.open(a);});}}
+            else{names.add(ALLOW_ACCESS);actions.add(()->{dialog[0].dismiss();if(livePkg!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,carryOn);Launch.system(a,screen,"This TV doesn't offer notification access");});}
+        }else{names.add("Connect");actions.add(()->{dialog[0].dismiss();if(connect(a)&&livePkg!=null)NordConnect.after(a,livePkg,label);});}
         names.add(TRY_AGAIN);actions.add(()->{invalidate();LiveTvProtection.State again=LiveTvProtection.now(a);
             if(LiveTvProtection.opens(again)&&retry!=null){dialog[0].dismiss();retry.run();}
             else state[0].setText(statusLabel(inspect(a))+" · "+LiveTvProtection.message(again));});

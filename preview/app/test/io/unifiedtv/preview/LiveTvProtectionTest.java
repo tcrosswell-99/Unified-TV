@@ -39,6 +39,15 @@ public class LiveTvProtectionTest {
         assertEquals("unsure wording, another VPN app: locked",NOT_NORDVPN,LiveTvProtection.decide(facts(UP,true,true,NordCountry.status("Connected devices: 3"),false)));
         assertEquals(OPEN,LiveTvProtection.decide(facts(UP,true,true,NordCountry.status("Connected to United Kingdom #2236"),false)));
     }
+    /** Review (rule 8): a system VPN service with no app (a TCL data saver) could be the VPN that is up: NordVPN's word needed. */
+    @Test public void aSystemVpnServiceNeedsNordVpnsOwnWord(){
+        LiveTvProtection.Facts f=facts(UP,true,false,null,true);f.systemVpn=true;
+        assertEquals("never open on 'only VPN app' alone",UNSURE,LiveTvProtection.decide(f));
+        f.notificationAccess=true;assertEquals(NOT_NORDVPN,LiveTvProtection.decide(f));
+        f.nordSays=true;assertEquals(OPEN,LiveTvProtection.decide(f));
+        f.nordSays=false;assertEquals(DISCONNECTED,LiveTvProtection.decide(f));
+        f.systemVpn=false;f.nordSays=null;f.notificationAccess=false;assertEquals("no system VPN: as before",OPEN,LiveTvProtection.decide(f));
+    }
     @Test public void notificationWordsCountOnlyWithAccess(){
         assertEquals("a remembered word without access is ignored",UNSURE,LiveTvProtection.decide(facts(UP,true,false,true,false)));
         assertEquals("a remembered 'disconnected' without access is ignored",OPEN,LiveTvProtection.decide(facts(UP,true,false,false,true)));

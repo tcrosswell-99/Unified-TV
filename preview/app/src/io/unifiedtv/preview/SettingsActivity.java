@@ -509,7 +509,7 @@ public final class SettingsActivity extends Screen {
             // Owner's TCL, build run 99: no notification-access screen. Then through the TV's debugging prompt, or a computer.
             Intent screen=MediaWatch.accessScreen(this);
             if(screen!=null)button("Allow notification access",()->Launch.unlocked(this,screen,"This TV doesn't offer notification access"));
-            else{button(VpnGate.DEBUG_ACCESS,()->NotificationAccessActivity.open(this));
+            else{if(NotificationAccessActivity.available(this))button(VpnGate.DEBUG_ACCESS,()->NotificationAccessActivity.open(this));
                 text("This TV has no notification-access screen. From a computer with ADB instead: "+MediaWatch.pcCommand(this),14).setTypeface(android.graphics.Typeface.MONOSPACE);}
         }
         text(NordConnect.AUTO_TIP,15);

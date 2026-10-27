@@ -43,6 +43,9 @@ public final class NotificationAccessActivity extends GlassScreen {
         try { c.startActivity(i); } catch (RuntimeException ignored) { /* nothing to open it from */ }
     }
 
+    /** This app can send the one command (AdbCommands.LISTENER_APPS); otherwise only the computer route is offered. */
+    static boolean available(Context c) { return AdbCommands.LISTENER_APPS.contains(c.getPackageName()); }
+
     private ExecutorService worker;
     private volatile Closeable link, opening;
     private volatile boolean busy, stopped, destroyed;
@@ -63,6 +66,10 @@ public final class NotificationAccessActivity extends GlassScreen {
         page(TITLE, "Live TV and Now Playing");
         card();
         text(WHY, 18);
+        if (!available(this)) {   // a build this list doesn't know: never a crash, the computer route only
+            text("From a computer with ADB connected to this TV: " + MediaWatch.pcCommand(this), 17).setTypeface(android.graphics.Typeface.MONOSPACE);
+            button("Back", this::finish).requestFocus(); return;
+        }
         text(NO_SCREEN, 17);
         text("Or from a computer with ADB connected to this TV: " + MediaWatch.pcCommand(this), 15).setTypeface(android.graphics.Typeface.MONOSPACE);
         button("Start", this::start).requestFocus();
@@ -72,7 +79,8 @@ public final class NotificationAccessActivity extends GlassScreen {
     private void start() {
         page("Turning on notification access", "One change, only to Unified TV");
         card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
-        String command = AdbCommands.allowListener(getPackageName());
+        String command;
+        try { command = AdbCommands.allowListener(getPackageName()); } catch (IllegalArgumentException e) { intro(); return; }
         busy = true; int mine = ++generation;
         background(() -> {
             Runnable ui;

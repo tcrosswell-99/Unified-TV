@@ -27,19 +27,29 @@ final class NordConnect {
     private static ConnectivityManager.NetworkCallback callback; private static Context app;
     private static final Runnable CHECK = NordConnect::check, END = NordConnect::stop;
 
-    /** Connect was pressed for a refused Live TV launch from {@code from}: {@code open} is that launch, run again. */
-    static void after(Activity from, Runnable open) {
-        Comeback.arm(from, WINDOW_MS, on -> {
-            if (from.isFinishing() || from.isDestroyed()) return true;
-            stop();
-            if (LiveTvProtection.opens(LiveTvProtection.now(on))) Toast.makeText(on, OPENING, Toast.LENGTH_SHORT).show();
-            open.run();   // opens Live TV, or shows the sheet with the rule's reason
-            return true;
-        });
-        watch(from.getApplicationContext());
+    /** This trip's own token (Comeback): a step armed by AirPlay or notification access is never delivered from here. */
+    private static Comeback.Token token;
+
+    /**
+     * Connect was pressed for a refused Live TV launch of {@code pkg} from {@code from}. The step keeps only the package and
+     * label, never a screen: it runs on whichever screen Comeback hands it.
+     */
+    static void after(Activity from, String pkg, String label) {
+        token = Comeback.arm(from, WINDOW_MS, on -> { stop(); open(on, pkg, label); return true; });
+        watch(from.getApplicationContext(), pkg, label);
     }
-    private static void watch(Context c) {
-        stop(); app = c;
+    /**
+     * Live TV through the one gate (Launch.open: the rule, then the Kids list). The toast only once it actually opened; a
+     * refusal shows its own reason (the sheet, or Kids' words).
+     */
+    static void open(Activity on, String pkg, String label) {
+        String why = Launch.open(on, pkg, label);
+        if (why == null) Toast.makeText(on, OPENING, Toast.LENGTH_SHORT).show();
+        else if (!why.isEmpty()) Toast.makeText(on, why, Toast.LENGTH_LONG).show();
+    }
+    private static String pkg = "", label = "";
+    private static void watch(Context c, String livePkg, String liveLabel) {
+        stop(); app = c; pkg = livePkg; label = liveLabel;
         ConnectivityManager cm = c.getSystemService(ConnectivityManager.class);
         callback = new ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(Network n) { soon(); }
@@ -54,8 +64,16 @@ final class NordConnect {
     private static void soon() { MAIN.removeCallbacks(CHECK); MAIN.postDelayed(CHECK, LiveTvGuard.SETTLE_MS); }
     /** The VPN changed: when the rule lets Live TV open, Unified TV comes back and carries on (Comeback). */
     static void check() {
-        Context c = app; if (c == null || !Comeback.armed()) { stop(); return; }
-        if (LiveTvProtection.opens(LiveTvProtection.now(c))) { stop(); Comeback.deliver(c); }
+        Context c = app; Comeback.Token t = token;
+        if (c == null || !Comeback.armed(t)) { stop(); return; }
+        if (!LiveTvProtection.opens(LiveTvProtection.now(c))) return;
+        stop();
+        if (Comeback.deliver(c, t) != Comeback.Result.GONE) return;
+        // The screen that pressed Connect has closed (Ask your TV's idle close, say): carry on from Home instead, never a
+        // fresh empty copy of that screen.
+        String p = pkg, l = label;
+        token = Comeback.armFor(UnifiedPreviewActivity.class, WINDOW_MS, on -> { open(on, p, l); return true; });
+        Comeback.deliver(c, token);
     }
     static void stop() {
         MAIN.removeCallbacks(CHECK); MAIN.removeCallbacks(END);

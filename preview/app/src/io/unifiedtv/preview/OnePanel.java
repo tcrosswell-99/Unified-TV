@@ -38,7 +38,8 @@ final class OnePanel {
     void hide(View sheet, boolean calm) {
         if (sheet == null || hidden == sheet) return;
         View f = sheet.findFocus(); focus = f; focusWords = words(f); hidden = sheet;
-        sheet.animate().cancel();
+        // Cancelling a slide-in part-way would leave the sheet part-way across the screen: put it where it rests.
+        sheet.animate().cancel(); rest(sheet);
         if (calm) { sheet.setAlpha(0); sheet.setVisibility(View.INVISIBLE); return; }
         sheet.animate().alpha(0).setDuration(OUT_MS).withEndAction(() -> { if (hidden == sheet) sheet.setVisibility(View.INVISIBLE); }).start();
     }
@@ -50,7 +51,7 @@ final class OnePanel {
      */
     void show(View sheet, boolean calm) {
         if (hidden == null || sheet == null) return;
-        hidden = null; sheet.animate().cancel(); sheet.setVisibility(View.VISIBLE);
+        hidden = null; sheet.animate().cancel(); rest(sheet); sheet.setVisibility(View.VISIBLE);
         if (calm) sheet.setAlpha(1); else sheet.animate().alpha(1).setDuration(IN_MS).start();
         View was = focus; CharSequence words = focusWords; focus = null; focusWords = null;
         sheet.post(() -> {
@@ -58,6 +59,9 @@ final class OnePanel {
             if (target != null) target.requestFocus();
         });
     }
+
+    /** The sheet's resting place: fully across, at full size (its alpha is the caller's). */
+    private static void rest(View sheet) { sheet.setTranslationX(0); sheet.setTranslationY(0); sheet.setScaleX(1); sheet.setScaleY(1); }
 
     private static CharSequence words(View v) {
         if (v == null) return null;

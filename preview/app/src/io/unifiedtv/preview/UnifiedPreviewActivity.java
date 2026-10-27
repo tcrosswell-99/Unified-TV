@@ -342,7 +342,7 @@ public final class UnifiedPreviewActivity extends Activity {
             backdrops.trim(hidden ? null : scene);
             // The neutral scene's picture (1672 x 941, about 6 MB decoded) is drawn only for the neutral scene: hidden Home
             // lets it go, and refresh() reads it again off the main thread (the illustrated gradient stands in meanwhile).
-            if (hidden) { posterArt.clear(); postersAt = 0; coast = null; }
+            if (hidden) { posterArt.clear(); tileLayouts.clear(); postersAt = 0; coast = null; }
         }
         private boolean coastLoading;
         private void reloadCoast() {
@@ -407,7 +407,8 @@ public final class UnifiedPreviewActivity extends Activity {
             index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
             if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
-            LibraryCollector.get(activity).listen(libraryJob);
+            // Back from elsewhere: the job may have moved on (or finished) while Home was away and not listening.
+            LibraryCollector.get(activity).listen(libraryJob);libraryJobChanged();
             formerScene=null;fadeAt=0;if(shelf)loadPosters(false);offerOnce();stillOnce();airPlayFollowUps();backToGear();invalidate();
         }
         /** Back from AirPin (opened from Unified TV): check AirPlay again a few times while its service starts (AirPlayReceiver). */
@@ -1197,7 +1198,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 // its year on a small line of its own; never a flat grey box, never text outside the card.
                 glass(c, x, top, x + w, top + h, 22, 0, 0);
                 paint.setShader(null); paint.setColor(0x73060A12); c.drawRoundRect(rect, 22, 22, paint);
-                List<String> lines = tileLines(p.title, w); float size = tileSize;
+                TileLayout t = tileLayout(p, w); List<String> lines = t.lines; float size = t.size;
                 float lh = size * 1.2f, block = lh * lines.size() + (p.year.isEmpty() ? 0 : 30), y = top + h / 2 - block / 2 + size;
                 for (int i = 0; i < lines.size(); i++) text(c, lines.get(i), x + w / 2, y + lh * i, Math.round(size), WHITE, true, Paint.Align.CENTER);
                 if (!p.year.isEmpty()) text(c, p.year, x + w / 2, y + lh * lines.size() + 4, 20, MUTED, false, Paint.Align.CENTER);
@@ -1211,14 +1212,26 @@ public final class UnifiedPreviewActivity extends Activity {
             c.restore();
         }
 
-        /** A title's lines on a Home tile (padding 16 each side), measured in the type they are drawn in; sets {@link #tileSize}. */
-        private float tileSize = 24;
-        List<String> tileLines(String title, float w) {
-            float inner = w - 32;
-            type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            tileSize = TileText.size(title, inner, 26, 18, (size, t) -> { type.setTextSize(size); return (double) type.measureText(t); });
-            type.setTextSize(tileSize);
-            return TileText.lines(title, inner, TileText.LINES, t -> type.measureText(t));
+        /** A title laid out on a Home tile: its lines and the size they are drawn at. */
+        static final class TileLayout { final List<String> lines; final float size; TileLayout(List<String> lines, float size) { this.lines = lines; this.size = size; } }
+        /**
+         * Rule 5 (review, 27 October 2026): a title is measured once per poster and tile width, not on every frame. The
+         * layouts are dropped when the row reloads, and when Home is hidden.
+         */
+        private final java.util.Map<String, TileLayout> tileLayouts = new java.util.HashMap<>();
+        private final Typeface tileType = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+        /** For tests: how many titles have been measured (a seam: a second frame must not add to it). */
+        int tileMeasures;
+        TileLayout tileLayout(HomeShelf.Poster p, float w) {
+            String k = p.id + "|" + w; TileLayout t = tileLayouts.get(k); if (t != null) return t;
+            tileMeasures++;
+            float inner = w - 32; float textSize = type.getTextSize(); Typeface face = type.getTypeface();
+            type.setTypeface(tileType);
+            float size = TileText.size(p.title, inner, 26, 18, (at, x) -> { type.setTextSize(at); return (double) type.measureText(x); });
+            type.setTextSize(size);
+            t = new TileLayout(TileText.lines(p.title, inner, TileText.LINES, x -> type.measureText(x)), size);
+            type.setTextSize(textSize); type.setTypeface(face);
+            tileLayouts.put(k, t); return t;
         }
         /** NAV-03: the first meaningful title (Continue Watching when there is one, by default), else the Library card. */
         private boolean shelfMoved;
@@ -1254,9 +1267,10 @@ public final class UnifiedPreviewActivity extends Activity {
                 // The key and the server's id come from the encrypted store: read here, never on the main thread.
                 boolean on = Posters.get(activity).usable(); String udn = LibraryFolders.library(activity).udn();
                 final List<HomeShelf.Poster> ready = found;
-                handler.post(() -> { posters = ready; postersLoading = false; postersAt = SystemClock.uptimeMillis(); postersOn = on; shelfUdn = udn;
+                handler.post(() -> { HomeShelf.Poster focused = posterIndex < posters.size() ? posters.get(posterIndex) : null; boolean onLibraryCard = !posters.isEmpty() && posterIndex >= posters.size();
+                    posters = ready; tileLayouts.clear(); postersLoading = false; postersAt = SystemClock.uptimeMillis(); postersOn = on; shelfUdn = udn;
                     shelfLine = HomeShelf.line(LibraryCollector.get(activity).status(), kids, !ready.isEmpty(), on); if (!keyLineShown()) shelfHint = false;
-                    posterIndex = shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size()); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate();
+                    posterIndex = keptFocus(focused, onLibraryCard); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate();
                     // Each title's own poster, asked in row order and delivered on the main thread (Posters' cache).
                     Posters art = Posters.get(activity);
                     for (HomeShelf.Poster p : ready) {
@@ -1265,6 +1279,16 @@ public final class UnifiedPreviewActivity extends Activity {
                     }
                 });
             }); } catch (java.util.concurrent.RejectedExecutionException e) { postersLoading = false; }
+        }
+        /**
+         * Where focus goes when the row reloads (review: titles found in the background were inserted ahead of it, so the
+         * focused title and its background changed under the household): the same title, by its id, wherever it now is;
+         * the Library card if that had focus; otherwise the landing title, or the nearest place.
+         */
+        private int keptFocus(HomeShelf.Poster focused, boolean onLibraryCard) {
+            if (focused != null) for (int i = 0; i < posters.size(); i++) if (posters.get(i).id.equals(focused.id)) return i;
+            if (onLibraryCard && shelfMoved) return posters.size();
+            return shelf && !shelfMoved ? landingPoster() : Math.min(posterIndex, posters.size());
         }
         /** Whether the row's line is the no-key one (Adults with titles and no TMDB key), which Up reaches and OK opens. */
         private boolean keyLineShown() { return Posters.ROW_HINT.equals(shelfLine); }

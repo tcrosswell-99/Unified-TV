@@ -30,6 +30,10 @@ public final class PhotoFoldersActivity extends GlassScreen {
     /** One page of folders and pictures; DlnaClient on a TV, a fake in tests (no network). */
     interface Lister{PhotoSource.Page list(JSONObject server,String id,int offset)throws Exception;}
     static volatile Lister lister=PhotoFoldersActivity::browse;
+    /** Finds media servers on the home network (search: look again rather than use what was just found); tests replace it. */
+    interface Finder{List<DlnaClient.Device> find(android.content.Context c,DlnaClient.Report report,boolean search)throws Exception;}
+    static volatile Finder finder=(c,report,search)->{List<DlnaClient.Device> ready=LocalDiscovery.fresh()?LocalDiscovery.nasFound:null;
+        return !search&&ready!=null&&!ready.isEmpty()?ready:DlnaClient.discover(c,true,report);};
 
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -37,6 +41,8 @@ public final class PhotoFoldersActivity extends GlassScreen {
     private DlnaScope.Trail trail=new DlnaScope.Trail();
     /** What is ticked while choosing, by folder id (name and, when known, how many things are inside), in order. */
     private final LinkedHashMap<String,JSONObject> ticked=new LinkedHashMap<>();private boolean unsaved;
+    /** The choice as it is saved now: another server with nothing ticked never replaces it (review, 27 October 2026). */
+    private JSONObject saved=new JSONObject();
     private TextView countLine;
     /** Folder pages are shorter than the Wallpaper's walk: each folder is a row. */
     static final int PICK_PAGE=48;
@@ -44,6 +50,7 @@ public final class PhotoFoldersActivity extends GlassScreen {
     @Override public void onCreate(Bundle state){super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);
         if(!WallpaperPolicy.photosAllowed(getSharedPreferences("unified-tv-preview",0).getString("profile",WallpaperPolicy.ADULT))){page("My Photos");text("Personal photos are for Adults. Kids shows Artwork.",20);button("Back",this::finish);return;}
         try{record=new Vault(this).read("photos");}catch(Exception e){record=new JSONObject();}
+        saved=copy(record);
         if(roots().length()>0&&!record.optString("control").isEmpty())summary();else find(false);
     }
     private JSONArray roots(){JSONArray r=record.optJSONArray("roots");return r==null?new JSONArray():r;}
@@ -72,10 +79,9 @@ public final class PhotoFoldersActivity extends GlassScreen {
     private void find(boolean search){int ticket=nextTicket();trail.clear();countLine=null;page("My Photos");TextView status=busy("Looking for your media server…");button("Search again",()->find(true));button("Back",this::finish);
         JSONObject films;try{films=new Vault(this).read("dlna");}catch(Exception e){films=new JSONObject();}
         JSONObject known=films.optBoolean("enabled")&&!films.optString("control").isEmpty()?films:null;
-        List<DlnaClient.Device> ready=LocalDiscovery.fresh()?LocalDiscovery.nasFound:null;
         task=worker.submit(()->{List<JSONObject> servers=new ArrayList<>();Set<String> seen=new HashSet<>();DlnaClient.Report report=new DlnaClient.Report();
             if(known!=null){servers.add(server(known));seen.add(known.optString("udn"));}
-            if(known==null||search)try{for(DlnaClient.Device d:!search&&ready!=null&&!ready.isEmpty()?ready:DlnaClient.discover(getApplicationContext(),true,report))if(seen.add(d.udn.isEmpty()?d.control:d.udn))servers.add(server(d.json()));}catch(Exception ignored){}
+            if(known==null||search)try{for(DlnaClient.Device d:finder.find(getApplicationContext(),report,search))if(seen.add(d.udn.isEmpty()?d.control:d.udn))servers.add(server(d.json()));}catch(Exception ignored){}
             runOnUiThread(()->{if(!active(ticket))return;
                 if(servers.size()==1&&!search){choose(servers.get(0));return;}
                 status.setText(servers.isEmpty()?report.plain():"Select your media server");
@@ -89,7 +95,7 @@ public final class PhotoFoldersActivity extends GlassScreen {
         String udn=server.optString("udn");
         boolean same=udn.isEmpty()?!server.optString("control").isEmpty()&&server.optString("control").equals(record.optString("control")):udn.equals(record.optString("udn"));
         JSONArray roots=same?roots():new JSONArray();JSONObject next=server(server);try{next.put("roots",roots);}catch(JSONException ignored){}
-        if(!same&&roots().length()>0)unsaved=true;
+        // Another server alone changes nothing saved: only a folder ticked on it does (keep()).
         record=next;ticked.clear();
         for(int i=0;i<roots.length();i++){JSONObject r=roots.optJSONObject(i);if(r!=null&&!r.optString("id").isEmpty())ticked.put(r.optString("id"),r);}
         trail.start(new DlnaScope.Frame("0",server.optString("name","Media server"),0),"");show();
@@ -160,11 +166,12 @@ public final class PhotoFoldersActivity extends GlassScreen {
         if(keep())note("All your photos are on the Wallpaper.");summary();
     }
     /** Done: saves what is ticked and closes, saying so. */
-    private void done(){if(keep()||!ticked.isEmpty())note(saidSaved());finish();}
+    private void done(){if(keep()||!ticked.isEmpty())note(saidSaved());else keepOld();finish();}
     private String saidSaved(){return ticked.isEmpty()?"No photo folders chosen.":"Saved: "+(ticked.size()==1?"1 folder":ticked.size()+" folders")+" on the Wallpaper.";}
     /** Writes the ticked folders when they changed; true when something was saved. */
     private boolean keep(){
         if(!unsaved)return false;
+        if(ticked.isEmpty()&&otherServer()){unsaved=false;return false;}   // nothing ticked on another server: the old choice stays
         JSONArray roots=new JSONArray();for(JSONObject r:ticked.values())roots.put(r);
         try{record.put("roots",roots);}catch(JSONException ignored){}
         if(!save())return false;unsaved=false;return true;
@@ -181,6 +188,7 @@ public final class PhotoFoldersActivity extends GlassScreen {
      */
     private boolean save(){
         try{new Vault(this).save("photos",record);}catch(Exception e){note("Unable to save the folders securely");return false;}
+        saved=copy(record);
         WallpaperActivity.forgetPhotos();PhotoCache cache=new PhotoCache(new File(getNoBackupFilesDir(),"photos"),PhotoCache.LIMIT);new Thread(cache::clear,"photo-cache").start();
         return true;
     }
@@ -188,10 +196,24 @@ public final class PhotoFoldersActivity extends GlassScreen {
     @Override public void onBackPressed(){
         if(trail.isEmpty()){super.onBackPressed();return;}
         if(trail.back()!=null){show();return;}
-        boolean saved=keep();if(saved)note(saidSaved());
+        if(keep())note(saidSaved());else keepOld();
         if(roots().length()>0)summary();else finish();
     }
     /** Leaving another way (Home, the TV's own button) still keeps what was ticked. */
-    @Override protected void onStop(){if(!trail.isEmpty()&&keep())note(saidSaved());super.onStop();}
+    @Override protected void onStop(){if(!trail.isEmpty()){if(keep())note(saidSaved());else keepOld();}super.onStop();}
+    /** Looking at another server whose folders were left unticked: the folders saved before stay, and the sheet says so. */
+    private boolean otherServer(){
+        if(roots(saved).length()==0)return false;
+        String a=record.optString("udn"),b=saved.optString("udn");
+        return !(a.isEmpty()&&b.isEmpty()?record.optString("control").equals(saved.optString("control")):a.equals(b));
+    }
+    private void keepOld(){
+        if(!otherServer()||!ticked.isEmpty())return;
+        String now=record.optString("name","this media server"),before=saved.optString("name","your media server");
+        record=copy(saved);ticked.clear();unsaved=false;
+        note("Nothing ticked on "+now+", so your photo folders on "+before+" stay as they were.");
+    }
+    private static JSONArray roots(JSONObject r){JSONArray a=r.optJSONArray("roots");return a==null?new JSONArray():a;}
+    private static JSONObject copy(JSONObject o){try{return new JSONObject(o.toString());}catch(JSONException e){return new JSONObject();}}
     @Override protected void onDestroy(){generation++;handler.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
 }

@@ -96,6 +96,14 @@ final class LibraryCollector {
     private final CopyOnWriteArraySet<Runnable> listeners=new CopyOnWriteArraySet<>();
     private volatile Status status=new Status(0,Phase.IDLE,0,0,0,false,false,false,0);private int passes;
     private final Object lock=new Object();private boolean running,again;private long pausedUntil;private volatile Thread thread;
+    /**
+     * Review, 27 October 2026: the job can be stopped part-way. {@code epoch} moves on with every start (folders saved
+     * again, a key added) and every clear; the poster loop stops when it moves, so new folders are walked next. {@code
+     * cancels} moves on only when the list or the posters are cleared (Privacy, a reset, forgetting the server): the walk
+     * stops at its next page and nothing it found is written back (LibraryIndex.clear).
+     */
+    private final java.util.concurrent.atomic.AtomicInteger epoch=new java.util.concurrent.atomic.AtomicInteger(),cancels=new java.util.concurrent.atomic.AtomicInteger();
+    private volatile int passCancels;
     private final Object notifyLock=new Object();private boolean posted;private long notifiedAt;
     private final ComponentCallbacks2 memory=new ComponentCallbacks2(){
         @Override public void onTrimMemory(int level){if(level>=TRIM_MEMORY_RUNNING_LOW&&level!=TRIM_MEMORY_UI_HIDDEN)lowMemory();}
@@ -118,9 +126,22 @@ final class LibraryCollector {
      * background. Called again while running, it goes round once more when it is done (folders saved again, a key added).
      */
     void start(){
+        epoch.incrementAndGet();
         synchronized(lock){if(running){again=true;return;}running=true;again=false;}
         try{worker.execute(this::run);}catch(RejectedExecutionException e){synchronized(lock){running=false;}}
     }
+    /**
+     * The saved list was cleared (LibraryIndex.clear: Privacy, a reset, the media server forgotten): stop now, write
+     * nothing back, and don't go round again.
+     */
+    static void cancel(){
+        LibraryCollector i=instance;if(i==null)return;
+        i.cancels.incrementAndGet();i.epoch.incrementAndGet();
+        synchronized(i.lock){i.again=false;i.lock.notifyAll();}
+        Thread t=i.thread;if(t!=null)t.interrupt();
+    }
+    /** Posters and details were cleared (Posters.clear): the poster loop stops instead of fetching them all again. */
+    static void postersCleared(){LibraryCollector i=instance;if(i!=null)i.epoch.incrementAndGet();}
     /** Memory is short: rest where it is (between two pages or two poster batches) until it has come back. */
     void lowMemory(){synchronized(lock){pausedUntil=System.currentTimeMillis()+pauseMs;lock.notifyAll();}}
     /** Tests only: memory has come back. */
@@ -142,33 +163,42 @@ final class LibraryCollector {
         LibraryFolders.Library lib=LibraryFolders.library(LibraryFolders.read(app,LibraryFolders.STORE),LibraryFolders.read(app,KidsPolicy.STORE),false);
         if(!lib.ready){set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
         try{DlnaClient.lan=LocalDiscovery.lan(app);}catch(RuntimeException ignored){}
+        passCancels=cancels.get();Thread.interrupted();   // a cancel before this pass is not this pass's
         passes++;set(make(Phase.SCANNING,0,0,0,false,false,false,0));
         LibraryIndex.Index index;
         try{index=LibraryIndex.refresh(app,lib,false,(titles,folders)->set(make(Phase.SCANNING,titles,0,0,false,status.paused,false,0)));}
         catch(InterruptedIOException e){Thread.currentThread().interrupt();set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
         catch(Exception e){set(make(Phase.FAILED,0,0,0,false,false,true,e instanceof DlnaClient.Failure?((DlnaClient.Failure)e).kind:DlnaClient.Failure.UNREACHABLE));return;}
+        if(cancels.get()!=passCancels){set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
         posters(lib,index);
     }
+    private boolean superseded(int at){if(epoch.get()!=at)return true;synchronized(lock){return again;}}
     /** Every tile not looked up yet, in the library's own row order, a few at a time behind whatever is on screen. */
     private void posters(LibraryFolders.Library lib,LibraryIndex.Index index){
         int found=index.size();boolean stale=index.stale;
-        Posters p=Posters.get(app);p.refreshKey();
+        int at=epoch.get();Posters p=Posters.get(app);p.refreshKey();
         if(!p.usable()){set(make(Phase.DONE,found,0,0,true,false,stale,0));return;}
         LibraryCatalogue.Catalogue cat=LibraryCatalogue.build(index,lib,HouseholdSettings.scheme(app),null,System.currentTimeMillis());
         String udn=lib.udn();List<LibraryCatalogue.Card> todo=new ArrayList<>();Set<String> keys=new HashSet<>();int total=0,done=0;
         for(LibraryCatalogue.Row r:cat.rows)for(LibraryCatalogue.Card c:r.all){if(!keys.add(c.lookupKey()))continue;total++;if(p.known(udn,c.lookupKey()))done++;else todo.add(c);}
         set(make(Phase.POSTERS,found,done,total,false,false,stale,0));
-        int batch=Math.max(1,MemoryBudget.current().posterBatch()),pictures=0;
+        int batch=Math.max(1,MemoryBudget.current().posterBatch()),pictures=0;boolean stopped=false;
+        p.collecting(true);   // the match list is saved every few seconds, not after every batch
         try{
             for(int i=0;i<todo.size();i+=batch){
                 between();
+                // Folders saved again, a key added, or the posters cleared: stop here (the next round starts from the list).
+                if(superseded(at)){stopped=true;break;}
                 if(p.resting())break;   // TMDB refused the key or is out of reach: the rest come as tiles are shown, or next time
                 List<LibraryCatalogue.Card> part=todo.subList(i,Math.min(todo.size(),i+batch));CountDownLatch left=new CountDownLatch(part.size());
                 for(LibraryCatalogue.Card c:part)p.warm(c,udn,pictures++<WARM_PICTURES,left::countDown);
                 if(!left.await(2,TimeUnit.MINUTES))break;
                 done+=part.size();set(make(Phase.POSTERS,found,done,total,false,status.paused,stale,0));
             }
-        }catch(InterruptedIOException|InterruptedException e){Thread.currentThread().interrupt();}
+        }catch(InterruptedIOException|InterruptedException e){Thread.currentThread().interrupt();stopped=true;}
+        finally{p.collecting(false);}   // and once more now, so nothing found is lost
+        if(cancels.get()!=passCancels){set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
+        if(stopped&&superseded(at)&&againSet())return;   // another round follows at once and says where it is
         set(make(Phase.DONE,found,done,total,false,false,stale,0));
     }
 
@@ -179,6 +209,7 @@ final class LibraryCollector {
     static void between()throws InterruptedIOException{LibraryCollector i=instance;if(i!=null)i.breathe();}
     private void breathe()throws InterruptedIOException{
         if(Thread.currentThread()!=thread)return;
+        if(cancels.get()!=passCancels)throw new InterruptedIOException("cleared");
         try{
             long gap=MemoryBudget.current().indexGapMs();if(gap>0)Thread.sleep(gap);
             boolean rested=false;
@@ -197,6 +228,7 @@ final class LibraryCollector {
             if(rested)set(status.paused(false));
         }catch(InterruptedException e){Thread.currentThread().interrupt();throw new InterruptedIOException();}
     }
+    private boolean againSet(){synchronized(lock){return again;}}
     private boolean stillShort(){
         try{android.app.ActivityManager am=(android.app.ActivityManager)app.getSystemService(Context.ACTIVITY_SERVICE);if(am==null)return false;
             android.app.ActivityManager.MemoryInfo mi=new android.app.ActivityManager.MemoryInfo();am.getMemoryInfo(mi);return mi.lowMemory;}

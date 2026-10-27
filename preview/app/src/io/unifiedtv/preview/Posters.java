@@ -95,7 +95,8 @@ final class Posters {
     int cacheLimit(){return memory.maxSize();}
     int cacheUsed(){return memory.size();}
     /** onTrimMemory (PreviewApp): every decoded picture when no screen shows them; half when memory runs low. Disk stays. */
-    static void trim(boolean hidden){Posters p;synchronized(Posters.class){p=instance;}if(p==null)return;if(hidden)p.memory.evictAll();else p.memory.trimToSize(p.memory.maxSize()/2);}
+    static void trim(boolean hidden){Posters p;synchronized(Posters.class){p=instance;}if(p==null)return;if(hidden)p.memory.evictAll();else p.memory.trimToSize(p.memory.maxSize()/2);
+        p.submit(p.lookups,p.lookupQueue,true,p::save);}   // and the match list written now, off the main thread
 
     // --- the household's key
     /** The household's TMDB key or token from the Vault ("tmdb", "key"); empty when there is none. */
@@ -215,8 +216,10 @@ final class Posters {
      */
     void warm(LibraryCatalogue.Card card,String udn,boolean picture,Runnable done){
         LookupJob job=new LookupJob(card,udn);
+        int gen=generation;
         boolean queued=submit(lookups,lookupQueue,false,()->{
-            try{Tmdb.Match m=match(job);if(picture&&m!=null&&!m.poster.isEmpty())keep(m.poster,"w342");}
+            try{if(gen!=generation)return;   // the posters were cleared meanwhile: nothing is fetched again
+                Tmdb.Match m=match(job);if(gen==generation&&picture&&m!=null&&!m.poster.isEmpty())keep(m.poster,"w342");}
             finally{done.run();}
         });
         if(!queued)done.run();
@@ -233,7 +236,7 @@ final class Posters {
 
     /** The cached match, or a TMDB lookup (on the lookup thread). Null when there is none, no key, or no network. */
     private Tmdb.Match match(LookupJob j){
-        String id=id(j.udn,j.lookupKey),q=hash((j.tv?"tv":"movie")+"\n"+j.title+"\n"+j.year);long now=System.currentTimeMillis();
+        String id=id(j.udn,j.lookupKey),q=hash((j.tv?"tv":"movie")+"\n"+j.title+"\n"+j.year);long now=System.currentTimeMillis();int gen=generation;
         JSONObject chosen=fix(j.udn,j.lookupKey);   // the household's own choice wins, and is never looked up again
         if(chosen!=null){if(chosen.optBoolean("none"))return null;summaries.put(id,new String[]{chosen.optString("o"),chosen.optString("y")});
             return new Tmdb.Match(chosen.optString("t"),chosen.optLong("id"),chosen.optString("p"),chosen.optString("b"),chosen.optString("n"),chosen.optString("y"));}
@@ -252,7 +255,7 @@ final class Posters {
                 JSONObject rec=new JSONObject().put("q",q).put("at",now);
                 if(found==null)rec.put("miss",true);else rec.put("t",found.type).put("id",found.id).put("p",found.poster).put("b",found.backdrop).put("o",found.overview).put("y",found.year);
                 note(OK,200,found==null?j.title+(j.year.isEmpty()?"":" ("+j.year+")"):null);
-                remember(id,rec);if(found!=null)summaries.put(id,new String[]{found.overview,found.year});return found;
+                if(gen==generation)remember(id,rec);if(found!=null)summaries.put(id,new String[]{found.overview,found.year});return found;
             }catch(Tmdb.Busy b){note(BUSY,429,null);try{Thread.sleep(Math.min(15_000,b.waitMs));}catch(InterruptedException e){Thread.currentThread().interrupt();return null;}}
             catch(Tmdb.HttpError e){   // refused (401/403) or a TMDB error: nothing is cached, so it is tried again later
                 note(e.refused()?REFUSED:ERROR,e.code,null);if(e.refused())pausedUntil=System.currentTimeMillis()+REFUSED_PAUSE_MS;return null;}
@@ -293,10 +296,24 @@ final class Posters {
         synchronized(this){
             try{matches().put(id,rec);}catch(JSONException ignored){return;}
             if(matches.length()>MATCH_MAX)trim();
-            dirty=true;long now=System.currentTimeMillis();due=now-savedAt>3000||lookupQueue.isEmpty();
+            dirty=true;long now=System.currentTimeMillis();due=now-savedAt>(collecting?COLLECT_SAVE_MS:SAVE_MS);
+            if(!due&&!flushPending){flushPending=true;main.postDelayed(flushLater,(collecting?COLLECT_SAVE_MS:SAVE_MS)+50);}
         }
         if(due)save();
     }
+    /**
+     * Review, 27 October 2026 (2 GB TVs): the whole match list (2–3 MB of text with a big library) is written at most every
+     * {@link #SAVE_MS}, every {@link #COLLECT_SAVE_MS} while the background job is looking titles up, and once more when
+     * it finishes or Android asks for memory. A match not yet written is written by a delayed save on the lookup thread.
+     */
+    static final long SAVE_MS=3000,COLLECT_SAVE_MS=10_000;
+    private volatile boolean collecting;private boolean flushPending;
+    private final Runnable flushLater=()->{synchronized(this){flushPending=false;}submit(lookups,lookupQueue,false,this::save);};
+    /** The background job's poster phase begins or ends (LibraryCollector); at the end everything found is written now. */
+    void collecting(boolean on){collecting=on;if(!on)save();}
+    /** For tests: how many times the match list has been written. */
+    synchronized int matchWrites(){return matchWrites;}
+    private int matchWrites;
     private void trim(){
         List<String> keys=new ArrayList<>();for(Iterator<String> it=matches.keys();it.hasNext();)keys.add(it.next());
         keys.sort(Comparator.comparingLong(k->matches.optJSONObject(k)==null?0:matches.optJSONObject(k).optLong("at")));
@@ -316,7 +333,7 @@ final class Posters {
             try{if(!dir.isDirectory()&&!dir.mkdirs())return false;File tmp=new File(dir,name+".tmp"),f=new File(dir,name+".json");
                 try(OutputStream o=new FileOutputStream(tmp)){o.write(content.getBytes(StandardCharsets.UTF_8));}
                 if(!tmp.renameTo(f)){tmp.delete();return false;}
-                written.put(name,seq);return true;}
+                written.put(name,seq);if(name.equals("matches"))synchronized(this){matchWrites++;}return true;}
             catch(Exception e){return false;}
         }
     }
@@ -331,7 +348,10 @@ final class Posters {
     /** For tests: the match saved for a tile, or null. */
     synchronized JSONObject saved(String udn,String lookupKey){return matches().optJSONObject(id(udn,lookupKey));}
     /** Settings > Privacy (or a reset): forget matches and pictures. The household's own corrections (SET-034) stay. */
+    /** Moves on with every {@link #clear}: a lookup that started before one saves and fetches nothing. */
+    private volatile int generation;
     void clear(){
+        generation++;LibraryCollector.postersCleared();
         memory.evictAll();summaries.clear();String status;long seq;
         synchronized(this){matches=new JSONObject();dirty=true;lastResult="";lastCode=0;lastAt=0;unmatched.clear();status=statusJson();seq=++writes;}
         save();write("status",status,seq);disk.clear();

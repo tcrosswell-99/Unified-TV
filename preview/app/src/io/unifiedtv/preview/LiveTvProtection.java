@@ -53,6 +53,12 @@ final class LiveTvProtection {
         boolean onlyNordCanVpn;
         /** The name of another app that can run a VPN, for the plain reason (UNSURE); null when none or unknown. */
         String otherVpn;
+        /**
+         * An enabled system VPN service with no app to open (the TV's own plumbing, a TCL data saver, say) is on the TV. It
+         * isn't counted as "another VPN app", but it could be the VPN that is up, so NordVPN's own word is then needed:
+         * the rule never opens on "NordVPN is the only VPN app" alone (review, rule 8: fail closed).
+         */
+        boolean systemVpn;
     }
     /** The facts the last decision used ({@link #now}): message() names the other VPN app from them. */
     static volatile Facts last;
@@ -70,7 +76,7 @@ final class LiveTvProtection {
         if(f.notificationAccess&&Boolean.FALSE.equals(f.nordSays))return State.DISCONNECTED;
         if(f.notificationAccess&&Boolean.TRUE.equals(f.nordSays))return State.OPEN;
         // No word from NordVPN: the VPN is NordVPN's only if nothing else on this TV could have started one.
-        if(f.onlyNordCanVpn)return State.OPEN;
+        if(f.onlyNordCanVpn&&!f.systemVpn)return State.OPEN;
         return f.notificationAccess?State.NOT_NORDVPN:State.UNSURE;
     }
     static boolean opens(State s){return s==State.OPEN;}
@@ -120,10 +126,11 @@ final class LiveTvProtection {
      * app with no Home-screen entry is the TV's own plumbing (a TCL data saver, say), not a VPN the household chose.
      * NordVPN always counts while enabled.
      */
+    static final String OFF="turned off",PLUMBING="part of the TV's system, with no app to open: NordVPN's own notice is needed";
     static String ignoredBecause(String pkg,boolean enabled,boolean system,boolean launchable){
-        if(!enabled)return "turned off";
+        if(!enabled)return OFF;
         if(NORDVPN.equals(pkg))return null;
-        if(system&&!launchable)return "part of the TV's system, with no app to open";
+        if(system&&!launchable)return PLUMBING;
         return null;
     }
     /**
@@ -152,6 +159,7 @@ final class LiveTvProtection {
         f.nordInstalled=apps.contains(NORDVPN)||LocalDiscovery.nordVpn(c);
         f.onlyNordCanVpn=onlyNord(apps);
         for(String p:apps)if(!NORDVPN.equals(p)){f.otherVpn=detail.labels.get(p);break;}
+        for(java.util.Map.Entry<String,String> e:detail.ignored.entrySet())if(PLUMBING.equals(e.getValue())){f.systemVpn=true;if(f.otherVpn==null)f.otherVpn=detail.labels.get(e.getKey());break;}
         f.notificationAccess=MediaWatch.granted(c);
         f.nordSays=f.notificationAccess?NordCountry.connected:null;
         return f;

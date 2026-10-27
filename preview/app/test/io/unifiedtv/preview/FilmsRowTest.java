@@ -166,4 +166,43 @@ public class FilmsRowTest {
         assertTrue("inside the card with padding",v.nameWidth()<=208-2*4-28+1);
         for(String l:v.nameLines())assertFalse("never the year: "+l,l.contains("2023"));
     }
+
+    // --- review, 27 October 2026
+    @Test public void homeMeasuresATitleOnceNotEveryFrame()throws Exception{
+        LibraryIndex.refresh(app,LibraryFolders.library(app),true,null);openHome();
+        press(KeyEvent.KEYCODE_DPAD_DOWN);LibraryJourneyTest.until("the row",()->rowTitles().size()==3);
+        home.layout(0,0,1920,1080);Bitmap frame=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);
+        home.draw(new Canvas(frame));int first=(Integer)field("tileMeasures");
+        assertTrue("title cards measured on the first frame",first>0);
+        for(int i=0;i<5;i++)home.draw(new Canvas(frame));
+        assertEquals("later frames reuse them",first,field("tileMeasures"));
+        Method reload=home.getClass().getDeclaredMethod("loadPosters",boolean.class);reload.setAccessible(true);reload.invoke(home,true);
+        LibraryJourneyTest.until("reloaded",()->!(Boolean)field("postersLoading"));
+        home.draw(new Canvas(frame));assertTrue("measured again after a reload",(Integer)field("tileMeasures")>first);
+    }
+    @Test public void theRowsLineIsRightAfterComingBack()throws Exception{
+        slowAfterMovie();openHome();
+        press(KeyEvent.KEYCODE_DPAD_DOWN);
+        LibraryJourneyTest.until("scanning",()->((String)field("shelfLine")).startsWith("Scanning your film and TV library"));
+        controller.pause();   // another app in front: Home stops listening
+        server.gate.countDown();
+        LibraryJourneyTest.until("the job finished while Home was away",()->status().phase==LibraryCollector.Phase.DONE);LibraryJourneyTest.idle();
+        controller.resume();LibraryJourneyTest.idle();
+        assertFalse("not still saying Scanning",((String)field("shelfLine")).startsWith("Scanning"));
+        LibraryJourneyTest.until("the finished row",()->rowTitles().contains("Frozen")&&Posters.ROW_HINT.equals(field("shelfLine")));
+    }
+    @Test public void focusStaysOnTheSameTitleWhenTheRowReloads()throws Exception{
+        LibraryIndex.refresh(app,LibraryFolders.library(app),true,null);openHome();
+        press(KeyEvent.KEYCODE_DPAD_DOWN);LibraryJourneyTest.until("the row",()->rowTitles().size()==3);
+        int heat=rowTitles().indexOf("Heat");for(int i=0;i<heat;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertEquals(heat,field("posterIndex"));
+        // Newer films found in the background sort ahead of it.
+        server.video("m","new1","Newest One (2025).mkv").video("m","new2","Newest Two (2024).mkv");
+        LibraryIndex.refresh(app,LibraryFolders.library(app),true,null);
+        Method reload=home.getClass().getDeclaredMethod("loadPosters",boolean.class);reload.setAccessible(true);reload.invoke(home,true);
+        LibraryJourneyTest.until("reloaded with the new titles",()->rowTitles().size()==5);
+        @SuppressWarnings("unchecked") List<HomeShelf.Poster> now=(List<HomeShelf.Poster>)field("posters");
+        assertEquals("the same title keeps focus",now.get((Integer)field("posterIndex")).title,"Heat");
+        assertTrue("it moved along the row",(Integer)field("posterIndex")>heat);
+    }
 }

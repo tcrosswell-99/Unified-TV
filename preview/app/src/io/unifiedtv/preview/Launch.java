@@ -33,7 +33,7 @@ final class Launch {
         if(pkg==null||pkg.isEmpty())return label+" is not installed on this TV";
         String kids=kidsRefusal(a,pkg,label);if(kids!=null)return kids;
         boolean live=Endpoint.protectedApp(pkg,label,a.getSharedPreferences("unified-tv-preview",0).getString("livePackage",""));
-        if(live&&!LiveTvProtection.opens(LiveTvProtection.now(a))){VpnGate.show(a,()->{String why=open(a,pkg,label,visit);if(why!=null&&!why.isEmpty())android.widget.Toast.makeText(a,why,android.widget.Toast.LENGTH_LONG).show();});return "";}
+        if(live&&!LiveTvProtection.opens(LiveTvProtection.now(a))){VpnGate.show(a,pkg,label);return "";}
         PackageManager pm=a.getPackageManager();Intent intent=entry(pm,pkg);
         if(intent==null)return label+" can't be opened from here";
         if(AirPlayReceiver.isAirPin(label)||pkg.equals(AirPlayReceiver.packageSeen))AirPlayReceiver.opened();

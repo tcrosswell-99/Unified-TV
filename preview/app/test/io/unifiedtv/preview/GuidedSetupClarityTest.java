@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.*;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowChoreographer;
 import org.robolectric.shadows.ShadowPackageManager;
 import java.time.Duration;
 import java.util.*;
@@ -108,6 +109,31 @@ public class GuidedSetupClarityTest {
             c.pause().resume();idle();assertTrue(guide.panelShown());}
         finally{c.pause().stop().destroy();}
     }
+    @Test public void aPanelOpenedDuringTheSlideInComesBackFullyAcross(){
+        // Real frame timing, so the 300 ms slide-in is still part-way after 100 ms (Robolectric otherwise ends it at once).
+        ShadowChoreographer.setPaused(true);ShadowChoreographer.setFrameDelay(Duration.ofMillis(16));
+        try{slideInThenOpen();}finally{ShadowChoreographer.setPaused(false);}
+    }
+    private void slideInThenOpen(){
+        FirstRun.save(prefs(),FirstRun.at(FirstRun.startOver(),FirstRun.APPS));
+        ActivityController<FirstRunActivity> c=Robolectric.buildActivity(FirstRunActivity.class).setup();FirstRunActivity guide=c.get();
+        try{
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100));
+            assertTrue("still sliding in ("+guide.sheet.getTranslationX()+")",guide.sheet.getTranslationX()>0);
+            press(guide,"Open Build My TV");settle();assertFalse(guide.panelShown());
+            c.pause().resume();settle();
+            assertEquals("fully across, not stuck part-way",0f,guide.sheet.getTranslationX(),.001f);
+            assertEquals(1f,guide.sheet.getAlpha(),.001f);assertTrue(guide.panelShown());
+        }finally{c.pause().stop().destroy();}
+        try(ActivityController<SettingsActivity> sc=Robolectric.buildActivity(SettingsActivity.class).setup()){SettingsActivity s=sc.get();View sheet=settingsSheet(s);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100));
+            assertTrue("Settings still sliding in ("+sheet.getTranslationX()+")",sheet.getTranslationX()>0);
+            s.startActivity(new Intent(s,PerformanceActivity.class));settle();assertFalse(s.panelShown());
+            sc.pause().resume();settle();
+            assertEquals(0f,sheet.getTranslationX(),.001f);assertEquals(1f,sheet.getAlpha(),.001f);assertTrue(s.panelShown());
+        }
+    }
+    private static View settingsSheet(SettingsActivity s){try{java.lang.reflect.Field f=SettingsActivity.class.getDeclaredField("sheet");f.setAccessible(true);return (View)f.get(s);}catch(ReflectiveOperationException e){throw new AssertionError(e);}}
     private static List<View> all(View v){List<View> out=new ArrayList<>();out.add(v);if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)out.addAll(all(((ViewGroup)v).getChildAt(i)));return out;}
 
     // --- 2. The remote step: a look, on one screen

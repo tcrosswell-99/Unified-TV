@@ -162,17 +162,27 @@ public final class MusicActivity extends GlassScreen {
             recogniser.startListening(systemIntent());listening=true;mic.setText("Stop");say("Listening… "+PROMPT);
         }catch(RuntimeException e){listening=false;systemVoice();}
     }
-    private void stopListening(){listening=false;if(mic!=null)mic.setText("Speak");if(recogniser!=null)try{recogniser.stopListening();}catch(RuntimeException ignored){}}
+    /**
+     * Stop (and leaving the page): the microphone is cancelled, not just told to finish, so nothing heard so far is played
+     * and nothing listens in the background. Any answer the recogniser still sends is ignored (see {@link #heard}).
+     */
+    private void stopListening(){
+        boolean was=listening;listening=false;if(mic!=null)mic.setText("Speak");
+        if(recogniser!=null)try{recogniser.cancel();}catch(RuntimeException ignored){}
+        if(was)say("");
+    }
+    @Override protected void onPause(){stopListening();super.onPause();}
+    boolean listeningForTest(){return listening;}
     private final RecognitionListener heard=new RecognitionListener(){
         @Override public void onReadyForSpeech(Bundle b){}
         @Override public void onBeginningOfSpeech(){}
         @Override public void onRmsChanged(float db){}
         @Override public void onBufferReceived(byte[] buffer){}
         @Override public void onEndOfSpeech(){if(listening)say("One moment…");}
-        @Override public void onError(int error){listening=false;if(mic!=null)mic.setText("Speak");
+        @Override public void onError(int error){if(!listening)return;listening=false;if(mic!=null)mic.setText("Speak");
             if(VoiceActivity.fallBack(error)){paneFailed=true;systemVoice();return;}
             say(error==SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS?"Allow the microphone for Unified TV in the TV's app settings, or type instead.":"Listening isn't working right now. Type instead, or press Speak again.");}
-        @Override public void onResults(Bundle b){listening=false;if(mic!=null)mic.setText("Speak");
+        @Override public void onResults(Bundle b){if(!listening)return;listening=false;if(mic!=null)mic.setText("Speak");
             ArrayList<String> words=b==null?null:b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String w=words==null||words.isEmpty()||words.get(0)==null?"":words.get(0).trim();
             if(w.isEmpty()){paneFailed=true;systemVoice();return;}spoken(w);}

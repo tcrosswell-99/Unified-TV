@@ -207,13 +207,70 @@ public class RoundTripTest {
         int[] asked = {0}; AirPlayReceiver.probeForTests = c -> { asked[0]++; return null; };
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
-            AirPlayStart.press(a, AIRPIN); c.pause(); idle(10); c.resume(); idle(10);
+            AirPlayStart.press(a, AIRPIN); Shadows.shadowOf(a).getNextStartedActivity(); c.pause(); idle(10);
+            // Review: never pulled out of AirPin's own prompts, or another app, when AirPlay didn't start.
+            assertNull("nothing brought forward", Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
+            assertTrue("it waits for the household to come back", Comeback.armed());
+            c.resume(); idle(10);
             assertTrue("a bounded number of looks", asked[0] <= AirPlayStart.ATTEMPTS && asked[0] > 0);
             View s = sheet(); assertNotNull(s); assertTrue(words(s), words(s).contains(AirPlayStart.NOT_STARTED));
             Button open = find(s, "Open AirPin"); assertNotNull(open); open.performClick();
             assertTrue(is(Shadows.shadowOf(a).getNextStartedActivity(), AIRPIN));
         }
     }
+    // --- review: a closed screen is never reopened, and each trip delivers only its own step
+    @Test public void aClosedScreenIsNeverReopenedLiveTvCarriesOnFromHome() {
+        Activity from;
+        try (ActivityController<AppsActivity> c = Robolectric.buildActivity(AppsActivity.class).setup()) {
+            from = c.get(); Shadows.shadowOf(from).getNextStartedActivity();
+            refusedThenConnect(from); c.pause().stop();
+            from.finish(); c.destroy();   // closed by itself while NordVPN is open (Ask your TV's idle close, say)
+        }
+        LiveTvProtection.forTests = facts(VpnGate.State.CONNECTED); NordConnect.check();
+        Intent back = Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity();
+        assertNotNull(back); assertEquals("Home, never a fresh copy of the closed screen", UnifiedPreviewActivity.class.getName(), back.getComponent().getClassName());
+        try (ActivityController<UnifiedPreviewActivity> h = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            idle(10); Intent next; do next = Shadows.shadowOf(h.get()).getNextStartedActivity(); while (next != null && !is(next, LIVE));
+            assertTrue("Live TV opens from Home", is(next, LIVE)); assertEquals(NordConnect.OPENING, ShadowToast.getTextOfLatestToast());
+        }
+    }
+    @Test public void aGoneScreenDisarmsInsteadOfBeingRecreated() {
+        try (ActivityController<AppsActivity> c = Robolectric.buildActivity(AppsActivity.class).setup()) {
+            Activity a = c.get(); boolean[] ran = {false};
+            Comeback.Token t = Comeback.arm(a, 60_000, on -> ran[0] = true);
+            a.finish();
+            assertEquals(Comeback.Result.GONE, Comeback.deliver(app(), t)); assertFalse(Comeback.armed()); assertFalse(ran[0]);
+            assertNull(Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
+        }
+    }
+    @Test public void eachTripDeliversOnlyItsOwnStep() {
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
+            refusedThenConnect(a); c.pause();
+            boolean[] other = {false}; Comeback.Token airplay = Comeback.arm(a, 60_000, on -> other[0] = true);   // AirPlay or access re-armed
+            LiveTvProtection.forTests = facts(VpnGate.State.CONNECTED); NordConnect.check();
+            assertNull("NordVPN connecting never delivers another trip's step", Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
+            assertFalse(other[0]); assertTrue(Comeback.armed(airplay)); assertFalse(NordConnect.watching());
+        }
+    }
+    @Test public void theToastOnlyWhenLiveTvActuallyOpened() {
+        LiveTvProtection.forTests = facts(VpnGate.State.CONNECTED);
+        app().getSharedPreferences("unified-tv-preview", 0).edit().putString(Profiles.PREF, Profiles.CHILD).putString(KidsPolicy.APPS_PREF, "").commit();
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            ShadowToast.reset(); NordConnect.open(c.get(), LIVE, "Live TV");
+            assertEquals("Kids: the refusal, not \"opening Live TV\"", "Live TV isn't on the Kids list. Ask an adult.", ShadowToast.getTextOfLatestToast());
+            assertFalse(is(Shadows.shadowOf(c.get()).getNextStartedActivity(), LIVE));
+        }
+    }
+    @Test public void anUnknownBuildNeverCrashesTheAccessRoute() {
+        Context other = new ContextWrapper(app()) { @Override public String getPackageName() { return "com.example.other"; } };
+        assertEquals("adb shell cmd notification allow_listener com.example.other/io.unifiedtv.preview.MediaWatch", MediaWatch.pcCommand(other));
+        assertFalse(NotificationAccessActivity.available(other));
+        Context deviceCheck = new ContextWrapper(app()) { @Override public String getPackageName() { return "io.unifiedtv.preview.devicecheck"; } };
+        assertTrue("this app's own review build", NotificationAccessActivity.available(deviceCheck));
+        assertTrue(AdbCommands.allowed(AdbCommands.allowListener("io.unifiedtv.preview.devicecheck")));
+    }
+
     @Test public void noAirPinKeepsTheOldAnswer() {
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             assertEquals("AirPin LITE is not installed on this TV", AirPlayStart.press(c.get(), null));
@@ -225,7 +282,7 @@ public class RoundTripTest {
         assertNull(LiveTvProtection.ignoredBecause(NORD, true, false, true));
         assertNull("an app the household installed", LiveTvProtection.ignoredBecause("com.example.vpn", true, false, true));
         assertNull("a system app with an app to open still counts", LiveTvProtection.ignoredBecause("com.tcl.vpn", true, true, true));
-        assertEquals("part of the TV's system, with no app to open", LiveTvProtection.ignoredBecause("com.tcl.datasaver", true, true, false));
+        assertEquals(LiveTvProtection.PLUMBING, LiveTvProtection.ignoredBecause("com.tcl.datasaver", true, true, false));
         assertEquals("turned off", LiveTvProtection.ignoredBecause("com.example.vpn", false, false, true));
         Map<String, String> ignored = new LinkedHashMap<>(); ignored.put("com.tcl.datasaver", "part of the TV's system, with no app to open");
         LiveTvProtection.Facts f = facts(VpnGate.State.CONNECTED);

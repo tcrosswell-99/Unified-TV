@@ -86,7 +86,7 @@ public final class MediaWatch extends NotificationListenerService {
         try { return i.resolveActivity(c.getPackageManager()) != null ? i : null; } catch (RuntimeException e) { return null; }
     }
     /** The one computer command that gives this app's listener access (as NotificationAccessActivity sends it on the TV). */
-    static String pcCommand(Context c) { return "adb shell " + io.unifiedtv.adb.AdbCommands.allowListener(c.getPackageName()); }
+    static String pcCommand(Context c) { return "adb shell cmd notification allow_listener " + c.getPackageName() + "/" + io.unifiedtv.adb.AdbCommands.LISTENER; }
 
     /** Android's own notification access screen: this app's page where the TV offers it (Android 11+), else the list. */
     static android.content.Intent accessSettings(Context c) {

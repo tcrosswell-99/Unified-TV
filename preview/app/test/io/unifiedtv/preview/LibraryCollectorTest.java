@@ -143,4 +143,64 @@ public class LibraryCollectorTest {
         assertEquals(Posters.ROW_HINT,HomeShelf.line(idle,false,true,false));assertEquals("",HomeShelf.line(idle,true,true,false));
         assertEquals("",HomeShelf.line(idle,false,true,true));
     }
+
+    // --- review, 27 October 2026: the job can be stopped part-way, and the match list is not rewritten after every batch
+    final List<String> events=Collections.synchronizedList(new ArrayList<>());volatile CountDownLatch hold;final CountDownLatch held=new CountDownLatch(1);
+    /** A library of 22 films in Movie (three poster batches) and Kids beside it; the first TMDB search waits for {@code hold}. */
+    void bigLibrary(String... folders)throws Exception{
+        server=new FakeServer().folder("0","m","Movie").folder("0","k","Kids").video("m","heat","Heat (1995).mkv").video("k","frozen","Frozen (2013).mkv","PG");
+        for(int i=0;i<21;i++)server.video("m","x"+i,"Film "+i+" ("+(1980+i)+").mkv");
+        FakeServer fake=server;LibraryIndex.browser=(src,id,off)->{events.add("dlna:"+id);return fake.browse(src,id,off);};
+        Tmdb.Transport answer=Posters.transport;
+        Posters.transport=(url,headers,limit)->{
+            if(url.contains("/search/")){events.add("search");CountDownLatch h=hold;if(h!=null){held.countDown();try{h.await(20,java.util.concurrent.TimeUnit.SECONDS);}catch(InterruptedException e){throw new java.io.IOException(e);}}}
+            else if(url.contains("image.tmdb.org"))events.add("image");
+            return answer.get(url,headers,limit);};
+        List<LibraryFolders.Folder> chosen=new ArrayList<>();for(String f:folders)chosen.add(new LibraryFolders.Folder(f,f.equals("m")?"Movie":"Kids",null,false));
+        LibraryFolders.save(app,FakeServer.source(),chosen);
+    }
+    long count(String what){synchronized(events){return events.stream().filter(what::equals).count();}}
+    @Test public void foldersSavedAgainMidPostersAreWalkedNext()throws Exception{
+        Posters.testKey=KEY;bigLibrary("m");hold=new CountDownLatch(1);
+        LibraryCollector job=LibraryCollector.get(app);job.start();
+        assertTrue("a poster lookup under way",held.await(10,java.util.concurrent.TimeUnit.SECONDS));
+        LibraryFolders.save(app,FakeServer.source(),Arrays.asList(new LibraryFolders.Folder("m","Movie",null,false),new LibraryFolders.Folder("k","Kids",null,false)));
+        job.start();   // the household adds Kids while posters are being looked up
+        hold.countDown();
+        LibraryJourneyTest.until("the new folder walked and everything done",()->events.contains("dlna:k")&&status().phase==LibraryCollector.Phase.DONE);
+        int k=events.indexOf("dlna:k");long before;synchronized(events){before=events.subList(0,k).stream().filter("search"::equals).count();}
+        // A title TMDB doesn't know is searched twice (with its year, then without), so a batch is at most twice its size.
+        assertTrue("Kids walked after at most the batch under way ("+before+" searches), not after all 22 titles",before<=2*MemoryBudget.current().posterBatch());
+        assertEquals("then every title looked up",23,status().postersTotal);assertEquals(23,status().postersDone);
+    }
+    @Test public void aResetMidWalkLeavesNothingWrittenBack()throws Exception{
+        saveLibrary();server.gate=new CountDownLatch(1);server.holdAfter=1;
+        LibraryCollector.get(app).start();
+        LibraryJourneyTest.until("walking, the second page held",()->server.calls.size()==1);Thread.sleep(50);
+        LibraryIndex.clear(app);   // Privacy: forget the saved list (also a reset, or forgetting the media server)
+        server.gate.countDown();
+        LibraryJourneyTest.until("stopped",()->!status().busy());Thread.sleep(200);
+        java.io.File[] files=new java.io.File(app.getFilesDir(),"library").listFiles();
+        assertTrue("nothing written back: "+Arrays.toString(files),files==null||files.length==0);
+        assertEquals(0,LibraryIndex.latest(app,LibraryFolders.library(app)).size());
+        assertEquals(LibraryCollector.Phase.IDLE,status().phase);
+    }
+    @Test public void clearingPostersMidLoopStopsTheDownloads()throws Exception{
+        Posters.testKey=KEY;bigLibrary("m");hold=new CountDownLatch(1);
+        LibraryCollector.get(app).start();
+        assertTrue(held.await(10,java.util.concurrent.TimeUnit.SECONDS));
+        PrivacyData.clearPosters(app);   // Privacy & Data: Clear film posters and details
+        hold.countDown();
+        LibraryJourneyTest.until("stopped",()->status().phase==LibraryCollector.Phase.DONE);Thread.sleep(200);
+        assertTrue("only the lookup already under way (one title: at most two searches): "+count("search"),count("search")<=2);assertEquals("no picture fetched again",0,count("image"));
+        assertArrayEquals("nothing saved again",new int[]{0,0},Posters.get(app).matchCounts());
+    }
+    @Test public void theMatchListIsNotRewrittenAfterEveryBatch()throws Exception{
+        Posters.testKey=KEY;bigLibrary("m");
+        LibraryCollector.get(app).start();
+        LibraryJourneyTest.until("done",()->status().phase==LibraryCollector.Phase.DONE);
+        assertEquals(22,status().postersTotal);
+        assertTrue("at most the first match and the final save, not one per batch: "+Posters.get(app).matchWrites(),Posters.get(app).matchWrites()<=2);
+        Posters.reset();assertEquals("everything found was written when the job finished",22,Posters.get(app).matchCounts()[1]);
+    }
 }

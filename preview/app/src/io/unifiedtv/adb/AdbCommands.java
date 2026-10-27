@@ -55,7 +55,7 @@ public final class AdbCommands {
     /** Unified TV's own notification listener (the namespace's class, the same in every Unified TV app). */
     public static final String LISTENER = "io.unifiedtv.preview.MediaWatch";
     /** The only apps whose listener allow_listener may name: Unified TV's own. */
-    public static final Set<String> LISTENER_APPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview")));
+    public static final Set<String> LISTENER_APPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck", "io.unifiedtv.preview", "io.unifiedtv.preview.devicecheck")));
     static final String ALLOW_LISTENER = "cmd notification allow_listener ";
     /** package/class, the class either ".Relative" or fully named: letters, digits, '_' and dots only (no '$', nothing a shell reads). */
     static final Pattern COMPONENT = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/(\\.?[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)");

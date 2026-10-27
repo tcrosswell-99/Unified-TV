@@ -205,7 +205,7 @@ Report the model, firmware, build and each step's result.
 5. **Problems in plain words:** with Home Assistant switched off, Play says "Home Assistant isn't connected"; Owner diagnostics, under **Music**, shows the last Echo problem (never an address or a token).
 6. **Kids:** in Kids, Play on offers only This TV until an adult turns on **Echo speakers in Kids** (Adults' Play on page, adult PIN).
 
-8. **AirPlay (AirPin LITE):** with AirPlay ready (bright icon), OK on the AirPlay icon shows a small panel, "AirPlay is ready. On your iPhone or Mac, open Control Centre > Screen Mirroring … and choose '<name>'", and AirPin does not open. Force-stop AirPin (or restart the TV) so the icon is dim with a slash, then press OK: "Starting AirPlay…", AirPin opens briefly, and Unified TV comes back by itself with the same panel. Say how long AirPin stayed on screen, and whether your iPhone then sees the TV. If AirPlay never appears, the panel says "AirPlay didn't start…" with **Open AirPin**.
+8. **AirPlay (AirPin LITE):** with AirPlay ready (bright icon), OK on the AirPlay icon shows a small panel, "AirPlay is ready. On your iPhone or Mac, open Control Centre > Screen Mirroring … and choose '<name>'", and AirPin does not open. Force-stop AirPin (or restart the TV) so the icon is dim with a slash, then press OK: "Starting AirPlay…", AirPin opens briefly, and Unified TV comes back by itself with the same panel. Say how long AirPin stayed on screen, and whether your iPhone then sees the TV. If AirPlay never appears, Unified TV leaves you in AirPin (it never pulls you out of AirPin's own prompts or another app); when you come back to Home, the panel says "AirPlay didn't start…" with **Open AirPin**.
 
 Report the model, firmware, build and each step's result.
 
