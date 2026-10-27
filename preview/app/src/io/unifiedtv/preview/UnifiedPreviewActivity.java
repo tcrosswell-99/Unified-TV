@@ -44,7 +44,7 @@ import java.util.Set;
 public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
-    @Override protected void onStart(){super.onStart();LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});VpnGate.listen(()->{if(surface!=null)surface.postInvalidate();});
+    @Override protected void onStart(){super.onStart();if(safe)return;LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});VpnGate.listen(()->{if(surface!=null)surface.postInvalidate();});
         getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);
         TurnOn.sync(this);}   // OD-23: the "when the TV turns on" watcher follows its switch (and a permission given from a computer)
     @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;VpnGate.listen(null);super.onStop();}
@@ -64,14 +64,13 @@ public final class UnifiedPreviewActivity extends Activity {
         try { if (new Vault(this).read("gallery").optJSONArray("images") != null)
             startActivity(new Intent(this, GalleryActivity.class)); } catch (Exception ignored) {}
     };
-    @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery);
+    @Override public void onUserInteraction() { super.onUserInteraction(); idleHandler.removeCallbacks(gallery); if (safe) return;
         if (surface != null && surface.layer != null) surface.layer.input();   // the light wakes from an idle rest
         int minutes = wallpaperOn() ? WallpaperPolicy.idle(getSharedPreferences("unified-tv-preview",0).getInt("wallpaperIdle",-1)) : 5;
         if (minutes > 0) idleHandler.postDelayed(gallery, minutes * 60_000L); }
-    @Override protected void onResume() { super.onResume(); onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
+    @Override protected void onResume() { super.onResume(); if (safe) return; onUserInteraction(); if(surface!=null){surface.refresh();if(surface.layer!=null)surface.layer.resume();}
         LiveTvGuard.stop(this);
         Launch.returned(this);   // a visit (AirPin, NordVPN) that closed at once inside our task opens on its own instead
-        if(getIntent().getBooleanExtra("liveTvPaused",false)){getIntent().removeExtra("liveTvPaused");VpnGate.show(this,"Live TV paused. NordVPN disconnected, and Android has stopped Live TV's connection until it reconnects.");}
         guarded();
         homeReport();
     }
@@ -88,7 +87,8 @@ public final class UnifiedPreviewActivity extends Activity {
         if(surface==null||!getIntent().hasExtra("kidsGuard"))return;String app=getIntent().getStringExtra("kidsGuard");getIntent().removeExtra("kidsGuard");
         surface.home();surface.info((app==null||app.isEmpty()?"That app":app)+" isn't on the Kids list. Ask an adult.");
     }
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent);
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (safe) return;
+        homeCheck(intent.hasCategory(Intent.CATEGORY_HOME));   // OD-28: the Home button check after taking over Home
         // As the chosen Home: the Home button lands on the main screen with the same app still in focus (spec 28.3).
         // OD-23: brought forward when the TV turned on: the same main screen as the Home button (TurnOn).
         if ((intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra(TurnOn.EXTRA, false)) && surface != null) surface.home(); }
@@ -98,6 +98,9 @@ public final class UnifiedPreviewActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        // OD-28: Home stopped twice within a minute of starting while it holds the TV's Home: a safe screen, never a loop.
+        if (HomeSafety.needed(this)) { safe = true; setContentView(HomeSafety.view(this, () -> HomeTakeoverActivity.open(this, false), () -> { HomeSafety.reset(this); recreate(); })); return; }
+        HomeSafety.started(this);
         HouseholdSettings.ensure(this);   // before Home writes anything: an earlier install keeps exactly what it had
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
@@ -110,14 +113,19 @@ public final class UnifiedPreviewActivity extends Activity {
         stack.addView(layer); stack.addView(surface);
         setContentView(stack);
         surface.layer = layer; surface.aim(surface.currentScene(), false);
+        homeCheck(getIntent().hasCategory(Intent.CATEGORY_HOME));
     }
+    /** HomeSafety's safe screen is showing instead of Home: nothing of Home runs, and Back stays on it. */
+    private boolean safe;
+    /** OD-28 "Press the Home button on your remote now": Home tells the check it came to the front, and says the result. */
+    private void homeCheck(boolean byHome){String w=HomeTakeover.homeShown(this,byHome);if(w!=null&&surface!=null){surface.home();surface.info(w,6000L);}}
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (hasWindowFocus() && surface != null && surface.key(event)) return true;
         return super.dispatchKeyEvent(event);
     }
     /** Back that reaches Android's own handling (the window not yet focused): Home's own Back, never Android's finish. */
-    @Override public void onBackPressed() { if (surface != null) { surface.key(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); return; } super.onBackPressed(); }
+    @Override public void onBackPressed() { if (safe) return; if (surface != null) { surface.key(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); return; } super.onBackPressed(); }
     /** HRC-03: said once, the first time Back is pressed on the main screen of the launcher app. */
     static final String BACK_HINT = "backHint", STAYS_OPEN = "Unified TV stays open. To use the TV's own Home screen, press Home.";
 
@@ -253,7 +261,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable hold = () -> {
             if (okDown && !held) {
                 held = true;
-                if (!header && index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menu = true; menuIndex = 0; invalidate(); }); }
+                if (!header && index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menuNow = menuFor(dock.get(index)); menu = true; menuIndex = 0; invalidate(); }); }
             }
         };
         private final Runnable clockTick = new Runnable() {
@@ -601,7 +609,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (code == KeyEvent.KEYCODE_BACK) { goBack(); return true; }
             // Menu opens every app directly (there is no Home menu any more: NAV-02).
             if (code == KeyEvent.KEYCODE_MENU) { if (!moving && !menu) activity.startActivity(new Intent(activity, AppsActivity.class)); return true; }
-            if (menu) { int n = MENU.length;
+            if (menu) { int n = menuNow.length;
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP) menuIndex = (menuIndex + n - 1) % n;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_DOWN) menuIndex = (menuIndex + 1) % n;
                 invalidate(); return true; }
@@ -629,12 +637,15 @@ public final class UnifiedPreviewActivity extends Activity {
             if (header) { if (headerIndex >= 0 && headerIndex < pill.size()) utility(pill.get(headerIndex)); invalidate(); return; }
             if (menu) {
                 menu = false;
-                if (menuIndex == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
-                else if (menuIndex == 1 && index >= 0 && index < dock.size()) {
+                // OD-27: the Music tile's menu starts with the real Amazon Music app; the edit choices follow as before.
+                int pick = menuNow == MUSIC_MENU ? menuIndex - 1 : menuIndex;
+                if (pick < 0) { String pkg = AmazonMusic.installed(activity); String why = pkg == null ? "Amazon Music isn't installed on this TV" : Launch.open(activity, pkg, AmazonMusic.NAME); if (why != null && !why.isEmpty()) info(why); }
+                else if (pick == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
+                else if (pick == 1 && index >= 0 && index < dock.size()) {
                     // Removing never uninstalls; the app stays in Apps and can be added back.
                     String name = dock.get(index).name; dock.remove(index); saveDock();
                     index = dock.isEmpty() ? -1 : Math.min(index, dock.size() - 1); moved(); info(name + " removed from Home");
-                } else if (menuIndex == 2 && index >= 0 && index < dock.size()) {
+                } else if (pick == 2 && index >= 0 && index < dock.size()) {
                     Item item = dock.get(index); if (item.pkg != null) Launch.info(activity, item.pkg); else info(item.name + " is a Unified TV shortcut");
                 }
 
@@ -705,7 +716,12 @@ public final class UnifiedPreviewActivity extends Activity {
             // SET-BUILD-10: the shared Music tile opens the profile's chosen Music app (Build My TV), still through Launch; with
             // nothing chosen, or something already playing, it opens Music as before.
             if("music".equals(item.id)){
+                // OD-27: while Amazon Music is playing or paused, the tile is its remote (Now Playing, not the app); when
+                // Amazon Music is the chosen Music app, the tile opens Music (play by name, Play on). Hold for the app itself.
+                MusicSessions.Source src=MusicSessions.source;
+                if(src.granted(activity)&&MusicSessions.amazon(activity,src.active(activity))!=null){activity.startActivity(new Intent(activity,NowPlayingActivity.class));return;}
                 String chosen=HubBuilder.musicPackage(prefs,Profiles.current(prefs),launchable());
+                if(chosen!=null&&AmazonMusic.packages(activity).contains(chosen)){activity.startActivity(new Intent(activity,MusicActivity.class));return;}
                 if(chosen!=null&&MediaWatch.best(activity)==null){String why=Launch.open(activity,chosen,"Music");if(why!=null&&!why.isEmpty())info(why);return;}
                 activity.startActivity(new Intent(activity,MusicActivity.class));return;}
             if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { String no = Launch.kidsRefusal(activity, item.id, item.name); if (no != null) { info(no); return; } HouseholdActivity.action(activity, item.id); return; }
@@ -892,7 +908,7 @@ public final class UnifiedPreviewActivity extends Activity {
         /**
          * The VPN shield (UX-UTILITY-02): monochrome, with a subtle mark for each state. A check only while Android reports
          * a connected VPN; a slash when disconnected; a dot while checking; nothing inside when unknown. It never says
-         * Live TV is protected: that takes the automatic check (LiveTvProtection), which this TV cannot make.
+         * Live TV is protected. Whether Live TV opens is LiveTvProtection's rule (OD-26), not the shield.
          */
         /**
          * Owner request, 25 October 2026: NordVPN's country as a small round flag beside the shield, only while NordVPN says
@@ -1205,12 +1221,16 @@ public final class UnifiedPreviewActivity extends Activity {
             catch (RuntimeException e) { info("Unable to open Films & TV"); }
         }
 
-        private static final String[] MENU = {"Move", "Remove from Home", "App information", "Cancel"};
+        private static final String[] MENU = {"Move", "Remove from Home", "App information", "Cancel"},
+                MUSIC_MENU = {"Open Amazon Music app", "Move", "Remove from Home", "App information", "Cancel"};
+        /** The hold menu as it opened: the Music tile adds the Amazon Music app first when it is installed (OD-27). */
+        private String[] menuNow = MENU;
+        private String[] menuFor(Item item) { return "music".equals(item.id) && AmazonMusic.installed(activity) != null ? MUSIC_MENU : MENU; }
         private void drawMenu(Canvas c) {
             paint.setShader(null); paint.setColor(0x92000000); c.drawRect(0, 0, W, H, paint);
             glass(c, 625, 330, 1295, 790, 35, 0xEB242B37, 0x70FFFFFF);
             text(c, index >= 0 && index < dock.size() ? dock.get(index).name : "Edit Home", 960, 415, 48, WHITE, false, Paint.Align.CENTER);
-            String[] actions = MENU;
+            String[] actions = menuNow;
             for (int j = 0; j < actions.length; j++) {
                 if (j == menuIndex) glass(c, 695, 497 + 58 * j, 1225, 550 + 58 * j, 17, 0x928A98AA, 0xAAFFFFFF);
                 text(c, actions[j], 960, 534 + 58 * j, 31, WHITE, false, Paint.Align.CENTER);

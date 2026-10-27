@@ -30,7 +30,7 @@ public class CapabilitiesTest {
     }
     private static Capabilities.Facts everything(){
         Capabilities.Facts f=nothing();f.sdk=34;f.release="14";f.launcherApp=true;f.homeRole=true;f.isHome=true;f.librarySetUp=true;f.tmdbKey=true;f.airPin=true;f.airPlayReady=true;
-        f.nordVpn=true;f.liveVerifier=true;f.liveVerified=true;f.livePackage="tv.example.live";f.haSaved=true;f.haConnected=true;f.footballKey=true;f.footballTeam=true;f.overlays=true;
+        f.nordVpn=true;f.liveState=LiveTvProtection.State.OPEN;f.livePackage="tv.example.live";f.haSaved=true;f.haConnected=true;f.footballKey=true;f.footballTeam=true;f.overlays=true;
         f.notificationAccess=true;f.kidsGuardAllowed=true;f.speech=true;f.microphone=true;f.outputs=true;f.exactOutput=true;f.reviewBuild=true;return f;
     }
     @Test public void aTvWithEverythingWorkingIsAllAvailable(){
@@ -45,7 +45,7 @@ public class CapabilitiesTest {
             assertEquals(id,Capabilities.State.SETUP_REQUIRED,state(f,id));
         for(String id:new String[]{Capabilities.ALERTS_OVER_APPS,Capabilities.NOW_PLAYING,Capabilities.KIDS_GUARD})
             assertEquals(id,Capabilities.State.PERMISSION_REQUIRED,state(f,id));
-        assertEquals("no verifier on Android: Live TV stays locked",Capabilities.State.UNSUPPORTED_ON_DEVICE,state(f,Capabilities.LIVE_TV));
+        assertEquals("no Live TV app recognised",Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
         assertEquals("no live blur before Android 12",Capabilities.State.UNSUPPORTED_ON_DEVICE,state(f,Capabilities.GLASS));
         assertTrue(Capabilities.evaluate(f,Capabilities.GLASS).words.contains("Android 11"));
         assertEquals(Capabilities.State.UNSUPPORTED_ON_DEVICE,state(f,Capabilities.VOICE));
@@ -75,8 +75,12 @@ public class CapabilitiesTest {
         f.airPin=true;assertEquals(Capabilities.State.TEMPORARILY_UNAVAILABLE,state(f,Capabilities.AIRPLAY));
         f.haSaved=true;assertEquals("saved is not connected",Capabilities.State.TEMPORARILY_UNAVAILABLE,state(f,Capabilities.HOME_ASSISTANT));
         f.haConnected=true;assertEquals(Capabilities.State.AVAILABLE,state(f,Capabilities.HOME_ASSISTANT));
-        f.liveVerifier=true;assertEquals("no single Live TV app",Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
-        f.livePackage="tv.example.live";assertEquals("locked until verified",Capabilities.State.TEMPORARILY_UNAVAILABLE,state(f,Capabilities.LIVE_TV));
+        f.liveState=LiveTvProtection.State.OPEN;assertEquals("no single Live TV app",Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
+        f.livePackage="tv.example.live";f.liveState=LiveTvProtection.State.DISCONNECTED;assertEquals("locked until NordVPN is connected",Capabilities.State.TEMPORARILY_UNAVAILABLE,state(f,Capabilities.LIVE_TV));
+        f.liveState=LiveTvProtection.State.UNSURE;assertEquals("another VPN app: notification access",Capabilities.State.PERMISSION_REQUIRED,state(f,Capabilities.LIVE_TV));
+        f.liveState=LiveTvProtection.State.NO_NORDVPN;assertEquals(Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
+        f.liveState=LiveTvProtection.State.OPEN;assertEquals(Capabilities.State.AVAILABLE,state(f,Capabilities.LIVE_TV));
+        LiveTvProtectionTest.neverClaimsAKillSwitch(Capabilities.evaluate(f,Capabilities.LIVE_TV).words);
     }
     @Test public void aVpnBeingInstalledNeverMeansLiveTvIsProtected(){
         Capabilities.Facts f=nothing();f.nordVpn=true;f.livePackage="tv.example.live";

@@ -36,6 +36,14 @@ $tv = "<the TV's address>:5555"
 
 ## Review build of the launcher (safe beside everything else)
 
+> **Before uninstalling or replacing a review build that has taken over the Home button** (Settings → Appearance & Home → Take over the Home button, OD-28): first choose **Return to the original TV interface** in that build's Settings. Otherwise the TV's own Home stays off and the TV has no Home screen after the uninstall. If that has already happened, put it back from the PC:
+>
+> ```powershell
+> & "$HOME\platform-tools\adb.exe" -s $tv shell pm enable com.google.android.tvlauncher
+> ```
+>
+> or on the TV: Settings → Apps → See all apps → Show system apps → Android TV Home → Enable.
+
 `UnifiedTV-Launcher-review.apk` is the package `io.unifiedtv.launcher.devicecheck`. It installs beside the existing preview and does not touch it. It has its own empty settings. It never changes the Home button unless you choose that in its Settings.
 
 1. **Download.** Open the pull request's latest green **CI** run on GitHub (Actions tab), scroll to **Artifacts** and download **UnifiedTV-Launcher-review**. Unzip it into `$HOME\review`.
@@ -90,7 +98,29 @@ Write down the last line: the TV's own Home (on the TCL it was `com.google.andro
 & "$HOME\platform-tools\adb.exe" -s $tv shell cmd package set-home-activity com.google.android.tvlauncher/.MainActivity
 ```
 
-Removing the review build also hands Home back. Then, in the review build, open **Settings → TV & performance → Make Unified TV the Home screen**, and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
+Removing the review build also hands Home back, **unless** it has taken over the Home button (OD-28, below): then choose Return to the original TV interface first, or run `adb shell pm enable com.google.android.tvlauncher` afterwards. Then, in the review build, open **Settings → TV & performance → Make Unified TV the Home screen**, and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
+
+## Take over the Home button (launcher app, OD-28; only when you choose to try it)
+
+**Not tested on a TV yet.** It turns the TV's own Home (`com.google.android.tvlauncher` on the TCL) **off**, never uninstalls it, and only after you confirm. Read the box at the top of the review-build steps first, and keep the PC fix to hand: `adb shell pm enable com.google.android.tvlauncher`. It needs network debugging on, as for the Optional clean-up.
+
+1. **Before:** from the PC, write down the Home and the disabled list:
+
+   ```powershell
+   & "$HOME\platform-tools\adb.exe" -s $tv shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+   & "$HOME\platform-tools\adb.exe" -s $tv shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+   & "$HOME\platform-tools\adb.exe" -s $tv shell pm list packages -d
+   ```
+
+2. **Start:** Settings → Appearance & Home → **Take over the Home button**, PIN, **Start**. If the TV asks **Allow USB debugging?** for `unifiedtv@tv`, tick **Always allow** and choose **OK**. Expected on the TCL: the page says the TV puts **Android TV Home (com.google.android.tvlauncher)** ahead of other Home screens, and nothing has changed yet (step 1's commands still say the same). Record exactly what the page says.
+3. **Confirm:** choose **Turn off Android TV Home and use Unified TV**. Expected: *Unified TV is the Home screen*. From the PC, the first command of step 1 now names `io.unifiedtv.launcher.devicecheck/io.unifiedtv.preview.HomeEntry`, and `pm list packages -d` now includes `com.google.android.tvlauncher`. If the page says another app answers Home instead (for example `com.google.android.tungsten.setupwraith`), write its name down and choose **Undo**.
+4. **Debugging:** choose **Next**, follow the steps to turn off USB debugging if you want, and **Check that it's off**. Then **Next: try the Home button**.
+5. **Press Home** on the remote within 20 seconds. Expected: Unified TV comes to the front and says *Done. The Home button now opens Unified TV.* Then test Home from Netflix, from an HDMI input, after standby and after a restart at the wall, and Back from each app. Note any remote button (app buttons, Settings, Input) that stops working.
+6. **Uninstall guard:** Settings → Updates & About shows *Before uninstalling or replacing this build, choose Return to the original TV interface.*
+7. **Return:** Settings → Appearance & Home → **Return to the original TV interface**, PIN, and the same button again (debugging needs to be on for this). Expected: *The Home button opens Android TV Home again*; pressing Home shows the TV's own Home; step 1's commands match what you wrote down before.
+8. **Return without debugging:** repeat steps 2 to 5, turn off USB debugging, then try step 7. Expected: the page shows the TV-only route (Settings → Apps → See all apps → Show system apps → Android TV Home → Enable) and the PC command. Follow the TV-only route, then **Check again**.
+
+Report the model, firmware, build, what each step said, the PC output, and anything on the remote that stopped working. Unified TV never reads or reassigns any key, and never turns off anything except the TV's own Home.
 
 ## Open Unified TV when the TV turns on (launcher app, OD-23)
 
@@ -136,9 +166,48 @@ tizen run -p UTVFRAME00.UnifiedTV -s <device>
 
 **Expected:** Unified TV opens on the Frame with the dock and its light; the remote moves focus; Back at Home does nothing; the Samsung Home button returns to Samsung's Home. **To undo:** `tizen uninstall -p UTVFRAME00.UnifiedTV -s <device>`, then `sdb disconnect <TV-address>`, then turn Developer Mode off. This removes only Unified TV's own app; Smart Hub, TV Plus and Art Mode are never touched. Do **not** run anything from [SAMSUNG_HOME_PROPOSAL.md](SAMSUNG_HOME_PROPOSAL.md); it is a proposal awaiting your approval. Keep the certificate files and passwords off the repository and out of the chat.
 
-## Live TV protection check
+## Live TV and NordVPN (OD-26)
 
-Follow [VPN_PROTECTION.md](VPN_PROTECTION.md). It uses `preview/tools/vpn_check.py`, which needs Python and the repository's `tools/requirements.txt`.
+**Not tested on a TV yet.** Live TV now opens when NordVPN is connected ([VPN_PROTECTION.md](VPN_PROTECTION.md)). On the TCL, in Adults:
+
+1. **NordVPN off:** press Live TV on the dock. Expected: no Live TV; the sheet says "Live TV is locked. Connect NordVPN first." with **Connect**, **Retry** and **Cancel**.
+2. **Connect, then Retry:** **Connect** opens NordVPN; connect it, press Back, then **Retry**. Expected: Live TV opens. Settings > Live TV & Network Protection says "Live TV: open", "NordVPN is connected. If NordVPN drops, Unified TV will cover Live TV." and "This isn't a kill switch: …".
+3. **The other routes:** with NordVPN on, open Live TV from Apps and by typing "Open Live TV" in Ask your TV; with NordVPN off, both must refuse with the same words.
+4. **Drop during Live TV:** with "Display over other apps" allowed for Unified TV (as for "Open Unified TV when the TV turns on"), play a channel and disconnect NordVPN with its own button (or from the phone app). Expected within about two seconds: the full-screen notice "NordVPN disconnected — Live TV is covered. Reconnect NordVPN." with **Reconnect** and **Back to Home**. Say whether Live TV's sound stopped behind it. Then **Reconnect**, connect, Back: the notice says "NordVPN is connected again." and **Watch Live TV** opens it.
+5. **Without "Display over other apps":** repeat step 4. Expected: Live TV stays on screen and a "NordVPN disconnected" notification is posted; say whether the TCL shows it at all.
+6. **Notification access:** if another VPN app is installed, step 2 says "Can't tell which VPN is on. Allow notification access so Unified TV can see NordVPN." until notification access is allowed. Settings > Updates & About > Advanced > Owner diagnostics, under **VPN and Live TV**, lists what the rule read (NordVPN installed, notification access, NordVPN's notice, apps that can run a VPN, the safety net). Send that line.
+7. **It stops:** after step 4's **Back to Home**, or pressing the TV's Home and opening another app, then disconnecting NordVPN, nothing should cover the other app (the second case needs the Kids app guard's accessibility service on; say what happens without it).
+
+Report the model, firmware, build and each step's result.
+
+## Amazon Music from inside Unified TV (OD-27)
+
+**Not tested on a TV yet.** Unified TV controls the real Amazon Music app through Android's own media controls; Amazon Music keeps playing in its own app. Before starting: Amazon Music installed and signed in on the TCL (or Sony), and notification access allowed for Unified TV (Music page > **Allow in Settings**, or the one ADB line on Now Playing's access page). In Adults:
+
+1. **Now Playing:** start a playlist in Amazon Music, press Home, open Unified TV and press OK on the Music tile. Expected: Now Playing (not the Amazon Music app), with the title, artist, album, the album art as the large square and the blurred background, and a moving progress line. Say if the art is missing or another album's.
+2. **The remote:** OK pauses and plays; Right and Left skip; hold Right or Left for about two seconds: the track moves forward or back about 10 seconds a step (or a line says Amazon Music doesn't offer it); the remote's Play/Pause, Next and Previous keys work too. Down reaches the buttons below: say which appear (Shuffle, Repeat, Thumbs up or Like, Play on, Open Amazon Music app) and whether Shuffle and Repeat actually change Amazon Music. Menu opens Amazon Music. Back returns to Home: the music must keep playing.
+3. **Play by name:** Music tile with nothing playing (or hold OK on the Music tile for **Open Amazon Music app**, then stop the music), type an artist in the Music page's search with the on-screen keyboard, choose **Looking for: Artist**, press **Play**. Expected within about 8 seconds: Now Playing with that artist. If Amazon Music's own screen opens instead, say whether Unified TV came back by itself. Repeat once with **Album** and once with **Playlist**. The search then appears under **Recent searches**.
+4. **Voice:** in Ask your TV, type or say "play Adele" and "play Adele on Amazon Music". Expected: the same as step 3.
+5. **Your Amazon Music:** on the Music page, say whether **Your Amazon Music** appears. If it does, open it, open a playlist and press OK on it: it should play and Now Playing open. Settings > Updates & About > Advanced > Owner diagnostics, under **Music**, says "Amazon Music browsing: refused" or "available" and the last play-by-name route. Send those lines. (Refused is expected and fine: search still works.)
+6. **Without notification access** (only if you are happy to withdraw it and allow it again): the Music page explains the one step and step 3 still sends the request to Amazon Music.
+7. **Kids:** switch to Kids. Without an adult approving Amazon Music for Kids, Music's Play says Amazon Music isn't on the Kids list; with approval it plays.
+
+## Play on an Echo (OD-27; only with Home Assistant's Alexa Media Player)
+
+**Not tested yet.** Needs Home Assistant already connected to Unified TV (Settings > Smart Home) and the community **Alexa Media Player** integration installed in Home Assistant through HACS, signed in to Amazon there (Unified TV never asks for your Amazon password). Alexa Media Player is unofficial and can stop working when Amazon changes its sign-in.
+
+1. **Found:** open Music. Expected: **Play on: This TV**. Without Alexa Media Player (or with Home Assistant off) it says instead "To play on your Echo speakers, add Alexa Media Player to Home Assistant". Open **Play on**: your Echos by name, **Everywhere**, and any speaker groups. Say whether an entity called "Everywhere" exists in Home Assistant (we couldn't confirm the integration lists it).
+2. **One Echo:** choose an Echo, search an artist, **Play**. Expected: that Echo plays it and Now Playing shows its title, artist and artwork; OK pauses it, Right skips, the TV remote's volume keys (and Quieter/Louder) change the Echo's volume.
+3. **Everywhere:** choose **Everywhere** and play something. Expected: every Echo plays it together, in sync. Say whether they started together, or only one played.
+4. **Voice:** "play jazz everywhere" and "play jazz on" and an Echo's name.
+5. **Problems in plain words:** with Home Assistant switched off, Play says "Home Assistant isn't connected"; Owner diagnostics, under **Music**, shows the last Echo problem (never an address or a token).
+6. **Kids:** in Kids, Play on offers only This TV until an adult turns on **Echo speakers in Kids** (Adults' Play on page, adult PIN).
+
+Report the model, firmware, build and each step's result.
+
+## Live TV protection check (Android's own block, optional)
+
+Follow [VPN_PROTECTION.md](VPN_PROTECTION.md#adding-androids-own-block-optional-the-only-real-protection). It uses `preview/tools/vpn_check.py`, which needs Python and the repository's `tools/requirements.txt`.
 
 ## Memory and CPU check
 

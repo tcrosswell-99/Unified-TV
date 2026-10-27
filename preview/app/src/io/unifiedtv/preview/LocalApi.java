@@ -57,6 +57,19 @@ final class LocalApi {
             }
         }finally{c.disconnect();}
     }
+    /** A POST whose answer is plain text (Home Assistant's template API), read within the same limit. */
+    static String postText(JSONObject config, String path, JSONObject body) throws Exception {
+        HttpURLConnection c = open(config, path, "POST");
+        try {
+            c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream out = c.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
+            int code = c.getResponseCode(); if (code < 200 || code >= 300) throw new ApiError(code);
+            try (InputStream in = c.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] b = new byte[8192]; int n; while ((n = in.read(b)) != -1) { if (out.size() + n > LIMIT) throw new IOException("Response too large"); out.write(b, 0, n); }
+                return out.toString("UTF-8");
+            }
+        } finally { c.disconnect(); }
+    }
     static String clientHeader(String device, String token) {
         String id = device.replaceAll("[^A-Za-z0-9-]", ""); if (id.isEmpty()) id = "unified-tv";
         return "MediaBrowser Client=\"Unified TV\", Device=\"TV\", DeviceId=\"" + id + "\", Version=\"0.5\"" + (token.matches("[A-Za-z0-9]{1,512}") ? ", Token=\"" + token + "\"" : "");

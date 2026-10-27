@@ -22,23 +22,23 @@ import android.content.pm.PackageManager;
  * Films, programmes and Live TV keep their own task, so their playback is never closed by coming back to Unified TV.
  */
 final class Launch {
-    /** Opens the app, or explains why not; null when it opened. A protected Live TV app needs the recorded protection check. */
+    /**
+     * Opens the app, or explains why not; null when it opened, "" when the Live TV sheet explains. Live TV opens only by
+     * LiveTvProtection's one rule (OD-26: NordVPN connected), and then the safety net (LiveTvGuard) watches it.
+     */
     static String open(Activity a,String pkg,String label){return open(a,pkg,label,false);}
     /** A short visit to a utility app (AirPin, NordVPN) that the household comes straight back from: see the class notes. */
     static String visit(Activity a,String pkg,String label){return open(a,pkg,label,true);}
     private static String open(Activity a,String pkg,String label,boolean visit){
         if(pkg==null||pkg.isEmpty())return label+" is not installed on this TV";
         String kids=kidsRefusal(a,pkg,label);if(kids!=null)return kids;
-        if(Endpoint.protectedApp(pkg,label,a.getSharedPreferences("unified-tv-preview",0).getString("livePackage",""))){
-            LiveTvProtection.State d=LiveTvProtection.now(a,pkg);
-            if(!LiveTvProtection.opens(d)){VpnGate.show(a,LiveTvProtection.message(d));return "";}
-        }
+        boolean live=Endpoint.protectedApp(pkg,label,a.getSharedPreferences("unified-tv-preview",0).getString("livePackage",""));
+        if(live&&!LiveTvProtection.opens(LiveTvProtection.now(a))){VpnGate.show(a,()->{String why=open(a,pkg,label,visit);if(why!=null&&!why.isEmpty())android.widget.Toast.makeText(a,why,android.widget.Toast.LENGTH_LONG).show();});return "";}
         PackageManager pm=a.getPackageManager();Intent intent=entry(pm,pkg);
         if(intent==null)return label+" can't be opened from here";
-        boolean live=Endpoint.protectedApp(pkg,label,a.getSharedPreferences("unified-tv-preview",0).getString("livePackage",""));
         if(AirPlayReceiver.isAirPin(label)||pkg.equals(AirPlayReceiver.packageSeen))AirPlayReceiver.opened();
         try{
-            if(live)LiveTvGuard.start(a);
+            if(live)LiveTvGuard.start(a,pkg);
             if(visit&&!live){
                 Intent own=intent.cloneFilter().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 android.content.pm.ActivityInfo info=info(pm,intent);

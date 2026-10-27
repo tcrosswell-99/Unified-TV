@@ -21,21 +21,25 @@ import java.util.List;
  * (NordCountry). Only when NordVPN is installed does the listener stay connected; every other app's notification is
  * ignored the moment it arrives, and only NordVPN's country code is kept, in memory. Nothing is stored or sent anywhere.
  * Without NordVPN it asks to be disconnected as soon as Android connects it, as before.
+ *
+ * OD-26 (owner, 27 October 2026): the same notification's connected-or-not word (NordCountry.connected) tells
+ * LiveTvProtection that the VPN Android reports is NordVPN's, and a "disconnected" word while Live TV runs asks the Live
+ * TV safety net (LiveTvGuard) to look again.
  */
 public final class MediaWatch extends NotificationListenerService {
     @Override public void onListenerConnected() {
         super.onListenerConnected();
         if (LocalDiscovery.nordVpn(this)) {
-            try { StatusBarNotification[] now = getActiveNotifications(); NordCountry.code = null; if (now != null) for (StatusBarNotification n : now) posted(n); }
+            try { StatusBarNotification[] now = getActiveNotifications(); NordCountry.code = null; NordCountry.connected = null; if (now != null) for (StatusBarNotification n : now) posted(n); }
             catch (RuntimeException ignored) {}
             return;
         }
         try { requestUnbind(); } catch (RuntimeException ignored) { /* stays connected but still reads nothing */ }
     }
-    @Override public void onListenerDisconnected() { NordCountry.code = null; super.onListenerDisconnected(); }
+    @Override public void onListenerDisconnected() { NordCountry.code = null; NordCountry.connected = null; super.onListenerDisconnected(); }
     @Override public void onNotificationPosted(StatusBarNotification n) { posted(n); }
     @Override public void onNotificationRemoved(StatusBarNotification n) {
-        if (n != null && LiveTvProtection.NORDVPN.equals(n.getPackageName())) NordCountry.code = null;
+        if (n != null && LiveTvProtection.NORDVPN.equals(n.getPackageName())) { NordCountry.code = null; NordCountry.connected = null; }
     }
     /** NordVPN's notification only: its country, or nothing when it doesn't say connected. Others are not read. */
     private static void posted(StatusBarNotification n) {
@@ -46,9 +50,41 @@ public final class MediaWatch extends NotificationListenerService {
             x.getCharSequence(android.app.Notification.EXTRA_SUB_TEXT), x.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)};
         String iso = NordCountry.from(texts);
         if (iso != null) NordCountry.code = iso; else if (NordCountry.stopped(texts)) NordCountry.code = null;   // other NordVPN notices change nothing
+        Boolean says = NordCountry.status(texts);
+        if (says == null) return;
+        NordCountry.connected = says;
+        if (!says) LiveTvGuard.nordStopped();   // the safety net looks again (it decides with the same rule)
     }
 
     static ComponentName component(Context c) { return new ComponentName(c, MediaWatch.class); }
+
+    /**
+     * Opens the TV's own notification-access screen for Unified TV (the detail page where Android has one); false when the
+     * TV offers neither, so the caller can show the one ADB line. In Kids it needs the adult PIN (Launch.system).
+     */
+    static boolean openAccessSettings(android.app.Activity a) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.content.Intent detail = new android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component(a).flattenToString());
+            if (startSettings(a, detail)) return true;
+        }
+        return startSettings(a, new android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+    }
+    private static boolean startSettings(android.app.Activity a, android.content.Intent i) {
+        // System settings: in Kids only behind the adult PIN, then the Kids guard lets them stay open a while.
+        if (Profiles.kids(a)) { if (i.resolveActivity(a.getPackageManager()) == null) return false; Launch.system(a, i, "This TV doesn't offer that setting"); return true; }
+        try { a.startActivity(i); return true; } catch (android.content.ActivityNotFoundException | SecurityException e) { return false; }
+    }
+
+    /** Android's own notification access screen: this app's page where the TV offers it (Android 11+), else the list. */
+    static android.content.Intent accessSettings(Context c) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.content.Intent detail = new android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component(c).flattenToString());
+            try { if (detail.resolveActivity(c.getPackageManager()) != null) return detail; } catch (RuntimeException ignored) { }
+        }
+        return new android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+    }
 
     /** Whether the owner has allowed this app to see media notifications (API 27+, so always available from minSdk 28). */
     static boolean granted(Context c) {
@@ -73,7 +109,7 @@ public final class MediaWatch extends NotificationListenerService {
     static MediaController best(Context c, List<MediaController> list) {
         String[] packages = new String[list.size()]; int[] states = new int[list.size()];
         for (int i = 0; i < list.size(); i++) { packages[i] = list.get(i).getPackageName(); states[i] = state(list.get(i)); }
-        int i = NowPlaying.pick(packages, states, c.getPackageName());
+        int i = NowPlaying.pick(packages, states, c.getPackageName(), AmazonMusic.packages(c));
         return i < 0 ? null : list.get(i);
     }
 
@@ -112,14 +148,16 @@ public final class MediaWatch extends NotificationListenerService {
     }
 
     /**
-     * The track's own artwork, only as the session hands it over as a bitmap. A URI is never opened or fetched, and no
-     * other album's art is ever used: no bitmap means the neutral scene.
+     * The track's own artwork as the session hands it over as a bitmap (album art, art, then its display icon). An address
+     * the session gives instead is read by MusicArt, off the main thread (OD-27). No other album's art is ever used: none
+     * means the neutral scene.
      */
     static Bitmap art(MediaController m) {
         try {
             android.media.MediaMetadata md = m.getMetadata(); if (md == null) return null;
             Bitmap b = md.getBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART);
             if (b == null) b = md.getBitmap(android.media.MediaMetadata.METADATA_KEY_ART);
+            if (b == null) b = md.getBitmap(android.media.MediaMetadata.METADATA_KEY_DISPLAY_ICON);
             return b == null || b.isRecycled() || b.getWidth() < 2 || b.getHeight() < 2 ? null : b;
         } catch (RuntimeException e) { return null; }
     }

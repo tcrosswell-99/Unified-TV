@@ -118,7 +118,7 @@ public final class CleanupActivity extends GlassScreen {
         text(m.describe(), 18);
         if (titles == null) titles = titlesOf(CleanupLists.load(this));
         CleanupRecord rec = record();
-        boolean earlier = rec != null && !rec.changed().isEmpty();
+        boolean earlier = rec != null && !rec.changedApps().isEmpty();
         Button first = null;
         if (!m.known()) { group("What you can do"); card(); text(earlier ? UNKNOWN_AFTER : UNKNOWN_WORDS, 17); }
         else {
@@ -130,7 +130,7 @@ public final class CleanupActivity extends GlassScreen {
         // Undo never depends on the firmware still being on a list: after an update it is what the owner needs most.
         if (earlier) {
             group("Earlier clean-up"); card();
-            text(rec.changed().size() + " apps were turned off by Unified TV" + (rec.created.length() >= 10 ? " on " + rec.created.substring(0, 10) : "") + ".", 18);
+            text(rec.changedApps().size() + " apps were turned off by Unified TV" + (rec.created.length() >= 10 ? " on " + rec.created.substring(0, 10) : "") + ".", 18);
             Button undo = button("Turn apps back on", this::undoPage);
             if (first == null) first = undo;
             button("Save the undo files on your phone", this::phonePage);
@@ -155,7 +155,7 @@ public final class CleanupActivity extends GlassScreen {
         text(Build.MANUFACTURER + " " + Build.MODEL + " · firmware " + check.fingerprint, 17);
         text(check.match.describe(), 17);
         if (check.openToAll()) text("Note: this TV lets any device on your network use network debugging without asking (ro.adb.secure=0). Turn network debugging off when you're done.", 16);
-        if (!check.match.known()) { CleanupRecord rec = record(); text(rec != null && !rec.changed().isEmpty() ? UNKNOWN_AFTER : UNKNOWN_WORDS, 17); button("Back", this::intro).requestFocus(); return; }
+        if (!check.match.known()) { CleanupRecord rec = record(); text(rec != null && !rec.changedApps().isEmpty() ? UNKNOWN_AFTER : UNKNOWN_WORDS, 17); button("Back", this::intro).requestFocus(); return; }
         int offered = 0, recommended = 0;
         for (Cleanup.Item i : check.items) if (i.canTurnOff()) { offered++; if (i.recommended) recommended++; }
         text(offered == 0 ? "Nothing on the tested list is turned on on this TV, so there is nothing to do."
@@ -229,7 +229,7 @@ public final class CleanupActivity extends GlassScreen {
             text(title(e.getKey()) + " (" + e.getKey() + "): " + (CleanupRecord.DISABLED.equals(e.getValue()) ? "off" : CleanupRecord.ENABLED.equals(e.getValue()) ? "on" : "not on this TV"), 17);
         Button checks = button("Check the TV still works", this::checklist);
         List<String> off = new ArrayList<>();
-        if (rec != null) for (String p : rec.changed()) if (CleanupRecord.DISABLED.equals(after.get(p))) off.add(p);
+        if (rec != null) for (String p : rec.changedApps()) if (CleanupRecord.DISABLED.equals(after.get(p))) off.add(p);
         if (!off.isEmpty()) {
             group("Turn back on"); card();
             for (String p : off) button("Turn back on: " + title(p), () -> undo(Collections.singletonList(p)));
@@ -247,7 +247,7 @@ public final class CleanupActivity extends GlassScreen {
         if (rec == null) { intro(); return; }
         screen("Turn apps back on", "Reading this TV", this::intro);
         card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
-        work(false, sh -> { Map<String, String> states = Cleanup.states(sh, rec.changed()); return () -> { after = states; resultPage("Apps Unified TV turned off"); }; });
+        work(false, sh -> { Map<String, String> states = Cleanup.states(sh, rec.changedApps()); return () -> { after = states; resultPage("Apps Unified TV turned off"); }; });
     }
 
     private void undo(List<String> which) {
@@ -258,7 +258,7 @@ public final class CleanupActivity extends GlassScreen {
         work(true, sh -> {
             Cleanup.turnBackOn(sh, rec, which, (n, total, p) -> say(p == null ? "Checking the result…" : "Turning on " + (n + 1) + " of " + total + ": " + title(p)),
                 p -> EventLog.record(app, EventLog.SETTINGS, "Clean-up turned back on " + p));
-            Map<String, String> states = Cleanup.states(sh, rec == null ? which : rec.changed());
+            Map<String, String> states = Cleanup.states(sh, rec == null ? which : rec.changedApps());
             return () -> { after = states; resultPage("Turned back on"); };
         });
     }
@@ -270,7 +270,7 @@ public final class CleanupActivity extends GlassScreen {
         String[] steps = {
             "Open each streaming app you use and play something for a few seconds.",
             "Press Home, Back, the volume and app buttons on the remote, and try its microphone if you use voice.",
-            "Open NordVPN and check it connects. Live TV stays locked until Unified TV has checked the VPN itself.",
+            "Open NordVPN and check it connects. Live TV opens only while NordVPN is connected.",
             "Switch to each HDMI input: check the picture and the sound, including the soundbar.",
             "If you use the doorbell, check its alerts still appear.",
             "Put the TV in standby with the remote, wait a few seconds, and wake it again."};
@@ -278,7 +278,7 @@ public final class CleanupActivity extends GlassScreen {
         text("If anything is wrong, choose Undo all. Every app comes back as it was.", 17);
         button("Everything works", this::finishPage).requestFocus();
         CleanupRecord rec = record();
-        if (rec != null && !rec.changed().isEmpty()) button("Something is wrong: undo all", () -> undo(rec.changed()));
+        if (rec != null && !rec.changedApps().isEmpty()) button("Something is wrong: undo all", () -> undo(rec.changedApps()));
     }
 
     /** The end: the link closes, and the owner is guided to turn network debugging off and to check it is off. */

@@ -99,7 +99,7 @@ public class SettingsJourneyTest {
         }
     }
     @Test public void vpnStatesRemainDistinctAndCannotImplyRoutingVerification(){
-        java.util.Set<String> labels=new java.util.HashSet<>();for(VpnGate.State state:VpnGate.State.values())labels.add(VpnGate.statusLabel(state));assertEquals(4,labels.size());for(boolean routed:new boolean[]{false,true})assertTrue(VpnGate.explanation(true,routed).contains("Live TV stays locked"));
+        java.util.Set<String> labels=new java.util.HashSet<>();for(VpnGate.State state:VpnGate.State.values())labels.add(VpnGate.statusLabel(state));assertEquals(4,labels.size());assertFalse("a shield state alone never opens Live TV",LiveTvProtection.opens(LiveTvProtection.decide(new LiveTvProtection.Facts())));
     }
     @Test public void profilesStartsWithTheSwitchAndAdvancedHoldsDiagnostics(){
         try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
@@ -122,13 +122,14 @@ public class SettingsJourneyTest {
             assertEquals("adult",prefs().getString("profile","adult"));
         }
     }
-    // SET-063: automatic verification only; no attestation button anywhere, never "verified" on this TV, root says Locked.
+    // OD-26: Live TV opens when NordVPN is connected; no attestation button anywhere; the page says it isn't a kill switch.
     @Test public void liveTvIsLockedWithNoWayToAttest(){
         try(var controller=Robolectric.buildActivity(SettingsActivity.class).setup()){
             SettingsActivity a=controller.get();
             Button row=find(root(a),"Live TV & Network Protection");assertEquals("Live TV & Network Protection, Locked",String.valueOf(row.getContentDescription()));
             open(a,"Live TV & Network Protection");
             assertNotNull(text(root(a),"Live TV: "));assertNull(text(root(a),"Live TV: verified"));assertNull(find(root(a),"Record a passed check"));
+            assertNotNull("the honest limit is said",text(root(a),LiveTvProtection.RULE));
         }
     }
     // Owner exception to SET-053: stopping alerts asks first, and then Settings says alarms are off.

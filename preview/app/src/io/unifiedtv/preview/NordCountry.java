@@ -10,11 +10,16 @@ import java.util.regex.Pattern;
  * notification access the owner has allowed. Only the two-letter country code is kept, in memory; nothing is stored or
  * sent. Shown only while NordVPN reports connected AND Android reports a VPN (VpnGate); it says where NordVPN's server
  * is, nothing more: it is never a claim that Live TV, or anything else, is protected.
+ *
+ * <p>OD-26 (owner, 27 October 2026): the same notification's word, connected or not ({@link #connected}), is one of the
+ * ways LiveTvProtection tells that the VPN Android reports is NordVPN's. Only that yes/no is kept, in memory.
  */
 final class NordCountry {
     private NordCountry() {}
     /** The ISO 3166 code NordVPN last reported connected to, or null. */
     static volatile String code;
+    /** What NordVPN's own notification last said: TRUE connected, FALSE not connected, null nothing read (MediaWatch). */
+    static volatile Boolean connected;
 
     private static final Pattern CONNECTED = Pattern.compile("(?i)\\bconnected to:?\\s+([\\p{L}][\\p{L} .'&()-]{1,60}?)\\s*(?:#\\s*\\d+|[-–,·|(]|\\.$|$)");
     private static final Pattern SERVER = Pattern.compile("^\\s*([\\p{L}][\\p{L} .'&-]{1,60}?)\\s*#\\s*\\d+\\s*$");
@@ -41,6 +46,16 @@ final class NordCountry {
     static boolean stopped(CharSequence... texts) {
         for (CharSequence t : texts) { if (t == null) continue; String low = t.toString().toLowerCase(Locale.ROOT); if (low.contains("disconnect") || low.contains("connecting") || low.contains("paused")) return true; }
         return false;
+    }
+    /**
+     * NordVPN's word in its notification texts: FALSE when it says it is not connected (disconnected, connecting, paused),
+     * TRUE when it says connected, null when it says neither (another NordVPN notice, a promotion).
+     */
+    static Boolean status(CharSequence... texts) {
+        if (stopped(texts)) return Boolean.FALSE;
+        if (from(texts) != null) return Boolean.TRUE;
+        for (CharSequence t : texts) if (t != null && t.toString().toLowerCase(Locale.ROOT).matches("(?s).*\\bconnected\\b.*")) return Boolean.TRUE;
+        return null;
     }
     private static final Map<String, String> ALIASES = new HashMap<>();
     static {

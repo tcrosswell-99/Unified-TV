@@ -1,35 +1,81 @@
 package io.unifiedtv.preview;
 import org.junit.Test;
+import java.util.*;
 import static org.junit.Assert.*;
 import static io.unifiedtv.preview.LiveTvProtection.State.*;
-/** SET-063 (owner, 25 October 2026): automatic verification only; no attestation; fail closed. */
+
+/**
+ * OD-26 (owner, 27 October 2026): Live TV opens when NordVPN is connected, replacing SET-063's "automatic verification
+ * only". The VPN Android reports must be NordVPN's: its own notification says connected, or it is the only app that can
+ * run a VPN. Another VPN app and no notification access: can't tell, so locked. Never called a kill switch.
+ */
 public class LiveTvProtectionTest {
-    @Test public void withoutAnAutomaticCheckLiveTvStaysLockedEvenWithTheVpnUp(){
-        assertEquals(LOCKED,LiveTvProtection.decide(true,false,null,false));
-        assertEquals("a result without a verifier is ignored",LOCKED,LiveTvProtection.decide(true,false,true,false));
-        assertFalse(LiveTvProtection.opens(LiveTvProtection.decide(true,false,true,false)));
+    private static LiveTvProtection.Facts facts(VpnGate.State vpn,boolean nord,boolean access,Boolean says,boolean onlyNord){
+        LiveTvProtection.Facts f=new LiveTvProtection.Facts();f.vpn=vpn;f.nordInstalled=nord;f.notificationAccess=access;f.nordSays=says;f.onlyNordCanVpn=onlyNord;return f;
     }
-    @Test public void androidHasNoVerifierSoNothingCanEverBeVerified(){
-        assertNull("no route verifier exists for a third-party Android app",LiveTvProtection.VERIFIER);
-        for(boolean tunnel:new boolean[]{false,true})for(Boolean r:new Boolean[]{null,false,true})for(boolean failed:new boolean[]{false,true})
-            assertNotEquals(VERIFIED,LiveTvProtection.decide(tunnel,LiveTvProtection.VERIFIER!=null,r,failed));
+    private static final VpnGate.State UP=VpnGate.State.CONNECTED,DOWN=VpnGate.State.DISCONNECTED;
+
+    @Test public void theDecisionTable(){
+        assertEquals("VPN up and NordVPN's own notice says connected",OPEN,LiveTvProtection.decide(facts(UP,true,true,true,false)));
+        assertEquals("VPN up and NordVPN is the only VPN app (no notification access)",OPEN,LiveTvProtection.decide(facts(UP,true,false,null,true)));
+        assertEquals("VPN up, NordVPN the only VPN app, access allowed but no notice read",OPEN,LiveTvProtection.decide(facts(UP,true,true,null,true)));
+        assertEquals("VPN up, another VPN app installed, no notification access: can't tell",UNSURE,LiveTvProtection.decide(facts(UP,true,false,null,false)));
+        assertEquals("VPN up, another VPN app, NordVPN says nothing",NOT_NORDVPN,LiveTvProtection.decide(facts(UP,true,true,null,false)));
+        assertEquals("NordVPN's own notice says it isn't connected: locked whatever else",DISCONNECTED,LiveTvProtection.decide(facts(UP,true,true,false,true)));
+        assertEquals("no VPN: locked even if a stale notice said connected",DISCONNECTED,LiveTvProtection.decide(facts(DOWN,true,true,true,true)));
+        assertEquals("no VPN",DISCONNECTED,LiveTvProtection.decide(facts(DOWN,true,false,null,true)));
+        assertEquals(CHECKING,LiveTvProtection.decide(facts(VpnGate.State.CHECKING,true,true,true,true)));
+        assertEquals("Android's answer unreadable",ERROR,LiveTvProtection.decide(facts(VpnGate.State.UNKNOWN,true,true,true,true)));
+        assertEquals("no NordVPN on the TV",NO_NORDVPN,LiveTvProtection.decide(facts(UP,false,true,true,true)));
+        assertEquals(ERROR,LiveTvProtection.decide(null));
     }
-    @Test public void onlyAnAutomaticPassOpensAndUnknownDisconnectedOrFailedLock(){
-        assertEquals(VERIFIED,LiveTvProtection.decide(true,true,true,false));assertTrue(LiveTvProtection.opens(VERIFIED));
-        assertEquals(VERIFYING,LiveTvProtection.decide(true,true,null,false));
-        assertEquals(LOCKED,LiveTvProtection.decide(true,true,false,false));
-        assertEquals(DISCONNECTED,LiveTvProtection.decide(false,true,true,false));
-        assertEquals(ERROR,LiveTvProtection.decide(true,true,true,true));
-        for(LiveTvProtection.State s:LiveTvProtection.State.values())if(s!=VERIFIED)assertFalse(s.name(),LiveTvProtection.opens(s));
+    @Test public void notificationWordsCountOnlyWithAccess(){
+        assertEquals("a remembered word without access is ignored",UNSURE,LiveTvProtection.decide(facts(UP,true,false,true,false)));
+        assertEquals("a remembered 'disconnected' without access is ignored",OPEN,LiveTvProtection.decide(facts(UP,true,false,false,true)));
     }
-    @Test public void theStateWordsAreSet063s(){
-        java.util.List<String> words=new java.util.ArrayList<>();for(LiveTvProtection.State s:LiveTvProtection.State.values())words.add(LiveTvProtection.word(s));
-        assertEquals(java.util.Arrays.asList("locked","verifying","verified","disconnected","error"),words);
+    @Test public void onlyOpenOpensAndOnlyCheckingIsNotADrop(){
+        for(LiveTvProtection.State s:LiveTvProtection.State.values()){
+            assertEquals(s.name(),s==OPEN,LiveTvProtection.opens(s));
+            assertEquals(s.name(),s!=OPEN&&s!=CHECKING,LiveTvProtection.dropped(s));
+        }
     }
-    @Test public void everyLockedStateExplainsItselfPlainly(){
-        for(LiveTvProtection.State d:LiveTvProtection.State.values()){if(d==VERIFIED)continue;String s=LiveTvProtection.message(d);assertFalse(s,s.isEmpty());
-            assertFalse(s,s.toLowerCase().contains("verified"));
-            for(String jargon:new String[]{"tunnel","routing","lockdown","uid","socket"})assertFalse(s,s.toLowerCase().contains(jargon));}
-        assertTrue(LiveTvProtection.message(LOCKED).contains("stays locked on every route"));
+    @Test public void nordVpnMustBeTheOnlyAppThatCanRunAVpn(){
+        assertTrue(LiveTvProtection.onlyNord(Collections.singleton(LiveTvProtection.NORDVPN)));
+        assertFalse("another VPN app",LiveTvProtection.onlyNord(Arrays.asList(LiveTvProtection.NORDVPN,"com.example.othervpn")));
+        assertFalse("NordVPN not seen as a VPN app",LiveTvProtection.onlyNord(Collections.singleton("com.example.othervpn")));
+        assertFalse("nothing seen",LiveTvProtection.onlyNord(Collections.<String>emptyList()));assertFalse(LiveTvProtection.onlyNord(null));
+    }
+    @Test public void theWordsArePlainAndHonest(){
+        List<String> words=new ArrayList<>();for(LiveTvProtection.State s:LiveTvProtection.State.values())words.add(LiveTvProtection.word(s));
+        assertEquals(Arrays.asList("open","checking","disconnected","locked","locked","locked","error"),words);
+        assertEquals("NordVPN is connected. If NordVPN drops, Unified TV will cover Live TV.",LiveTvProtection.message(OPEN));
+        assertEquals("Live TV is locked. Connect NordVPN first.",LiveTvProtection.message(DISCONNECTED));
+        assertTrue(LiveTvProtection.message(UNSURE).contains("Can't tell which VPN is on. Allow notification access so Unified TV can see NordVPN"));
+        for(LiveTvProtection.State s:LiveTvProtection.State.values()){String m=LiveTvProtection.message(s);assertFalse(m,m.isEmpty());
+            String low=m.toLowerCase(Locale.ROOT);
+            if(s!=OPEN&&s!=CHECKING)assertTrue(m,m.startsWith("Live TV is locked."));
+            for(String claim:new String[]{"verified","protected","safe","kill switch"})assertFalse(m,low.contains(claim));
+            for(String jargon:new String[]{"tunnel","routing","lockdown","uid","socket","transport"})assertFalse(m,low.contains(jargon));}
+    }
+    /** AGENTS.md rule 8: "kill switch" appears only to say this isn't one. */
+    static void neverClaimsAKillSwitch(String text){
+        String low=text.toLowerCase(Locale.ROOT).replace('’','\'');int i=low.indexOf("kill switch");
+        while(i>=0){String before=low.substring(Math.max(0,i-12),i);
+            assertTrue("\"kill switch\" only to deny it: "+text,before.endsWith("isn't a ")||before.endsWith("not a "));
+            i=low.indexOf("kill switch",i+1);}
+    }
+    @Test public void theRuleIsNeverCalledAKillSwitch(){
+        assertTrue(LiveTvProtection.NOT_A_KILL_SWITCH.startsWith("This isn't a kill switch"));
+        List<String> all=new ArrayList<>(Arrays.asList(LiveTvProtection.RULE,LiveTvProtection.COVERS,LiveTvProtection.NOT_A_KILL_SWITCH,LiveTvCoverActivity.NOTICE,LiveTvCoverActivity.AGAIN));
+        for(LiveTvProtection.State s:LiveTvProtection.State.values()){all.add(LiveTvProtection.message(s));all.add(OwnerChecks.liveTv("VPN ● Connected",true,s));}
+        for(String s:all)neverClaimsAKillSwitch(s);
+        assertEquals("NordVPN disconnected — Live TV is covered. Reconnect NordVPN.",LiveTvCoverActivity.NOTICE);
+    }
+    @Test public void theSafetyNetEndsOnlyWhenAnotherAppIsInFront(){
+        String live="com.example.livetv",own="io.unifiedtv.preview",kb="com.example.keyboard";
+        assertTrue(LiveTvGuard.left("com.tcl.launcher",live,own,kb));
+        assertTrue(LiveTvGuard.left("com.netflix.ninja",live,own,kb));
+        for(String stay:new String[]{live,LiveTvProtection.NORDVPN,own,kb,"android","com.android.systemui",null,""})assertFalse(String.valueOf(stay),LiveTvGuard.left(stay,live,own,kb));
+        assertFalse("nothing known about the session",LiveTvGuard.left("com.tcl.launcher","",own,kb));
     }
 }

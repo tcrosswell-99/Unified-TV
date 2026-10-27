@@ -7,7 +7,8 @@ import java.util.*;
 
 /**
  * Spec 29.3 and 30: Unified TV as the TV's real Home, only when the owner chooses it, only through Android's own Home
- * selection, and always reversible. Nothing here disables, hides or uninstalls the manufacturer's interface.
+ * selection, and always reversible. Nothing here disables, hides or uninstalls the manufacturer's interface; only the
+ * separate, consented Home takeover (OD-28, HomeTakeover) may turn the TV's own Home off, with its own way back.
  */
 final class DefaultHome {
     static final int REQUEST=71;
@@ -116,8 +117,15 @@ final class DefaultHome {
     }
     /** Android's chooser appears only while no Home is the default (the intent resolves to the system's chooser). */
     static boolean chooserHelps(String resolved){return resolved==null||resolved.equals("android");}
-    /** Hand Home back: with our entry switched off, Android returns to the original interface. Reversible from Settings. */
-    static void withdraw(Context c){fixed(c,false);c.getPackageManager().setComponentEnabledSetting(entry(c),PackageManager.COMPONENT_ENABLED_STATE_DISABLED,PackageManager.DONT_KILL_APP);}
+    /**
+     * Hand Home back: with our entry switched off, Android returns to the original interface. Reversible from Settings.
+     * Refused (false) while Unified TV has turned the TV's own Home off (OD-28): withdrawing then would leave the TV with no
+     * Home at all, so only Return to the original TV interface (HomeTakeover.giveBack) may, once the TV's Home is back on.
+     */
+    static boolean withdraw(Context c){
+        if(HomeTakeover.stockOff(c))return false;
+        fixed(c,false);c.getPackageManager().setComponentEnabledSetting(entry(c),PackageManager.COMPONENT_ENABLED_STATE_DISABLED,PackageManager.DONT_KILL_APP);return true;
+    }
     /** The manufacturer's own Home, when exactly one can be identified; Android's boot-time placeholder is not it. */
     static ComponentName original(Context c){
         List<ComponentName> found=new ArrayList<>();

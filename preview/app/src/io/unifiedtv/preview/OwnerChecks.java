@@ -52,11 +52,17 @@ final class OwnerChecks {
         if(folders==0)return who+": description read; top level shows no folders. Not offered.";
         return who+": description read; the top level couldn't be browsed. Not offered.";
     }
-    /** Live TV's fail-closed state in plain words: "can open" only with a recorded passed check that still holds. */
+    /** Live TV's state by OD-26's rule, in plain words: "open" only while NordVPN is connected, and never called protected. */
     static String liveTv(String vpnLabel,boolean routed,LiveTvProtection.State state){
         String vpn=vpnLabel+(routed?"; this app's traffic uses the VPN.":"; this app's traffic does not use a VPN.");
-        if(LiveTvProtection.opens(state))return vpn+" Live TV: verified. The automatic check confirmed just now that Live TV can only connect through NordVPN.";
         return vpn+" Live TV: "+LiveTvProtection.word(state)+". "+LiveTvProtection.message(state);
+    }
+    /** What the rule read, for the owner's checks on the TV: the facts behind "open" or "locked", and the safety net. */
+    static String liveFacts(LiveTvProtection.Facts f,java.util.Collection<String> vpnApps,boolean watching,String lastDrop){
+        String says=f.nordSays==null?"says nothing":f.nordSays?"says connected":"says not connected";
+        return "NordVPN installed: "+(f.nordInstalled?"yes":"no")+". Notification access: "+(f.notificationAccess?"allowed":"not allowed")
+            +". NordVPN's notice: "+(f.notificationAccess?says:"not readable")+". Apps that can run a VPN: "+(vpnApps==null||vpnApps.isEmpty()?"none found":String.join(", ",vpnApps))
+            +". Live TV safety net: "+(watching?"watching":"not running")+(lastDrop==null?"":"; last drop: "+lastDrop)+".";
     }
     /** For "advanced details" only: the host of a saved or found address, nothing else of it. */
     static String host(String url){try{String h=URI.create(url).getHost();return h==null?"":h;}catch(RuntimeException e){return "";}}

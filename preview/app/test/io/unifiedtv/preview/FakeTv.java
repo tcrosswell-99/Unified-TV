@@ -27,6 +27,8 @@ final class FakeTv implements Cleanup.Shell, Closeable {
     final List<String> commands = new ArrayList<>();
     /** Runs before each disable command (a test checks the record is already on disk). */
     Runnable beforeChange;
+    /** Optional (HomeTakeoverTest): a model of which apps answer Home; when set, Home's reads and set-home-activity follow it. */
+    FakeHome homes;
     boolean closed;
 
     FakeTv() {
@@ -52,6 +54,7 @@ final class FakeTv implements Cleanup.Shell, Closeable {
     @Override public String run(String c) {
         if (!AdbCommands.allowed(c)) throw new AssertionError("not on the allowlist: " + c);
         commands.add(c);
+        if (homes != null) { String answer = homes.answer(c, this); if (answer != null) return answer; }
         if (c.equals(AdbCommands.FINGERPRINT)) return fingerprint + "\n";
         if (c.equals(AdbCommands.SERIAL)) return serial + "\n";
         if (c.equals(AdbCommands.ANDROID_ID)) return androidId + "\n";

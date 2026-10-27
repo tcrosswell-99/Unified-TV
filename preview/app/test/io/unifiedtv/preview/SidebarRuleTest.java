@@ -38,9 +38,11 @@ public class SidebarRuleTest {
         "ConnectionsActivity",       // signing in to a media server by typing (advanced)
         "FirstRunActivity",          // the guided setup (SET-010): Welcome, remote, apps, media server, finish
         "GalleryActivity",           // Gallery settings (its slideshow is shown full screen in place of the sheet)
+        "HomeTakeoverActivity",      // launcher app only (launcher/AndroidManifest.xml): Take over the Home button, and the way back (OD-28)
         "KidsActivity",              // Profiles & Family > Kids settings
         "LibrarySetupActivity",      // choosing the NAS folders for Your Films & TV
-        "MusicActivity",             // Music: a choice page (Amazon Music, the store or Now Playing), no content of its own
+        "MusicActivity",             // Music: play by name, Play on, the app or Now Playing (OD-27); no content of its own
+        "MusicLibraryActivity",      // Your Amazon Music: choosing what to play from Amazon Music's shared library (OD-27)
         "OwnerDiagnosticsActivity",  // Updates & About > Advanced > Owner diagnostics (wide)
         "PerformanceActivity",       // TV Performance & Cleanup: read-only measurements
         "PhotoFoldersActivity",      // Wallpaper > My Photos: choosing picture folders
@@ -64,8 +66,9 @@ public class SidebarRuleTest {
         "DlnaLibraryActivity",       // browsing Your Films & TV (its setup hands over to LibrarySetupActivity)
         "LibraryActivity",           // browsing a media server's catalogue
         "PlayerActivity",            // watching
-        "NowPlayingActivity",        // what's playing, with its controls
+        "NowPlayingActivity",        // what's playing (Amazon Music or an Echo), with its controls (OD-27)
         "WallpaperActivity",         // the Wallpaper: artwork, photos and the clock
+        "LiveTvCoverActivity",       // OD-26: covers Live TV's picture when NordVPN drops (must hide it, so full screen)
         "VoiceActivity"));           // Ask your TV: a small listening pane over Home (ReturnJourneyTest checks it is small)
 
     // --- reading the app
@@ -76,18 +79,24 @@ public class SidebarRuleTest {
                 if(new File(c,"AndroidManifest.xml").isFile()&&new File(c,"src/io/unifiedtv/preview/GlassScreen.java").isFile())return c;
         throw new AssertionError("preview/app not found from "+System.getProperty("user.dir"));
     }
-    /** Activity simple name → its android:theme ("" when none), from the manifest. */
+    /** Activity simple name → its android:theme ("" when none), from the shared manifest and the launcher app's own. */
     static Map<String,String> manifest()throws Exception{
+        Map<String,String> out=new TreeMap<>();
+        read(new File(app(),"AndroidManifest.xml"),out);
+        read(new File(app(),"launcher/AndroidManifest.xml"),out);
+        assertFalse("no activities read from the manifest",out.isEmpty());
+        return out;
+    }
+    private static void read(File file,Map<String,String> out)throws Exception{
         DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);
-        Element root=f.newDocumentBuilder().parse(new File(app(),"AndroidManifest.xml")).getDocumentElement();
+        Element root=f.newDocumentBuilder().parse(file).getDocumentElement();
         String ns="http://schemas.android.com/apk/res/android",pkg=root.getAttribute("package");
-        Map<String,String> out=new TreeMap<>();NodeList list=root.getElementsByTagName("activity");
+        if(pkg.isEmpty())pkg="io.unifiedtv.preview";   // a flavour's manifest names its classes in full
+        NodeList list=root.getElementsByTagName("activity");
         for(int i=0;i<list.getLength();i++){Element a=(Element)list.item(i);String name=a.getAttributeNS(ns,"name");
             if(name.startsWith("."))name=pkg+name;
             assertTrue("activity outside "+pkg+": "+name,name.startsWith(pkg+".")&&name.indexOf('.',pkg.length()+1)<0);
             out.put(name.substring(pkg.length()+1),a.getAttributeNS(ns,"theme"));}
-        assertFalse("no activities read from the manifest",out.isEmpty());
-        return out;
     }
     static Class<?> type(String simple)throws ClassNotFoundException{return Class.forName("io.unifiedtv.preview."+simple,false,SidebarRuleTest.class.getClassLoader());}
 

@@ -1,11 +1,8 @@
 package io.unifiedtv.preview;
 
-import android.content.ActivityNotFoundException;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
@@ -15,214 +12,402 @@ import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
-import android.media.session.MediaController;
-import android.media.session.MediaSessionManager;
-import android.media.session.PlaybackState;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Music, Now Playing (spec 11, Music; owner's mockup in docs/design/REFERENCES.md). Shows and controls only what the
- * playing app reports through Android's media controls: Amazon has no public API, so nothing is looked up or fetched.
- * The album art is the session's own bitmap; with none, the scene is neutral and dark, never another album's art.
- * Remote: Left and Right move along the controls, Up reaches Settings, OK presses, Back returns.
+ * Music, Now Playing (spec 11, Music; OD-27; owner's mockup in docs/design/REFERENCES.md). Unified TV as the remote and
+ * the screen for the real Amazon Music app, through Android's official media controls only (MusicSession): Amazon Music
+ * keeps playing in its own app, and Back returns to Home without stopping it. With "Play on" set to an Echo, the same
+ * screen shows and controls that Echo through Home Assistant (EchoSession).
+ *
+ * <p>The background is the track's own artwork, blurred and darkened; with none, a neutral dark scene, never another
+ * album's art (AGENTS rule 4). Artwork is decoded off the main thread at the size it is shown (MusicArt).
+ *
+ * <p>Remote: OK or Play/Pause plays and pauses; Left and Right skip to the previous or next track, and held they move
+ * 10 seconds back or forward; Down reaches the buttons below (shuffle and repeat when the app offers them, its own like or
+ * thumbs buttons, Play on, Open Amazon Music), where Left and Right move and OK presses; Up reaches Settings; Menu opens
+ * the Amazon Music app; Back returns. Every listener is removed when the screen is hidden.
  */
 public final class NowPlayingActivity extends Screen {
+    static final String EXTRA_QUERY = "music.query", EXTRA_FOCUS = "music.focus", EXTRA_ROUTE = "music.route", EXTRA_BEFORE = "music.before";
+    /** How long a skip's light stays on the button pressed. */
+    static final long FLASH_MS = 250;
     private enum Mode { NONE, ACCESS, NOTHING, PLAYING }
-    private static final int PREVIOUS = 0, PLAY = 1, NEXT = 2, SHUFFLE = 3, SETTINGS = 4;
-    private Mode mode = Mode.NONE;
+    /** Where focus is: the play controls, the row of buttons under them, or Settings at the top. */
+    private enum Zone { TRANSPORT, EXTRAS, SETTINGS }
+    private enum Kind { SHUFFLE, REPEAT, LIKE, QUIETER, LOUDER, PLAY_ON, OPEN_APP }
+    private static final class Extra {
+        final Kind kind; final String label, action;
+        Extra(Kind kind, String label, String action) { this.kind = kind; this.label = label; this.action = action; }
+    }
+    private static final int PREVIOUS = 0, PLAY = 1, NEXT = 2;
+
+    private Mode mode = Mode.NONE; private String nothingWords = "";
+    private Zone zone = Zone.TRANSPORT; private int extraIndex;
+    private final List<Extra> extras = new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private MediaSessionManager sessions;
-    private MediaController controller;
+    private MusicSession session;
     private NowPlaying now;
     private Bitmap art, backdrop;
-    private String artId, appLabel = "";
-    private int generation, focus = PLAY;
-    private boolean shuffleOffered;
+    private String artId, appLabel = "", amazonPkg;
+    private int generation, repeatAsked = NowPlaying.REPEAT_NONE, flash = -1;
+    private long flashAt, seekAt;
+    private boolean listening, shuffleAsked, held;
+    private int holdDirection;
     private Stage stage;
+    /** Play by name in progress: what was asked, how, and the track that was on before it. */
+    private String waitQuery, waitBefore = "", status;
+    private AmazonMusic.Focus waitFocus = AmazonMusic.Focus.ANY;
+    private AmazonMusic.Route waitRoute;
+    private long waitUntil, statusUntil;
+    private boolean waitRetried;
 
-    private final MediaSessionManager.OnActiveSessionsChangedListener changed = list -> choose(list != null ? list : MediaWatch.sessions(this));
-    private final MediaController.Callback callback = new MediaController.Callback() {
-        @Override public void onPlaybackStateChanged(PlaybackState state) { choose(MediaWatch.sessions(NowPlayingActivity.this)); }
-        @Override public void onMetadataChanged(android.media.MediaMetadata metadata) { update(); }
-        @Override public void onSessionDestroyed() { choose(MediaWatch.sessions(NowPlayingActivity.this)); }
-    };
+    /** Now Playing waiting for Amazon Music to start {@code query} (play by name, the library). */
+    static Intent waiting(Context c, String query, AmazonMusic.Focus focus, AmazonMusic.Route route, String before) {
+        return new Intent(c, NowPlayingActivity.class).putExtra(EXTRA_QUERY, query).putExtra(EXTRA_FOCUS, focus.name())
+                .putExtra(EXTRA_ROUTE, route.name()).putExtra(EXTRA_BEFORE, before == null ? "" : before);
+    }
+
+    private final Runnable sessionsChanged = this::choose;
+    private final Runnable playerChanged = this::update;
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             // Without access, look again in case the owner has just allowed it (for example with the ADB line).
-            if (mode == Mode.ACCESS) { if (MediaWatch.granted(NowPlayingActivity.this)) { release(); start(); } else handler.postDelayed(this, 5000); return; }
-            if (mode == Mode.NOTHING) choose(MediaWatch.sessions(NowPlayingActivity.this));
+            if (mode == Mode.ACCESS) { if (MusicSessions.source.granted(NowPlayingActivity.this)) start(); else handler.postDelayed(this, 5000); return; }
+            waited();
+            if (session == null && listening) choose();
             else if (stage != null) stage.invalidate();
-            handler.postDelayed(this, mode == Mode.PLAYING && now != null && now.playing() ? 1000 - SystemClock.uptimeMillis() % 1000 : 5000);
+            boolean running = mode == Mode.PLAYING && now != null && now.playing() || waitQuery != null;
+            handler.postDelayed(this, running ? 1000 - SystemClock.uptimeMillis() % 1000 : 5000);
         }
     };
 
-    @Override protected void onResume() { super.onResume(); start(); }
-    private void start() {
-        handler.removeCallbacks(tick); handler.postDelayed(tick, 1000);
-        if (!MediaWatch.granted(this)) { show(Mode.ACCESS); return; }
-        sessions = getSystemService(MediaSessionManager.class);
-        try { if (sessions != null) sessions.addOnActiveSessionsChangedListener(changed, MediaWatch.component(this), handler); }
-        catch (RuntimeException ignored) { sessions = null; }
-        choose(MediaWatch.sessions(this));
+    @Override protected void onCreate(Bundle state) { super.onCreate(state); readWait(getIntent()); }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); readWait(intent); }
+    private void readWait(Intent i) {
+        String q = i == null ? null : i.getStringExtra(EXTRA_QUERY);
+        if (q == null || q.isEmpty()) return;
+        waitQuery = q; waitFocus = AmazonMusic.Focus.of(i.getStringExtra(EXTRA_FOCUS));
+        String r = i.getStringExtra(EXTRA_ROUTE); waitRoute = r == null ? AmazonMusic.Route.SESSION : AmazonMusic.Route.valueOf(r);
+        String b = i.getStringExtra(EXTRA_BEFORE); waitBefore = b == null ? "" : b;
+        waitUntil = SystemClock.uptimeMillis() + AmazonMusic.WAIT_MS; waitRetried = false;
+        say((waitRoute == AmazonMusic.Route.ECHO ? "Asking " + Echoes.targetName(prefs()) : "Asking " + AmazonMusic.NAME) + " for “" + q + "”…", AmazonMusic.WAIT_MS);
     }
-    /** Nothing keeps listening while the screen is hidden. */
-    @Override protected void onPause() { release(); super.onPause(); }
+
+    @Override protected void onResume() { super.onResume(); start(); }
+    /** Nothing keeps listening while the screen is hidden; playback carries on in Amazon Music (or on the Echo). */
     @Override protected void onStop() { release(); super.onStop(); }
     @Override protected void onDestroy() { release(); worker.shutdownNow(); super.onDestroy(); }
 
+    private SharedPreferences prefs() { return getSharedPreferences(HouseholdSettings.PREFS, 0); }
+
+    private void start() {
+        release();
+        amazonPkg = AmazonMusic.installed(this);
+        handler.postDelayed(tick, 1000);
+        if (Echoes.onEcho(prefs())) { echo(); return; }
+        MusicSessions.Source src = MusicSessions.source;
+        if (!src.granted(this)) { show(Mode.ACCESS); return; }
+        src.listen(this, sessionsChanged, handler); listening = true;
+        choose();
+    }
+
     private void release() {
         handler.removeCallbacksAndMessages(null);
-        if (sessions != null) { try { sessions.removeOnActiveSessionsChangedListener(changed); } catch (RuntimeException ignored) { } sessions = null; }
+        if (listening) { MusicSessions.source.unlisten(this, sessionsChanged); listening = false; }
         attach(null);
         artId = null; generation++;   // the backdrop is rebuilt from the session's own art on return
     }
 
-    /** The session on screen stays while it is alive, so pausing it here never jumps to another app or to "Nothing". */
-    private void choose(List<MediaController> list) {
-        MediaController best = MediaWatch.best(this, list), kept = null;
-        if (controller != null) for (MediaController m : list)
-            if (m.getSessionToken().equals(controller.getSessionToken()) && NowPlaying.alive(MediaWatch.state(m))) { kept = m; break; }
-        // A playing session wins (Amazon Music first); otherwise the one already on screen stays while it is alive.
-        MediaController next = best != null && NowPlaying.playing(MediaWatch.state(best)) ? best : kept != null ? kept : best;
-        if (next == null) { attach(null); now = null; show(Mode.NOTHING); return; }
-        if (controller == null || !controller.getSessionToken().equals(next.getSessionToken())) attach(next);
+    /** "Play on" an Echo: that Echo's player, through Home Assistant. "Everywhere": the group, or an Echo that is playing. */
+    private void echo() {
+        SharedPreferences p = prefs(); String target = Echoes.target(p), name = Echoes.targetName(p);
+        if (!Echoes.EVERYWHERE.equals(target)) { attachEcho(target, name); return; }
+        nothing("Looking for your Echo speakers…", true);
+        final int gen = generation; Context app = getApplicationContext();
+        try {
+            worker.execute(() -> {
+                Echoes.Found f = Echoes.finder.find(app); Echoes.Echo e = f.problem == null ? Echoes.shown(f.echoes) : null;
+                handler.post(() -> {
+                    if (gen != generation) return;
+                    if (e == null) nothing(f.problem != null ? f.problem : Echoes.MISSING, true); else attachEcho(e.id, e.group ? "Everywhere" : e.name);
+                });
+            });
+        } catch (RejectedExecutionException ignored) { /* closing */ }
+    }
+    private void attachEcho(String entity, String name) {
+        try { attach(new EchoSession(this, Echoes.ha(this), entity, name)); } catch (IllegalArgumentException e) { nothing(Echoes.MISSING, true); return; }
         update();
     }
-    private void attach(MediaController next) {
-        if (controller != null) { try { controller.unregisterCallback(callback); } catch (RuntimeException ignored) { } }
-        controller = next;
-        if (next != null) {
-            try { next.registerCallback(callback, handler); } catch (RuntimeException ignored) { }
-            appLabel = label(next.getPackageName());
-        }
+
+    /** The session on screen stays while it is alive, so pausing it here never jumps to another app or to "Nothing". */
+    private void choose() {
+        List<MusicSession> list = MusicSessions.source.active(this);
+        MusicSession best = MusicSessions.best(this, list), kept = null;
+        if (session != null) for (MusicSession m : list)
+            if (m.key() != null && m.key().equals(session.key()) && NowPlaying.alive(m.read().state)) { kept = session; break; }
+        // A playing session wins (Amazon Music first); otherwise the one already on screen stays while it is alive.
+        MusicSession next = best != null && best.read().playing() ? best : kept != null ? kept : best;
+        if (next == null) { attach(null); now = null; nothing(waitQuery != null ? status : "Nothing is playing", false); return; }
+        if (session == null || !session.key().equals(next.key())) attach(next);
+        update();
     }
-    private String label(String pkg) {
-        try { PackageManager pm = getPackageManager(); return NowPlaying.bounded(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)), 40); }
-        catch (Exception e) { return NowPlaying.amazon(pkg) ? "Amazon Music" : ""; }
+    private void attach(MusicSession next) {
+        if (session != null) { try { session.unwatch(); } catch (RuntimeException ignored) { } }
+        session = next;
+        if (next != null) {
+            appLabel = next.label();
+            try { next.watch(playerChanged, handler); } catch (RuntimeException ignored) { }
+        }
     }
 
     private void update() {
-        if (controller == null) return;
-        now = MediaWatch.read(controller);
-        Bitmap a = MediaWatch.art(controller);
-        String id = now.trackKey() + "\u0000" + (a == null ? "none" : a.getWidth() + "x" + a.getHeight());
-        if (!id.equals(artId)) {
-            // A new track drops the old art and its backdrop at once, so a previous album never lingers.
-            artId = id; art = a; backdrop = null; final int gen = ++generation;
-            if (a != null) try {
-                worker.execute(() -> {
-                    Bitmap blurred; try { blurred = Backdrops.fromPoster(a); } catch (RuntimeException e) { return; }
-                    handler.post(() -> { if (gen == generation) { backdrop = blurred; if (stage != null) stage.invalidate(); } });
-                });
-            } catch (java.util.concurrent.RejectedExecutionException ignored) { /* closing */ }
+        if (session == null) return;
+        if (!(session instanceof EchoSession) && listening && !NowPlaying.alive(session.read().state)) { choose(); return; }
+        now = session.read();
+        if (session instanceof EchoSession) {
+            EchoSession e = (EchoSession) session;
+            if (e.problem != null) say(e.problem, 6000);
+            if (!e.known()) { nothing("Checking " + e.name + "…", true); return; }
+            if (!NowPlaying.alive(now.state) && waitQuery == null) { nothing("Nothing is playing on " + e.name, true); return; }
         }
-        shuffleOffered = shuffle() != null;
+        // Play by name: done once the player is playing something other than what was on before.
+        if (waitQuery != null && now.playing() && (waitBefore.isEmpty() || !now.trackKey().equals(waitBefore))) { waitQuery = null; status = null; }
+        artwork();
+        extras();
         show(Mode.PLAYING);
         String who = now.artist.isEmpty() ? "" : " by " + now.artist;
         stage.setContentDescription("Now playing" + (now.title.isEmpty() ? "" : ": " + now.title + who) + (now.playing() ? "" : ". Paused")
-                + ". Left and Right choose a control, OK presses it, Back returns.");
+                + ". OK plays or pauses, Left and Right skip, hold them to move 10 seconds, Down for more, Back returns.");
         stage.invalidate();
         handler.removeCallbacks(tick); handler.postDelayed(tick, 1000);
     }
 
+    /** The track's own art, read off the main thread at the size it is shown; a new track drops the old art at once. */
+    private void artwork() {
+        MusicSession s = session; Bitmap given = s.bitmap(); String uri = given == null ? s.artUri() : null;
+        String id = now.trackKey() + "\u0000" + (given != null ? given.getWidth() + "x" + given.getHeight() : uri == null ? "none" : uri);
+        if (id.equals(artId)) return;
+        artId = id; art = null; backdrop = null; final int gen = ++generation;
+        if (given == null && uri == null) return;
+        int size = Math.max(64, Math.round(Stage.ART * getResources().getDisplayMetrics().widthPixels / (float) Stage.W));
+        Context app = getApplicationContext();
+        try {
+            worker.execute(() -> {
+                Bitmap a; Bitmap blurred;
+                try { a = MusicArt.load(app, s, size, size); if (a == null) return; blurred = Backdrops.fromPoster(a); } catch (RuntimeException e) { return; }
+                handler.post(() -> { if (gen == generation) { art = a; backdrop = blurred; if (stage != null) stage.invalidate(); } });
+            });
+        } catch (RejectedExecutionException ignored) { /* closing */ }
+    }
+
+    /** The buttons under the controls: only what the player itself offers, then Play on and the app. */
+    private void extras() {
+        extras.clear();
+        long a = now.actions;
+        if (shuffle() != null || (a & NowPlaying.ACTION_SET_SHUFFLE_MODE) != 0) extras.add(new Extra(Kind.SHUFFLE, shuffleAsked ? "Shuffle on" : "Shuffle", null));
+        if ((a & NowPlaying.ACTION_SET_REPEAT_MODE) != 0) extras.add(new Extra(Kind.REPEAT, repeatAsked == NowPlaying.REPEAT_NONE ? "Repeat" : NowPlaying.repeatWords(repeatAsked), null));
+        List<String[]> custom = session.customActions();
+        String[] ids = new String[custom.size()], names = new String[custom.size()];
+        for (int i = 0; i < custom.size(); i++) { ids[i] = custom.get(i)[0]; names[i] = custom.get(i)[1]; }
+        for (int i : NowPlaying.likeActions(ids, names)) extras.add(new Extra(Kind.LIKE, NowPlaying.bounded(names[i], 24), ids[i]));
+        if (session.ownVolume()) { extras.add(new Extra(Kind.QUIETER, "Quieter", null)); extras.add(new Extra(Kind.LOUDER, "Louder", null)); }
+        extras.add(new Extra(Kind.PLAY_ON, "Play on: " + Echoes.targetName(prefs()), null));
+        if (amazonPkg != null) extras.add(new Extra(Kind.OPEN_APP, "Open Amazon Music app", null));
+        if (extraIndex >= extras.size()) extraIndex = Math.max(0, extras.size() - 1);
+        if (zone == Zone.EXTRAS && extras.isEmpty()) zone = Zone.TRANSPORT;
+    }
+
     private void show(Mode next) {
-        if (next == mode) return;
+        if (next == mode && next != Mode.NOTHING) return;
         mode = next;
         if (next == Mode.PLAYING) {
+            nothingWords = "";
             if (stage == null) stage = new Stage(this);
             setContentView(stage); stage.requestFocus(); return;
         }
         if (next == Mode.ACCESS) access();
-        else nothing();
     }
 
     /** Access not yet granted: a plain explanation, the setting, and the one ADB line for TVs without that setting. */
     private void access() {
         page("Now playing");
-        text("To show what's playing, allow Unified TV to see media notifications", 24);
-        text("Amazon has no public API, so this reads the TV's own media controls. Unified TV doesn't read, keep or send your notifications.", 19);
-        button("Allow in Settings", () -> {
-            if (!openAccessSettings()) note("This TV doesn't offer that setting. Use the computer step below.");
-        });
+        text("To show and control what's playing, allow Unified TV to see media notifications", 24);
+        text("This uses the TV's own media controls; Amazon Music keeps playing in its own app. Unified TV doesn't read, keep or send your notifications. You can still play music by name from the Music page.", 19);
+        button("Allow in Settings", () -> { if (!MediaWatch.openAccessSettings(this)) note("This TV doesn't offer that setting. Use the computer step below."); });
         text("If your TV doesn't offer this setting, turn on network debugging, then run this one line from a computer on the same network:", 19);
         android.widget.TextView line = text(NowPlaying.adbLine(MediaWatch.component(this).flattenToString()), 18);
         line.setTypeface(Typeface.MONOSPACE);
         text("Turn network debugging off again afterwards.", 17);
         button("Back", this::finish);
     }
-    private boolean openAccessSettings() {
-        ComponentName me = MediaWatch.component(this);
-        if (Build.VERSION.SDK_INT >= 30) {
-            Intent detail = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
-                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, me.flattenToString());
-            if (start(detail)) return true;
-        }
-        return start(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-    }
-    private boolean start(Intent i) {
-        // System settings: in Kids only behind the adult PIN, then the Kids guard lets them stay open a while.
-        if (Profiles.kids(this)) { if (i.resolveActivity(getPackageManager()) == null) return false; Launch.system(this, i, "This TV doesn't offer that setting"); return true; }
-        try { startActivity(i); return true; } catch (ActivityNotFoundException | SecurityException e) { return false; }
-    }
 
-    /** Access granted but no music session: say so plainly and offer the official app. */
-    private void nothing() {
+    /** Nothing to show: say so plainly and offer the official app (or Play on, for an Echo). */
+    private void nothing(String words, boolean echo) {
+        String w = words == null || words.isEmpty() ? "Nothing is playing" : words;
+        if (mode == Mode.NOTHING && w.equals(nothingWords)) return;
+        mode = Mode.NOTHING; nothingWords = w;
         page("Now playing");
-        text("Nothing is playing", 30);
-        text("Start something in Amazon Music and it appears here.", 20);
-        button(MusicActivity.find(this) != null ? "Open Amazon Music" : "Find Amazon Music", () -> MusicActivity.open(this));
+        text(w, 30);
+        if (echo) {
+            text("Playing on: " + Echoes.targetName(prefs()) + ", through Home Assistant.", 20);
+            button("Play on…", this::playOn);
+        } else {
+            text("Start something in Amazon Music, or play by name from the Music page, and it appears here.", 20);
+            button(MusicActivity.find(this) != null ? "Open Amazon Music" : "Find Amazon Music", () -> MusicActivity.open(this));
+        }
         button("Back", this::finish);
-        text("Amazon has no public API, so this reads the TV's own media controls.", 17);
     }
 
-    private void press(int which) {
-        if (which == SETTINGS) { EditLock.ask(this, () -> startActivity(new Intent(this, SettingsActivity.class))); return; }
-        if (controller == null || now == null) return;
-        MediaController.TransportControls tc = controller.getTransportControls();
+    /** A short line in place of the app's name (a request, a mode asked for, a problem). */
+    private void say(String words, long ms) { status = words; statusUntil = SystemClock.uptimeMillis() + ms; if (stage != null) stage.invalidate(); }
+
+    /** Play by name that hasn't started yet: after the session, Android's request to the app; then a plain sentence. */
+    private void waited() {
+        if (waitQuery == null || SystemClock.uptimeMillis() < waitUntil) return;
+        if (waitRoute == AmazonMusic.Route.SESSION && !waitRetried) {
+            waitRetried = true;
+            if (AmazonMusic.retryWithIntent(this, waitQuery, waitFocus)) { waitUntil = SystemClock.uptimeMillis() + AmazonMusic.WAIT_MS; return; }
+        }
+        String who = waitRoute == AmazonMusic.Route.ECHO ? Echoes.targetName(prefs()) : AmazonMusic.NAME;
+        String q = waitQuery; waitQuery = null;
+        say(who + " didn't start “" + q + "”." + (waitRoute == AmazonMusic.Route.ECHO ? "" : " Press Menu to open Amazon Music and choose it there."), 10_000);
+        if (mode == Mode.NOTHING) nothing(status, waitRoute == AmazonMusic.Route.ECHO);
+    }
+
+    // --- the remote
+
+    private void playPause() {
+        if (session == null || now == null) return;
         try {
-            switch (which) {
-                case PREVIOUS: if (now.offers(NowPlaying.ACTION_SKIP_TO_PREVIOUS)) tc.skipToPrevious(); else unavailable("Previous"); break;
-                case PLAY: if (now.playing()) tc.pause(); else tc.play(); break;
-                case NEXT: if (now.offers(NowPlaying.ACTION_SKIP_TO_NEXT)) tc.skipToNext(); else unavailable("Next"); break;
+            if (now.playing()) { if (now.offers(NowPlaying.ACTION_PAUSE) || now.offers(NowPlaying.ACTION_PLAY_PAUSE)) session.pause(); else unavailable("Pause"); }
+            else session.play();
+        } catch (RuntimeException e) { noAnswer(); }
+    }
+    private void skip(int direction) {
+        if (session == null || now == null) return;
+        long action = direction > 0 ? NowPlaying.ACTION_SKIP_TO_NEXT : NowPlaying.ACTION_SKIP_TO_PREVIOUS;
+        if (!now.offers(action)) { unavailable(direction > 0 ? "Next" : "Previous"); return; }
+        flash = direction > 0 ? NEXT : PREVIOUS; flashAt = SystemClock.uptimeMillis();
+        try { if (direction > 0) session.next(); else session.previous(); } catch (RuntimeException e) { noAnswer(); }
+        if (stage != null) { stage.invalidate(); stage.postInvalidateDelayed(FLASH_MS); }
+    }
+    private void seek(int direction) {
+        if (session == null || now == null) return;
+        if (!now.offers(NowPlaying.ACTION_SEEK_TO)) { unavailable("moving within a track"); return; }
+        try { session.seekTo(NowPlaying.seekTarget(now.position(SystemClock.elapsedRealtime()), now.durationMs, direction)); } catch (RuntimeException e) { noAnswer(); return; }
+        say(direction > 0 ? "Forward 10 seconds" : "Back 10 seconds", 1500);
+    }
+    private void pressExtra() {
+        if (extraIndex < 0 || extraIndex >= extras.size() || session == null) return;
+        Extra x = extras.get(extraIndex);
+        try {
+            switch (x.kind) {
                 case SHUFFLE: {
-                    PlaybackState.CustomAction a = shuffle();
-                    if (a != null) tc.sendCustomAction(a, null); else unavailable("Shuffle");
-                    break;
+                    String[] own = shuffle();
+                    if (own != null) { session.custom(own[0], null); say("Asked " + appName() + " to shuffle", 3000); break; }
+                    shuffleAsked = !shuffleAsked; Bundle b = new Bundle(); b.putInt(NowPlaying.COMPAT_SHUFFLE_ARG, shuffleAsked ? 1 : 0);
+                    session.custom(NowPlaying.COMPAT_SET_SHUFFLE, b); say(shuffleAsked ? "Shuffle on" : "Shuffle off", 3000); break;
                 }
+                case REPEAT: {
+                    repeatAsked = NowPlaying.nextRepeat(repeatAsked); Bundle b = new Bundle(); b.putInt(NowPlaying.COMPAT_REPEAT_ARG, repeatAsked);
+                    session.custom(NowPlaying.COMPAT_SET_REPEAT, b); say(NowPlaying.repeatWords(repeatAsked), 3000); break;
+                }
+                case LIKE: session.custom(x.action, null); say("Sent “" + x.label + "” to " + appName(), 3000); break;
+                case QUIETER: session.volume(-1); break;
+                case LOUDER: session.volume(1); break;
+                case PLAY_ON: playOn(); return;
+                case OPEN_APP: openApp(); return;
                 default: break;
             }
-        } catch (RuntimeException e) { note((appLabel.isEmpty() ? "The app" : appLabel) + " didn't respond"); }
+        } catch (RuntimeException e) { noAnswer(); }
+        extras(); if (stage != null) stage.invalidate();
     }
-    private void unavailable(String what) { note((appLabel.isEmpty() ? "This app" : appLabel) + " doesn't offer " + what + " to the TV's media controls"); }
-    /** Shuffle only when the app itself offers a shuffle action; its current setting isn't reported, so none is shown. */
-    private PlaybackState.CustomAction shuffle() {
-        try {
-            PlaybackState s = controller == null ? null : controller.getPlaybackState(); if (s == null) return null;
-            List<PlaybackState.CustomAction> list = s.getCustomActions();
-            String[] ids = new String[list.size()], names = new String[list.size()];
-            for (int i = 0; i < list.size(); i++) { ids[i] = list.get(i).getAction(); names[i] = String.valueOf(list.get(i).getName()); }
-            int i = NowPlaying.shuffleAction(ids, names); return i < 0 ? null : list.get(i);
-        } catch (RuntimeException e) { return null; }
+    private void playOn() { startActivity(new Intent(this, MusicActivity.class).putExtra(MusicActivity.PLAY_ON, true)); }
+    /** The real Amazon Music app; playback carries on either way. */
+    private void openApp() {
+        String pkg = AmazonMusic.installed(this);
+        if (pkg == null) { MusicActivity.open(this); return; }
+        String why = Launch.open(this, pkg, AmazonMusic.NAME);
+        if (why != null && !why.isEmpty()) note(why);
+    }
+    private String appName() { return appLabel.isEmpty() ? "the app" : appLabel; }
+    private void noAnswer() { say((appLabel.isEmpty() ? "The app" : appLabel) + " didn't respond", 4000); }
+    private void unavailable(String what) { say((appLabel.isEmpty() ? "This app" : appLabel) + " doesn't offer " + what + " to the TV's media controls", 4000); }
+    /** The app's own shuffle button, when it offers one: {action id, label}. */
+    private String[] shuffle() {
+        if (session == null) return null;
+        List<String[]> list = session.customActions();
+        String[] ids = new String[list.size()], names = new String[list.size()];
+        for (int i = 0; i < list.size(); i++) { ids[i] = list.get(i)[0]; names[i] = list.get(i)[1]; }
+        int i = NowPlaying.shuffleAction(ids, names); return i < 0 ? null : list.get(i);
+    }
+
+    /** Keys, for the Stage and for tests: true when handled. */
+    boolean key(KeyEvent e) {
+        int code = e.getKeyCode(); boolean down = e.getAction() == KeyEvent.ACTION_DOWN; int repeat = e.getRepeatCount();
+        switch (code) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: case KeyEvent.KEYCODE_HEADSETHOOK: if (down && repeat == 0) playPause(); return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY: if (down && repeat == 0 && now != null && !now.playing()) playPause(); return true;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE: if (down && repeat == 0 && now != null && now.playing()) playPause(); return true;
+            case KeyEvent.KEYCODE_MEDIA_NEXT: if (down && repeat == 0) skip(1); return true;
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS: if (down && repeat == 0) skip(-1); return true;
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: if (down) seek(1); return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND: if (down) seek(-1); return true;
+            case KeyEvent.KEYCODE_MENU: if (down && repeat == 0) openApp(); return true;
+            case KeyEvent.KEYCODE_VOLUME_UP: case KeyEvent.KEYCODE_VOLUME_DOWN:
+                if (session == null || !session.ownVolume()) return false;
+                if (down) session.volume(code == KeyEvent.KEYCODE_VOLUME_UP ? 1 : -1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (down) zone = zone == Zone.EXTRAS ? Zone.TRANSPORT : Zone.SETTINGS;
+                break;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (down) zone = zone == Zone.SETTINGS ? Zone.TRANSPORT : !extras.isEmpty() ? Zone.EXTRAS : zone;
+                break;
+            case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                int dir = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
+                if (zone == Zone.EXTRAS) { if (down) extraIndex = Math.max(0, Math.min(extras.size() - 1, extraIndex + dir)); break; }
+                if (zone != Zone.TRANSPORT) break;
+                // A press skips on release; held, it moves 10 seconds at a time instead.
+                if (down && repeat == 0) { holdDirection = dir; held = false; seekAt = e.getDownTime(); }
+                else if (down && holdDirection == dir && e.getEventTime() - seekAt >= NowPlaying.SEEK_EVERY_MS) { held = true; seekAt = e.getEventTime(); seek(dir); }
+                else if (!down) { if (holdDirection == dir && !held && !e.isCanceled()) skip(dir); holdDirection = 0; held = false; }
+                break;
+            }
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                if (down && repeat == 0) {
+                    if (zone == Zone.SETTINGS) EditLock.ask(this, () -> startActivity(new Intent(this, SettingsActivity.class)));
+                    else if (zone == Zone.EXTRAS) pressExtra();
+                    else playPause();
+                }
+                return true;
+            default: return false;
+        }
+        if (stage != null) stage.invalidate();
+        return true;
     }
 
     /** The custom-drawn screen on the 1920 x 1080 canvas, like Home. */
     private final class Stage extends View {
-        private static final int W = 1920, H = 1080, WHITE = 0xFFFAFAFC, MUTED = 0xFFC8CCD5, INK = 0xFF101827;
-        private static final float ART_L = 170, ART_T = 250, ART = 560, COL = 900, COL_R = 1824, BAR_T = 742, BAR_H = 124, CELL = 120, GAP = 16, PAD = 22;
+        static final int W = 1920, H = 1080;
+        static final float ART = 560;
+        private static final int WHITE = 0xFFFAFAFC, MUTED = 0xFFC8CCD5, INK = 0xFF101827;
+        private static final float ART_L = 170, ART_T = 250, COL = 900, COL_R = 1824, BAR_T = 742, BAR_H = 124, CELL = 120, GAP = 16, PAD = 22,
+                ROW_T = 892, ROW_H = 64, CHIP_GAP = 16, CHIP_PAD = 28;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint icon = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint type = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
@@ -232,28 +417,21 @@ public final class NowPlayingActivity extends Screen {
 
         Stage(Context c) {
             super(c);
-            prefs = c.getSharedPreferences("unified-tv-preview", Context.MODE_PRIVATE);
+            prefs = c.getSharedPreferences(HouseholdSettings.PREFS, Context.MODE_PRIVATE);
             setFocusable(true); setFocusableInTouchMode(true);
         }
         private boolean solid() { return prefs.getBoolean("opaque", false) || prefs.getBoolean("highContrast", false); }
 
-        @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-            switch (keyCode) {
-                case KeyEvent.KEYCODE_DPAD_LEFT: if (focus == SETTINGS) return true; focus = Math.max(PREVIOUS, focus - 1); invalidate(); return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT: if (focus == SETTINGS) return true; focus = Math.min(SHUFFLE, focus + 1); invalidate(); return true;
-                case KeyEvent.KEYCODE_DPAD_UP: focus = SETTINGS; invalidate(); return true;
-                case KeyEvent.KEYCODE_DPAD_DOWN: if (focus == SETTINGS) { focus = PLAY; invalidate(); } return true;
-                case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                    if (event.getRepeatCount() == 0) press(focus); return true;
-                default: return super.onKeyDown(keyCode, event);
-            }
-        }
+        @Override public boolean onKeyDown(int keyCode, KeyEvent event) { return key(event) || super.onKeyDown(keyCode, event); }
+        @Override public boolean onKeyUp(int keyCode, KeyEvent event) { return key(event) || super.onKeyUp(keyCode, event); }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             c.save(); c.scale(getWidth() / (float) W, getHeight() / (float) H);
-            background(c); header(c); artwork(c); details(c); controls(c);
-            text(c, "Amazon has no public API, so this reads the TV's own media controls.", 96, 1010, 20, MUTED, false, Paint.Align.LEFT, W);
+            background(c); header(c); artwork(c); details(c); controls(c); extrasRow(c);
+            String foot = session instanceof EchoSession ? "Playing on " + session.label() + " through Home Assistant."
+                    : "Through the TV's own media controls. " + (appLabel.isEmpty() ? "The app" : appLabel) + " keeps playing when you go back.";
+            text(c, foot, 96, 1044, 20, MUTED, false, Paint.Align.LEFT, W);
             c.restore();
         }
 
@@ -278,7 +456,7 @@ public final class NowPlayingActivity extends Screen {
             float right = 1730, left = right - type.measureText("Music");
             glass(c, left - 32, 62, 1817, 145, 30);
             text(c, "Music", left, 113, 24, WHITE, true, Paint.Align.LEFT, W);
-            boolean on = focus == SETTINGS;
+            boolean on = zone == Zone.SETTINGS;
             if (on) { focusRing(c, 1773, 104, 31); }
             gear(c, 1773, 104, on ? INK : WHITE, 235);
         }
@@ -294,7 +472,7 @@ public final class NowPlayingActivity extends Screen {
             paint.setColor(0xff151b26); paint.setShadowLayer(34, 0, 16, 0x99000000); c.drawRoundRect(rect, 18, 18, paint); paint.clearShadowLayer();
             path.reset(); path.addRoundRect(rect, 18, 18, Path.Direction.CW);
             c.save(); c.clipPath(path);
-            if (art != null) c.drawBitmap(art, crop(art), rect, paint);
+            if (art != null && !art.isRecycled()) c.drawBitmap(art, crop(art), rect, paint);
             else {
                 paint.setShader(new LinearGradient(0, ART_T, 0, ART_T + ART, 0xff1d2533, 0xff0f141d, Shader.TileMode.CLAMP)); c.drawRect(rect, paint); paint.setShader(null);
                 musicNote(c, cx, cy);
@@ -311,9 +489,10 @@ public final class NowPlayingActivity extends Screen {
         private void details(Canvas c) {
             NowPlaying n = now; if (n == null) return;
             float width = COL_R - COL;
-            String from = appLabel.isEmpty() ? "" : appLabel;
+            String from = appLabel;
             if (!n.playing()) from = from.isEmpty() ? "Paused" : from + "  ·  Paused";
-            text(c, from, COL, 330, 24, MUTED, false, Paint.Align.LEFT, width);
+            boolean saying = status != null && SystemClock.uptimeMillis() < statusUntil;
+            text(c, saying ? status : from, COL, 330, 24, saying ? WHITE : MUTED, false, Paint.Align.LEFT, width);
             String title = n.title.isEmpty() ? "Unknown title" : n.title;
             type.setTextSize(78); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             text(c, title, COL, 432, type.measureText(title) > width ? 62 : 78, WHITE, true, Paint.Align.LEFT, width);
@@ -328,21 +507,39 @@ public final class NowPlayingActivity extends Screen {
             text(c, n.durationMs > 0 ? NowPlaying.clock(n.durationMs) : "", COL_R, 688, 24, MUTED, false, Paint.Align.RIGHT, width / 2);
         }
 
-        /** One glass bar: previous, play or pause, next, shuffle. The focused control is a light disc. */
+        /** One glass bar: previous, play or pause, next. Focus is the light disc on Play; a skip lights its button briefly. */
         private void controls(Canvas c) {
-            float right = COL + PAD * 2 + CELL * 4 + GAP * 3;
+            float right = COL + PAD * 2 + CELL * 3 + GAP * 2;
             glass(c, COL, BAR_T, right, BAR_T + BAR_H, BAR_H / 2);
-            NowPlaying n = now; boolean shuffle = shuffleOffered;
-            for (int i = PREVIOUS; i <= SHUFFLE; i++) {
+            NowPlaying n = now; boolean lit = flash >= 0 && SystemClock.uptimeMillis() - flashAt < FLASH_MS;
+            for (int i = PREVIOUS; i <= NEXT; i++) {
                 float cx = COL + PAD + CELL / 2 + i * (CELL + GAP), cy = BAR_T + BAR_H / 2;
-                boolean on = focus == i;
-                boolean offered = n != null && (i == PREVIOUS ? n.offers(NowPlaying.ACTION_SKIP_TO_PREVIOUS) : i == NEXT ? n.offers(NowPlaying.ACTION_SKIP_TO_NEXT) : i != SHUFFLE || shuffle);
+                boolean on = zone == Zone.TRANSPORT && (lit ? flash == i : i == PLAY);
+                boolean offered = n != null && (i == PREVIOUS ? n.offers(NowPlaying.ACTION_SKIP_TO_PREVIOUS) : i != NEXT || n.offers(NowPlaying.ACTION_SKIP_TO_NEXT));
                 if (on) focusRing(c, cx, cy, i == PLAY ? 50 : 44);
                 int colour = on ? INK : WHITE, alpha = offered ? 240 : 95;
                 if (i == PREVIOUS) skip(c, cx, cy, -1, colour, alpha);
                 else if (i == NEXT) skip(c, cx, cy, 1, colour, alpha);
-                else if (i == PLAY) { if (n != null && n.playing()) pause(c, cx, cy, colour, alpha); else play(c, cx, cy, colour, alpha); }
-                else shuffleGlyph(c, cx, cy, colour, alpha);
+                else if (n != null && n.playing()) pause(c, cx, cy, colour, alpha); else play(c, cx, cy, colour, alpha);
+            }
+        }
+
+        /** The row of buttons below: glass pills, the focused one light. */
+        private void extrasRow(Canvas c) {
+            float x = ART_L;
+            for (int i = 0; i < extras.size(); i++) {
+                String label = extras.get(i).label;
+                type.setTextSize(24); type.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                float w = Math.min(type.measureText(label) + CHIP_PAD * 2, COL_R - x);
+                if (w < CHIP_PAD * 3) break;
+                boolean on = zone == Zone.EXTRAS && i == extraIndex;
+                if (on) {
+                    paint.setShader(null); paint.setStyle(Paint.Style.FILL); paint.setColor(0xfff3f6ff);
+                    rect.set(x, ROW_T, x + w, ROW_T + ROW_H); c.drawRoundRect(rect, ROW_H / 2, ROW_H / 2, paint);
+                    icon.setShader(null); icon.setStyle(Paint.Style.STROKE); icon.setStrokeWidth(3); icon.setColor(0xff88b7ff); c.drawRoundRect(rect, ROW_H / 2, ROW_H / 2, icon);
+                } else glass(c, x, ROW_T, x + w, ROW_T + ROW_H, ROW_H / 2);
+                text(c, label, x + CHIP_PAD, ROW_T + ROW_H / 2 + 9, 24, on ? INK : WHITE, true, Paint.Align.LEFT, w - CHIP_PAD * 2);
+                x += w + CHIP_GAP;
             }
         }
 
@@ -385,14 +582,6 @@ public final class NowPlayingActivity extends Screen {
             path.moveTo(cx - 13 * dir, cy - 15); path.lineTo(cx + 9 * dir, cy); path.lineTo(cx - 13 * dir, cy + 15); path.close(); c.drawPath(path, icon);
             float bx = cx + 12 * dir; c.drawRoundRect(Math.min(bx, bx + 5 * dir), cy - 15, Math.max(bx, bx + 5 * dir), cy + 15, 2, 2, icon);
         }
-        private void shuffleGlyph(Canvas c, float cx, float cy, int colour, int alpha) {
-            glyphPaint(colour, alpha, false); path.reset();
-            path.moveTo(cx - 19, cy - 10); path.lineTo(cx - 9, cy - 10); path.cubicTo(cx + 1, cy - 10, cx + 1, cy + 10, cx + 11, cy + 10); path.lineTo(cx + 18, cy + 10);
-            path.moveTo(cx - 19, cy + 10); path.lineTo(cx - 9, cy + 10); path.cubicTo(cx + 1, cy + 10, cx + 1, cy - 10, cx + 11, cy - 10); path.lineTo(cx + 18, cy - 10);
-            path.moveTo(cx + 13, cy - 15); path.lineTo(cx + 18, cy - 10); path.lineTo(cx + 13, cy - 5);
-            path.moveTo(cx + 13, cy + 5); path.lineTo(cx + 18, cy + 10); path.lineTo(cx + 13, cy + 15);
-            c.drawPath(path, icon);
-        }
         /** A plain note for the no-art square: an original drawing, not an album or brand image. */
         private void musicNote(Canvas c, float cx, float cy) {
             glyphPaint(WHITE, 70, true);
@@ -419,4 +608,11 @@ public final class NowPlayingActivity extends Screen {
             type.clearShadowLayer();
         }
     }
+
+    // --- for tests
+    MusicSession sessionForTest() { return session; }
+    String statusForTest() { return status; }
+    List<String> extrasForTest() { List<String> out = new ArrayList<>(); for (Extra x : extras) out.add(x.label); return out; }
+    boolean waitingForTest() { return waitQuery != null; }
+    Bitmap artForTest() { return art; }
 }

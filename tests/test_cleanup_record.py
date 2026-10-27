@@ -16,6 +16,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "preview/app/test/fixtures/cleanup-record.json"
+# OD-28: what the launcher app writes before it turns the TV's own Home off (HomeTakeoverTest checks it byte for byte).
+TAKEOVER = ROOT / "preview/app/test/fixtures/home-takeover-record.json"
+STOCK = "com.google.android.tvlauncher"
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "preview/tools"))
 import recovery  # noqa: E402
@@ -118,6 +121,39 @@ class CleanupRecordTest(unittest.TestCase):
         self.assertTrue([c for c in commands if "set-home-activity" in c and "resolve-activity" in c
                          and "com.google.android.tvlauncher" in c], commands)
         self.assertIn("pm enable com.google.android.tvlauncher", commands)
+
+
+    # --- OD-28: the same record after Unified TV took over the Home button
+    def test_restore_turns_the_tvs_own_home_back_on_and_sets_it(self):
+        shutil.copy(TAKEOVER, self.record)
+        record = recovery.load_record(self.record)
+        self.assertEqual(record["home_takeover"]["launcher"], STOCK)
+        list_path, _, command = cleanup_restore.prepare(self.record, "tv.example:5555")
+        self.assertEqual(recovery.read_list(list_path), [STOCK])
+        self.assertIn(f"tools/restore.sh {list_path} {STOCK}", command)
+        recovery.current_device = lambda: dict(self.device)
+        commands = recovery.restore_commands(list_path, STOCK, "tv.example:5555")
+        self.assertEqual(commands.count(f"pm enable {STOCK}"), 1, commands)
+        home = f"cmd package set-home-activity --user 0 {STOCK}/{STOCK}.MainActivity"
+        self.assertIn(home, commands)
+        self.assertLess(commands.index(f"pm enable {STOCK}"), commands.index(home), "enabled before it is set as Home")
+        self.assertFalse([c for c in commands if "disable" in c or "uninstall" in c or "pm hide" in c or "io.unifiedtv" in c])
+
+    def test_restore_never_hands_home_to_unified_tv(self):
+        # A clean-up record taken while Unified TV was the Home: restore goes back to the stock launcher, not to an app
+        # that may have been uninstalled since.
+        record = json.loads(TAKEOVER.read_text())
+        record["home"] = "io.unifiedtv.launcher/io.unifiedtv.preview.HomeEntry"
+        self.record.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        list_path, _, _ = cleanup_restore.prepare(self.record, "tv.example")
+        recovery.current_device = lambda: dict(self.device)
+        commands = recovery.restore_commands(list_path, STOCK, "tv.example")
+        self.assertFalse([c for c in commands if "set-home-activity --user 0 io.unifiedtv" in c], commands)
+        self.assertTrue([c for c in commands if "set-home-activity" in c and "resolve-activity" in c and STOCK in c], commands)
+        self.assertIn(f"pm enable {STOCK}", commands)
+        self.assertTrue(recovery.own_launcher("io.unifiedtv.launcher.devicecheck"))
+        self.assertTrue(recovery.own_launcher("com.gathin.tvhome"))
+        self.assertFalse(recovery.own_launcher(STOCK))
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ The visual direction draws on the *principles* of contemporary tvOS motion and m
 | Home view: Home Assistant alerts and glances | 🛠 Planned | Opt-in, set up on the TV. [Design note](docs/HOME_VIEW.md). |
 | Ring doorbell live view, on a press **or a person detected**, even from artwork mode | 🔬 Needs real-TV testing | A release gate for the reference household. Not proven on any TV, including native Samsung Art Mode. |
 | Alexa reminder toasts over playback | 🔬 Needs real-TV testing | Depends on a reliable event source and on overlays being allowed above each app. |
-| Live TV guarded by a verified NordVPN connection | 🔬 Needs real-TV testing | A status icon alone is not a kill switch; Live TV stays blocked until fail-closed behaviour is proven. |
+| Live TV guarded by NordVPN | 🔬 Needs real-TV testing | Live TV opens only while NordVPN is connected, and is covered if NordVPN drops (OD-26). That isn't a kill switch, and a status icon alone is never one: only Android's always-on block stops traffic. |
 | Music (Amazon Music) and an optional voice assistant | 🔬 Needs real-TV testing | Research only. Neither works today. |
 | Samsung Frame native app (Tizen) | 🛠 Planned | A separate native Tizen app with the same design, alongside Samsung's own Home, Art Mode and TV Plus. Not built or installed yet. |
 | Optional TV Performance & Cleanup journey with consent at every step | 🛠 Planned | Builds on the inherited tools; scan, explain, back up, apply, verify rollback. |

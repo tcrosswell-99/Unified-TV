@@ -61,8 +61,9 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
 
         group("VPN and Live TV");card();
         String live=LiveTvProtection.livePackage(this);
-        text(OwnerChecks.liveTv(VpnGate.statusLabel(VpnGate.inspect(this)),VpnGate.routed(this),LiveTvProtection.now(this,live)),17);
-        text("Live TV app: "+(live.isEmpty()?"not identified":live)+". Android's always-on VPN with “block connections without VPN” is what stops traffic when NordVPN drops; this page can't test that.",16);
+        text(OwnerChecks.liveTv(VpnGate.statusLabel(VpnGate.inspect(this)),VpnGate.routed(this),LiveTvProtection.now(this)),17);
+        text(OwnerChecks.liveFacts(LiveTvProtection.read(this),LiveTvProtection.vpnApps(this),LiveTvGuard.running,LiveTvGuard.lastAction),16);
+        text("Live TV app: "+(live.isEmpty()?"not identified":live)+". "+LiveTvProtection.NOT_A_KILL_SWITCH+" Only Android's always-on VPN with “block connections without VPN”, where it is set up, stops traffic when NordVPN drops; this page can't test that.",16);
 
         // Coordinator, 25 October 2026: the TV says itself whether Home's light moves, at what rate, and why not.
         group("Home background");card();
@@ -72,6 +73,11 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
         // Owner's TCL, 27 October 2026: no posters showed. Whether a key is saved, what TMDB said last, and what didn't match.
         group("Film posters");card();TextView film=text("Checking…",17);
         worker.execute(()->post(film,Posters.get(getApplicationContext()).diagnosis(TmdbKey.saved(this),at->OwnerChecks.when(this,at))));
+
+        // OD-27: what Amazon Music let this TV do (browsing refused or available, the last play-by-name route) and the
+        // last Echo problem. No account details, addresses or tokens.
+        group("Music");card();TextView music=text("Checking…",17);
+        worker.execute(()->post(music,AmazonMusic.diagnosis(getApplicationContext())+"\n"+Echoes.diagnosis(getApplicationContext())));
 
         group("This app");card();
         text(app(),17);

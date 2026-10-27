@@ -14,6 +14,11 @@ import java.util.regex.Pattern;
  * which apps answer Home, Live TV channels and Settings, the animation scales (read only, for the recovery record), and
  * the only two changes: {@code pm disable-user --user 0 <package>} and {@code pm enable <package>}.
  *
+ * <p>Taking over the Home button (OD-28, launcher app only, HomeTakeover) adds one more change,
+ * {@code cmd package set-home-activity --user 0 <component>}, and only for two kinds of component: Unified TV's own Home
+ * entry ({@link #HOME_ENTRY} in the launcher app or its review build), and a stock Home app's own component when Home is
+ * handed back ({@link #STOCK_HOMES}). Any other component, or a Home entry in any other package, is refused unsent.
+ *
  * <p>Never: {@code pm uninstall}, {@code pm hide}, {@code pm clear}, {@code pm grant}, {@code settings put}, a reboot, root
  * ({@code su}), {@code am}, {@code input}, a second command after a {@code ;}, {@code &&} or {@code |}, a redirect, or a
  * package name with anything but letters, digits, '_' and dots. The tested lists do not ask for {@code pm hide} anywhere,
@@ -35,6 +40,16 @@ public final class AdbCommands {
         SETTINGS_APPS = "cmd package query-activities --brief -a android.settings.SETTINGS",
         /** The active screensaver (read only), so the clean-up never turns it off. */
         SCREENSAVER = "settings get secure screensaver_components";
+    /** Unified TV's own Home entry: the activity-alias launcher/AndroidManifest.xml declares, switched off until chosen. */
+    public static final String HOME_ENTRY = "io.unifiedtv.preview.HomeEntry";
+    /** The only apps whose Home entry set-home-activity may name: the launcher app and its review build. Never the preview. */
+    public static final Set<String> UNIFIED_HOMES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("io.unifiedtv.launcher", "io.unifiedtv.launcher.devicecheck")));
+    /** Stock Home apps whose own component set-home-activity may name when Home is handed back (the TV's previous Home). */
+    public static final Set<String> STOCK_HOMES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("com.google.android.tvlauncher",
+        "com.google.android.apps.tv.launcherx", "com.google.android.leanbacklauncher", "com.tcl.tvlauncher")));
+    static final String SET_HOME = "cmd package set-home-activity --user 0 ";
+    /** package/class, the class either ".Relative" or fully named: nothing that could carry shell syntax. */
+    static final Pattern COMPONENT = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/(\\.?[A-Za-z_][A-Za-z0-9_$]*(?:\\.[A-Za-z_][A-Za-z0-9_$]*)*)");
     /** The animation scales tools/recovery.py records; read only. */
     public static final String[] SCALES = {"window_animation_scale", "transition_animation_scale", "animator_duration_scale"};
 
@@ -51,6 +66,18 @@ public final class AdbCommands {
     public static String disable(String pkg) { return "pm disable-user --user 0 " + pkg(pkg); }
     public static String enable(String pkg) { return "pm enable " + pkg(pkg); }
 
+    /** Makes {@code component} the TV's Home: only Unified TV's own Home entry, or a stock Home's own component (see above). */
+    public static String setHome(String component) { if (!homeTarget(component)) throw new IllegalArgumentException("not a Home this can set"); return SET_HOME + component; }
+
+    /** True for Unified TV's own Home entry in the launcher app (or its review build), or a stock Home app's component. */
+    public static boolean homeTarget(String component) {
+        if (component == null || component.length() > PACKAGE_MAX * 2) return false;
+        java.util.regex.Matcher m = COMPONENT.matcher(component);
+        if (!m.matches() || !isPackage(m.group(1))) return false;
+        if (UNIFIED_HOMES.contains(m.group(1))) return m.group(2).equals(HOME_ENTRY);
+        return STOCK_HOMES.contains(m.group(1));
+    }
+
     public static boolean isPackage(String pkg) { return pkg != null && pkg.length() <= PACKAGE_MAX && PACKAGE.matcher(pkg).matches(); }
     private static String pkg(String pkg) { if (!isPackage(pkg)) throw new IllegalArgumentException("not a package name"); return pkg; }
 
@@ -60,11 +87,11 @@ public final class AdbCommands {
         if (FIXED.contains(command)) return true;
         for (String prefix : new String[]{"dumpsys package ", "pm disable-user --user 0 ", "pm enable "})
             if (command.startsWith(prefix) && isPackage(command.substring(prefix.length()))) return true;
-        return false;
+        return command.startsWith(SET_HOME) && homeTarget(command.substring(SET_HOME.length()));
     }
 
-    /** True for the two commands that change the TV; everything else on the list only reads. */
+    /** True for the commands that change the TV (disable, enable, set Home); everything else on the list only reads. */
     public static boolean changes(String command) {
-        return allowed(command) && (command.startsWith("pm disable-user ") || command.startsWith("pm enable "));
+        return allowed(command) && (command.startsWith("pm disable-user ") || command.startsWith("pm enable ") || command.startsWith(SET_HOME));
     }
 }

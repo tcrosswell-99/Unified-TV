@@ -791,3 +791,21 @@ even when it was found or typed as `homeassistant.local`, because many phones an
 old one and Settings says Home Assistant can't be reached. Either run phone setup again (Settings → Smart Home →
 Home Assistant), or, better, give Home Assistant a fixed address in the router (a DHCP reservation) so it never
 changes. Owner diagnostics (Updates & About → Advanced) shows the last phone setup step that failed.
+
+## No Home screen after uninstalling Unified TV
+
+The Unified TV launcher app's **Take over the Home button** (Settings → Appearance & Home, OD-28) turns the TV's own
+Home off on TVs that otherwise keep it in front, such as the TCL (`com.google.android.tvlauncher`). It is turned off,
+never removed. Uninstalling or replacing Unified TV before choosing **Return to the original TV interface** leaves the
+TV with no Home screen: pressing Home does nothing, or Android's setup or a blank screen appears. Put the TV's own Home
+back from a computer:
+
+```bash
+adb shell pm enable com.google.android.tvlauncher
+```
+
+Or on the TV, if its Settings still open (the remote's Settings button, or Settings from the quick panel): **Settings →
+Apps → See all apps → Show system apps → Android TV Home → Enable**. If you saved Unified TV's undo files on your phone,
+`preview/tools/cleanup_restore.py` and `tools/restore.sh` also turn it back on and restore the recorded Home. Next time,
+choose **Return to the original TV interface** in Unified TV first; Settings → Updates & About reminds you while the
+TV's own Home is off.

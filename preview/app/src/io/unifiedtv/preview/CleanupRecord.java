@@ -19,6 +19,11 @@ import java.util.regex.Pattern;
  * <p>As in recovery.py, the first record wins: a later clean-up only adds packages the record doesn't hold yet, so a
  * retry after a half-finished batch can never record the broken state as the original.
  *
+ * <p>Taking over the Home button (OD-28, HomeTakeover) uses this same record: before it turns the TV's own Home off, it adds
+ * that package's state (on) as the clean-up adds its apps, and a "home_takeover" entry naming the package it turned off
+ * and the Home it replaced. recovery.py ignores that entry and re-enables the package like any other; Unified TV reads it
+ * to know that it, and only it, turned the TV's own Home off, and removes it once Home is handed back.
+ *
  * <p>It holds the TV's serial number and android_id (recovery.py uses them to refuse another TV's record), so it is kept
  * in the no-backup folder, never logged, and only leaves the TV when the owner downloads it to their phone.
  */
@@ -38,6 +43,11 @@ final class CleanupRecord {
     final Map<String, String> settings = new TreeMap<>();
     /** Package → its state before Unified TV changed anything: enabled, disabled or absent. */
     final Map<String, String> packages = new TreeMap<>();
+    /**
+     * OD-28: the stock Home package the Home takeover turned off, and the Home component it replaced; both null when the
+     * takeover hasn't turned anything off (or has handed Home back since).
+     */
+    String takeoverLauncher, takeoverPrevious;
 
     /** recovery.py's usable_id: an id that tells one TV from another, else null. */
     static String usableId(String value) {
@@ -62,6 +72,16 @@ final class CleanupRecord {
     /** Packages Unified TV turned off (recorded as on before), in name order. */
     List<String> changed() { List<String> out = new ArrayList<>(); for (Map.Entry<String, String> e : packages.entrySet()) if (ENABLED.equals(e.getValue())) out.add(e.getKey()); return out; }
 
+    /**
+     * What the Optional clean-up turned off: changed() without any Home app. The clean-up never turns a Home off, so a Home
+     * package here was turned off by the Home takeover, whose own way back is Return to the original TV interface.
+     */
+    List<String> changedApps() {
+        List<String> out = new ArrayList<>();
+        for (String p : changed()) if (!p.equals(takeoverLauncher) && !CleanupPolicy.LAUNCHERS.contains(p)) out.add(p);
+        return out;
+    }
+
     /** Adds what this record doesn't hold yet; never overwrites an entry (recovery.py: the first state wins). */
     List<String> add(Map<String, String> states) {
         List<String> added = new ArrayList<>();
@@ -80,6 +100,9 @@ final class CleanupRecord {
         Map<String, Object> device = new TreeMap<>(); device.put("serial", serial); device.put("android_id", androidId); root.put("device", device);
         root.put("list", LIST);
         root.put("home", home);
+        if (takeoverLauncher != null) {
+            Map<String, Object> t = new TreeMap<>(); t.put("launcher", takeoverLauncher); t.put("previous_home", takeoverPrevious); root.put("home_takeover", t);
+        }
         root.put("settings", new TreeMap<String, Object>(settings));
         root.put("packages", new TreeMap<String, Object>(packages));
         root.put("fingerprint", fingerprint);
@@ -129,6 +152,12 @@ final class CleanupRecord {
                 String name = k.next(), state = p.optString(name);
                 if (!io.unifiedtv.adb.AdbCommands.isPackage(name) || !(ENABLED.equals(state) || DISABLED.equals(state) || ABSENT.equals(state))) return null;
                 r.packages.put(name, state);
+            }
+            JSONObject t = o.optJSONObject("home_takeover");
+            if (t != null) {
+                String launcher = t.optString("launcher"), previous = t.isNull("previous_home") ? null : t.optString("previous_home");
+                if (!io.unifiedtv.adb.AdbCommands.isPackage(launcher) || (previous != null && !HOME.matcher(previous).matches())) return null;
+                r.takeoverLauncher = launcher; r.takeoverPrevious = home(previous);
             }
             JSONObject s = o.optJSONObject("settings");
             if (s != null) for (Iterator<String> k = s.keys(); k.hasNext(); ) { String key = k.next(); r.settings.put(key, s.optString(key)); }

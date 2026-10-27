@@ -19,6 +19,16 @@ public class NordCountryTest {
         assertNull("France alone, without saying connected", NordCountry.from("France #812"));
         assertTrue(NordCountry.stopped("Disconnected")); assertFalse(NordCountry.stopped("Connected to France #1"));
     }
+    /** OD-26: NordVPN's own word, connected or not, is how Live TV tells NordVPN's VPN from another app's. */
+    @Test public void nordVpnsOwnWordConnectedOrNot() {
+        assertEquals(Boolean.TRUE, NordCountry.status("Connected to United Kingdom #2236"));
+        assertEquals("connected without a country it can read", Boolean.TRUE, NordCountry.status("NordVPN", "VPN connected"));
+        assertEquals(Boolean.FALSE, NordCountry.status("Disconnected"));
+        assertEquals(Boolean.FALSE, NordCountry.status("Connecting to United Kingdom #2236"));
+        assertEquals(Boolean.FALSE, NordCountry.status("VPN paused for 5 minutes"));
+        assertNull("a promotion says neither", NordCountry.status("Get 3 extra months free"));
+        assertNull(NordCountry.status((CharSequence) null));
+    }
     @Test public void namesBecomeCodesAndFlags() {
         assertEquals("GB", NordCountry.iso("UK")); assertEquals("GB", NordCountry.iso(" united  kingdom ")); assertEquals("US", NordCountry.iso("USA"));
         assertEquals("CH", NordCountry.iso("Switzerland")); assertEquals("KR", NordCountry.iso("South Korea")); assertNull(NordCountry.iso("Atlantis"));

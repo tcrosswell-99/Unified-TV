@@ -110,7 +110,8 @@ public class ReturnJourneyTest {
             ViewGroup root=v.findViewById(android.R.id.content);EditText field=field(root);field.setText("What's the weather tomorrow?");v.ask();
             assertTrue(v.answerText(),v.answerText().contains("General questions aren't connected yet"));
             assertNull(Shadows.shadowOf(v).getNextStartedActivity());assertFalse(v.isFinishing());
-            field.setText("Open Live TV");v.ask();assertTrue("voice is never a way round the Live TV lock",v.answerText().contains("Live TV stays locked"));
+            field.setText("Open Live TV");v.ask();assertTrue("voice goes through the same gate: no Live TV app here",v.answerText().contains("Live TV is not installed on this TV"));
+            assertNull(Shadows.shadowOf(v).getNextStartedActivity());
         }
     }
     @Test public void speakAsksBeforeTheMicrophoneIsUsed(){

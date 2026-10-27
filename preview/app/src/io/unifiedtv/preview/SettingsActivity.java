@@ -27,7 +27,7 @@ public final class SettingsActivity extends Screen {
     static final String[] CATEGORIES={"Appearance & Home","Library & Media","Profiles & Family","Apps & Shortcuts","Notifications & Doorbell","Smart Home","Live TV & Network Protection","Connections & Devices","Privacy & Data","Updates & About"};
     static final int APPEARANCE=0,LIBRARY=1,PROFILES=2,APPS=3,NOTIFICATIONS=4,SMART_HOME=5,LIVE_TV=6,CONNECTIONS=7,PRIVACY=8,ABOUT=9;
     /** One-line subtitles (module 13 §C wording where it gives one). */
-    private static final String[] BLURBS={"Make it yours","Your films and shows","Who's watching, the adult PIN and Kids","Choose what lives on Home","Doorbell, reminders and smoke or carbon monoxide alarms","Home Assistant and your team's fixtures","Live TV stays locked until its protection is verified","This TV's own settings, AirPlay and voice","What's kept on this TV and how it's protected","Version, licences and advanced checks"};
+    private static final String[] BLURBS={"Make it yours","Your films and shows","Who's watching, the adult PIN and Kids","Choose what lives on Home","Doorbell, reminders and smoke or carbon monoxide alarms","Home Assistant and your team's fixtures","Live TV opens when NordVPN is connected","This TV's own settings, AirPlay and voice","What's kept on this TV and how it's protected","Version, licences and advanced checks"};
     /** Module 13 §C 00: small group labels over the root rows (module 12 order: 4, 4, 2). */
     private static final String[] GROUPS={"Personalise","Connected services","System"};private static final int[] GROUP_START={0,4,8};
     /** Tasks inside a category: a wider sheet for complex ones, the same width for a collapsed Advanced section. */
@@ -177,7 +177,7 @@ public final class SettingsActivity extends Screen {
             case LIBRARY:return HomeShelf.configured(this)?null:"Not set up";
             case NOTIFICATIONS:return prefs.getBoolean(AlarmWatch.STOPPED,false)?"Alerts off":null;
             case SMART_HOME:return haConfigured()?null:"Not set up";
-            case LIVE_TV:return LiveTvProtection.opens(LiveTvProtection.now(this,""))?null:"Locked";
+            case LIVE_TV:return LiveTvProtection.opens(LiveTvProtection.now(this))?"Open":"Locked";
             default:return null;
         }
     }
@@ -380,16 +380,23 @@ public final class SettingsActivity extends Screen {
         section("Home navigation");
         taskRow("Navigation & Shortcuts",NAVIGATION,true,draftUtilities==null?null:"Preview");
         if(DefaultHome.available(this)){section("Home button");
-            boolean ours=DefaultHome.isDefault(this),kept=!ours&&DefaultHome.fixed(this);
+            HomeTakeover.reconcile(this);   // OD-28: the TV's own Home turned back on outside Unified TV (TV settings, adb): tidy up
+            boolean ours=DefaultHome.isDefault(this),off=HomeTakeover.stockOff(this),kept=!ours&&!off&&DefaultHome.fixed(this);
             // Chosen once, but this TV keeps its own Home button (owner's TCL, 25 October 2026): said plainly, no dead switch.
-            text(ours?"The Home button opens Unified TV.":kept?DefaultHome.KEPT_WORDS:"The Home button opens the original TV interface.",16);
-            if(!ours&&!kept)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            text(ours?(off?HOME_TAKEN:"The Home button opens Unified TV."):off?HOME_OFF_OTHER:kept?DefaultHome.KEPT_WORDS:"The Home button opens the original TV interface.",16);
+            if(!ours&&!kept&&!off)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
+            // OD-28: take over the TV's own Home button (asks the PIN itself), and always a way back while Unified TV has it.
+            if(!ours&&!off){button(HomeTakeoverActivity.TAKE_TITLE,()->HomeTakeoverActivity.open(this,true));text(TAKE_NOTE,15);}
+            if(ours||off||DefaultHome.offered(this))button(HomeTakeoverActivity.RETURN_TITLE,()->HomeTakeoverActivity.open(this,false));
             // OD-23: only while the Home button doesn't open Unified TV (TurnOn); the preview never shows it.
             if(!ours)turnOnRow();}
         else{section("Home button");text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",15);}
         section("Advanced appearance");
         taskRow("Advanced appearance",APPEARANCE_ADVANCED,false,null);
     }
+    static final String HOME_TAKEN="The Home button opens Unified TV. The TV's own Home is turned off; Return to the original TV interface turns it back on.",
+        HOME_OFF_OTHER="Unified TV turned the TV's own Home off, but the Home button doesn't open Unified TV. Return to the original TV interface turns it back on.",
+        TAKE_NOTE="For a TV that keeps its own Home button. Uses the TV's network debugging, asks before turning the TV's own Home off (never removed), and is undone here.";
     /** Reduce motion, transparency, contrast or lightweight changed: the sheet and its rows follow at once (posted, so a
      *  switch is never removed while its own click is still running). */
     void restyle(){material();body.post(()->{if(overlay.acceptsInput()&&!overlay.atRoot())show(overlay.category());});}
@@ -488,21 +495,27 @@ public final class SettingsActivity extends Screen {
     // --- Smart Home (SetupPages: Home Assistant status first, set up on the phone; football; Advanced in the sheet)
     private void smartHome(){setup.smartHome();}
 
-    // --- Live TV & Network Protection (SET-063: automatic verification only)
+    // --- Live TV & Network Protection (OD-26: Live TV opens when NordVPN is connected; not a kill switch)
     private void liveTv(){
-        String live=LiveTvProtection.livePackage(this);LiveTvProtection.State state=LiveTvProtection.now(this,live);
+        String live=LiveTvProtection.livePackage(this);LiveTvProtection.State state=LiveTvProtection.now(this);
         TextView word=text("Live TV: "+LiveTvProtection.word(state),20);word.setFocusable(false);
         text(LiveTvProtection.message(state),16);
         text(live.isEmpty()?"No single Live TV app was recognised on this TV.":"Live TV app: "+live,15);
         button("Check again",()->{VpnGate.invalidate();show(LIVE_TV);});
         button("NordVPN",()->VpnGate.show(this));
-        // The country flag beside Home's shield needs NordVPN's notification (MediaWatch, NordCountry).
-        if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this))text("To show NordVPN's country beside the shield on Home, allow notification access for Unified TV in the TV's settings (Music's Now Playing asks for the same). Without it, no flag is shown.",15);
-        text("Unified TV unlocks Live TV only after checking by itself, every time, that Live TV can only connect through NordVPN. A VPN icon, a setting or an adult's word is never enough. This TV gives apps no way to make that check, so Live TV stays locked here; nothing in Settings can bypass it.",15);
+        // NordVPN's own "Connected" notice (MediaWatch, NordCountry): how Unified TV tells NordVPN's VPN from another app's.
+        if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this)){
+            text("Allow notification access so Unified TV can see NordVPN's own \"Connected\" notice. Without it, Live TV opens only while NordVPN is the only VPN app on this TV, and no country flag shows beside the shield on Home.",15);
+            button("Allow notification access",()->Launch.unlocked(this,MediaWatch.accessSettings(this),"This TV doesn't offer notification access"));
+        }
+        text(LiveTvProtection.RULE+" "+LiveTvProtection.COVERS+" "+LiveTvProtection.NOT_A_KILL_SWITCH,15);
+        if(!TurnOn.permitted(this))text("Covering Live TV needs \"Display over other apps\" for Unified TV in the TV's own settings. Without it, a notification says NordVPN disconnected and Live TV stays on screen.",15);
     }
 
     // --- Updates & About
     private void about(){
+        // OD-28 uninstall guard: with the TV's own Home off, removing Unified TV would leave the TV without a Home.
+        if(HomeTakeover.stockOff(this)){text(HomeTakeover.UNINSTALL_WORDS,20);button(HomeTakeoverActivity.RETURN_TITLE,()->HomeTakeoverActivity.open(this,false));}
         String version="unknown";long code=0;
         try{android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),0);version=info.versionName==null?"unknown":info.versionName;code=info.getLongVersionCode();}catch(Exception ignored){}
         boolean debug=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
@@ -542,6 +555,7 @@ public final class SettingsActivity extends Screen {
         button("Optional clean-up",()->startActivity(new Intent(this,CleanupActivity.class)));
         text("Nothing is cleaned up automatically. Optional clean-up turns off only the apps you choose, one by one, and can undo it.",15);
         // Spec 30: deliberately small and last; adult only; plain words. Only in the app that can be Home.
+        if(DefaultHome.available(this))button(HomeTakeoverActivity.RETURN_TITLE,()->HomeTakeoverActivity.open(this,false));   // OD-28, asks the PIN itself
         if(DefaultHome.available(this)){Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(21));original.setMinHeight(0);original.setMinimumHeight(px(52));original.setAlpha(.85f);}
     }
     /** Spec 7.1: AirPlay through AirPin LITE. Setup happens in AirPin itself; Unified TV only reports what it can confirm. */
@@ -681,7 +695,7 @@ public final class SettingsActivity extends Screen {
             String pick=choices.get(n);
             if(pick.startsWith("Open")){settingsPass();if(!DefaultHome.openOriginal(this))new AlertDialog.Builder(this).setMessage("This TV doesn't let Unified TV open the original interface directly."+(ours?" Choose 'Make original interface the default' instead.":" Press the Home button on your remote to get there.")).setPositiveButton("OK",null).show();}
             else if(pick.startsWith("Make"))new AlertDialog.Builder(this).setTitle("Make original interface the default").setMessage("From now on, pressing Home will open the original TV interface until you choose Unified TV again in Settings > Appearance & Home.")
-                .setPositiveButton("Make it the default",(d2,w2)->{DefaultHome.withdraw(this);note("The Home button now opens the original TV interface.");show(overlay.category());}).setNegativeButton("Cancel",null).show();
+                .setPositiveButton("Make it the default",(d2,w2)->{if(HomeTakeover.stockOff(this)){HomeTakeoverActivity.open(this,false);return;}DefaultHome.withdraw(this);note("The Home button now opens the original TV interface.");show(overlay.category());}).setNegativeButton("Cancel",null).show();
         }).show();
     }
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}

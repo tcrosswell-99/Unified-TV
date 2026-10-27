@@ -72,7 +72,7 @@ public class TvSettingsJourneyTest {
     }
     @Test public void aTvWhereEverythingWorksShowsOnlyWorking(){
         Capabilities.Facts f=preview();f.sdk=34;f.launcherApp=true;f.homeRole=true;f.isHome=true;f.librarySetUp=true;f.tmdbKey=true;f.airPin=true;f.airPlayReady=true;f.nordVpn=true;
-        f.liveVerifier=true;f.liveVerified=true;f.haSaved=true;f.haConnected=true;f.footballKey=true;f.footballTeam=true;f.overlays=true;f.notificationAccess=true;f.kidsGuardAllowed=true;
+        f.liveState=LiveTvProtection.State.OPEN;f.livePackage="tv.example.live";f.haSaved=true;f.haConnected=true;f.footballKey=true;f.footballTeam=true;f.overlays=true;f.notificationAccess=true;f.kidsGuardAllowed=true;
         f.speech=true;f.microphone=true;f.exactOutput=true;f.reviewBuild=true;Capabilities.forTests=f;
         try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){
             SettingsActivity a=c.get();open(a,"Updates & About");press(a,"What this TV can do");

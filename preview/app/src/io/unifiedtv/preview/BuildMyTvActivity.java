@@ -183,9 +183,9 @@ public final class BuildMyTvActivity extends GlassScreen {
                 tile(HubBuilder.LIBRARY_TILE,"Library");break;}
             case AppCatalogue.LIVE:{
                 String live=LiveTvProtection.livePackage(this);
-                text("Live TV opens only after Unified TV checks by itself, every time, that it can only connect through NordVPN. Choosing it here, or having the app installed, never unlocks it.",17);
+                text(LiveTvProtection.RULE+" Choosing it here, or having the app installed, never unlocks it.",17);
                 if(live.isEmpty()){text("No single Live TV app was recognised on this TV.",17);break;}
-                TextView status=text("Live TV now: "+LiveTvProtection.word(LiveTvProtection.now(this,live)),19);status.setFocusable(false);
+                TextView status=text("Live TV now: "+LiveTvProtection.word(LiveTvProtection.now(this)),19);status.setFocusable(false);
                 text("Protection is set up in Settings > Live TV & Network Protection.",16);
                 if(kids&&!approved.contains(live)){text("Live TV isn't on the Kids list. Ask an adult.",17);break;}
                 tile(HubBuilder.LIVE_TILE,"Live TV");break;}

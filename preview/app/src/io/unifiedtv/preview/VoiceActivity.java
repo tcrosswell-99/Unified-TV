@@ -48,7 +48,7 @@ public final class VoiceActivity extends Activity {
     /** The pane closes by itself after this long without a key (PRODUCT_SPEC: "automatically remove the panel"). */
     static final long IDLE_MS = 45_000;
     static final String READY = "Say or type what you'd like.", LISTENING = "Listening…",
-        LIMITS = "I can open an app, find a film or programme, show the doorbell camera or switch profile. General questions aren't connected yet.",
+        LIMITS = "I can open an app, find a film or programme, play music, show the doorbell camera or switch profile. General questions aren't connected yet.",
         SPEECH = "Your TV's own speech service turns what you say into words.";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable idle = this::close, stopListening = () -> stopListening(true);
@@ -226,10 +226,15 @@ public final class VoiceActivity extends Activity {
         String command = VoiceCommand.classify(text);
         state.setText("“" + text + "”");
         switch (command) {
-            case "blocked": show("“" + text + "”", "Live TV stays locked until Unified TV has checked its protected connection itself. Open it from Home to see why."); return;
+            case "live": {
+                // The same gate as the dock and Apps (OD-26's rule, then the Kids list): voice is never a way round it.
+                String why = Launch.open(this, LiveTvProtection.livePackage(this), "Live TV");
+                if (why == null) close(); else show("“" + text + "”", why.isEmpty() ? LiveTvProtection.message(LiveTvProtection.now(this)) : why);
+                return; }
             case "profile": Profiles.choose(this); return;
             case "camera": startService(new Intent(this, HouseholdService.class).setAction("camera")); show("“" + text + "”", "Asking for the doorbell camera. It appears once the doorbell is set up in Settings."); return;
             case "find": startActivity(new Intent(this, LibraryActivity.class).putExtra("search", text.substring(5).trim())); close(); return;
+            case "music": music(text); return;
             default: break;
         }
         String pkg = command.equals("bbc") ? "bbc.iplayer.android.tv" : command.equals("netflix") ? "com.netflix.ninja" : command.equals("disney") ? "com.disney.disneyplus" : "";
@@ -241,7 +246,43 @@ public final class VoiceActivity extends Activity {
             if (why == null) close(); else if (!why.isEmpty()) show("“" + text + "”", why);
             return;
         }
-        show("“" + text + "”", "That isn't something I can do yet. Try “Open BBC”, “Open Netflix”, “Show camera”, “Switch profile”, or “Find” and a title. General questions aren't connected yet.");
+        show("“" + text + "”", "That isn't something I can do yet. Try “Open BBC”, “Open Netflix”, “Play” and an artist, “Show camera”, “Switch profile”, or “Find” and a title. General questions aren't connected yet.");
+    }
+
+    /**
+     * "Play …" (OD-27): Amazon Music on this TV through its own media controls (AmazonMusic), or on an Echo through Home
+     * Assistant (Echoes). Saying where ("everywhere", "on the kitchen Echo", "on this TV") also becomes this profile's Play
+     * on choice. Echo speakers keep their Kids rule; the network is never touched on the main thread.
+     */
+    private void music(String text) {
+        VoiceCommand.Music m = VoiceCommand.music(text); if (m == null) return;
+        String said = "“" + text + "”", place = m.place.isEmpty() ? Echoes.target(prefs) : m.place;
+        if (Echoes.TV.equals(place)) {
+            if (!m.place.isEmpty()) Echoes.choose(prefs, Echoes.TV, "");
+            AmazonMusic.Result r = AmazonMusic.play(this, m.query, m.focus);
+            if (r.words.isEmpty()) close(); else show(said, r.words);
+            return;
+        }
+        if (!Echoes.allowed(prefs)) { show(said, Echoes.KIDS); return; }
+        show(said, "Asking your Echo for “" + m.query + "”…");
+        android.content.Context app = getApplicationContext();
+        Thread t = new Thread(() -> {
+            Echoes.Found f = Echoes.finder.find(app); String target = place, name = Echoes.EVERYWHERE.equals(place) ? "Everywhere" : place, no = f.problem;
+            if (no == null && !Echoes.EVERYWHERE.equals(place) && !place.matches(Echoes.ENTITY)) {
+                Echoes.Echo e = Echoes.named(f.echoes, place);
+                if (e == null) no = "I couldn't find an Echo called “" + place + "”."; else { target = e.id; name = e.name; }
+            }
+            if (no == null) no = Echoes.play(app, Echoes.ha(app), target, m.query, f);
+            final String problem = no, chosen = target, chosenName = name;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                if (problem != null) { show(said, problem); return; }
+                Echoes.choose(prefs, chosen, chosenName);
+                startActivity(NowPlayingActivity.waiting(this, m.query, m.focus, AmazonMusic.Route.ECHO, ""));
+                close();
+            });
+        }, "voice-echo");
+        t.setDaemon(true); t.start();
     }
 
     /** The pane's glass: a soft still of Home's own light, a dark blue-charcoal tint, a top sheen, rim and hairline edge (as Settings). */

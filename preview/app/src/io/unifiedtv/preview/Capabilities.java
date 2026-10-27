@@ -70,7 +70,7 @@ final class Capabilities {
         boolean tmdbKey;
         boolean airPin,airPlayReady;
         boolean nordVpn;
-        boolean liveVerifier,liveVerified;String livePackage="";
+        LiveTvProtection.State liveState;String livePackage="";   // OD-26's rule now; null when not read
         boolean haSaved,haConnected;
         boolean footballKey;
         /** A team is chosen (from the list, or named for a calendar): fixtures need nothing else (OD-22). */
@@ -107,13 +107,14 @@ final class Capabilities {
                 return f.airPlayReady?c(id,"AirPlay from iPhone",State.AVAILABLE,"AirPin LITE is offering AirPlay on your home network.",GO_CONNECTIONS)
                     :c(id,"AirPlay from iPhone",State.TEMPORARILY_UNAVAILABLE,"AirPin LITE is installed but isn't offering AirPlay on the network right now. Open it once.",GO_CONNECTIONS);
             case NORDVPN:
-                return f.nordVpn?c(id,"NordVPN",State.AVAILABLE,"Installed; it opens from the icons at the top right. NordVPN being on doesn't unlock Live TV by itself.",GO_LIVE_TV)
+                return f.nordVpn?c(id,"NordVPN",State.AVAILABLE,"Installed; it opens from the icons at the top right. Being installed doesn't unlock Live TV: NordVPN must be connected.",GO_LIVE_TV)
                     :c(id,"NordVPN",State.SETUP_REQUIRED,"Not installed. Install it from the TV's app store if it offers it.",GO_LIVE_TV);
             case LIVE_TV:
-                if(f.liveVerified)return c(id,"Live TV",State.AVAILABLE,"Unified TV checked by itself that Live TV can only connect through NordVPN.",GO_LIVE_TV);
-                if(!f.liveVerifier)return c(id,"Live TV",State.UNSUPPORTED_ON_DEVICE,"This TV gives apps no way to check that Live TV can only connect through NordVPN, so Unified TV keeps Live TV locked here.",GO_LIVE_TV);
                 if(f.livePackage==null||f.livePackage.isEmpty())return c(id,"Live TV",State.SETUP_REQUIRED,"No single Live TV app was recognised on this TV.",GO_LIVE_TV);
-                return c(id,"Live TV",State.TEMPORARILY_UNAVAILABLE,"Locked: the automatic check didn't confirm that Live TV can only connect through NordVPN.",GO_LIVE_TV);
+                if(f.liveState==LiveTvProtection.State.OPEN)return c(id,"Live TV",State.AVAILABLE,"NordVPN is connected, so Live TV opens. If NordVPN drops, Unified TV covers Live TV; it isn't a kill switch.",GO_LIVE_TV);
+                if(f.liveState==LiveTvProtection.State.NO_NORDVPN)return c(id,"Live TV",State.SETUP_REQUIRED,"Live TV opens when NordVPN is connected, and NordVPN isn't installed.",GO_LIVE_TV);
+                if(f.liveState==LiveTvProtection.State.UNSURE)return c(id,"Live TV",State.PERMISSION_REQUIRED,"Another VPN app is installed, so Unified TV needs notification access to see that NordVPN is the one connected.",GO_LIVE_TV);
+                return c(id,"Live TV",State.TEMPORARILY_UNAVAILABLE,"Locked until NordVPN is connected.",GO_LIVE_TV);
             case HOME_ASSISTANT:
                 if(!f.haSaved)return c(id,"Home Assistant",State.SETUP_REQUIRED,"Not set up. You set it up on your phone, from a code on the TV.",GO_HOME_ASSISTANT);
                 return f.haConnected?c(id,"Home Assistant",State.AVAILABLE,"Set up, and it accepted Unified TV's sign-in last time it connected.",GO_HOME_ASSISTANT)
@@ -184,8 +185,7 @@ final class Capabilities {
         if(need.contains(POSTERS))f.tmdbKey=TmdbKey.saved(c);
         if(need.contains(AIRPLAY)){f.airPin=AirPlayReceiver.installed(c)!=null;f.airPlayReady=f.airPin&&AirPlayReceiver.ready;}
         if(need.contains(NORDVPN))f.nordVpn=launchable(pm,LiveTvProtection.NORDVPN);
-        if(need.contains(LIVE_TV)){f.liveVerifier=LiveTvProtection.VERIFIER!=null;
-            try{f.livePackage=LiveTvProtection.livePackage(c);f.liveVerified=f.liveVerifier&&LiveTvProtection.opens(LiveTvProtection.now(c,f.livePackage));}catch(RuntimeException ignored){}}
+        if(need.contains(LIVE_TV))try{f.livePackage=LiveTvProtection.livePackage(c);f.liveState=LiveTvProtection.now(c);}catch(RuntimeException ignored){}
         if(need.contains(HOME_ASSISTANT)){Boolean saved=SettingsActivity.haForTests;
             if(saved==null)try{org.json.JSONObject ha=new Vault(c).read("ha");saved=ha.optBoolean("enabled")&&!ha.optString("token").isEmpty();}catch(Exception e){saved=false;}
             f.haSaved=saved;f.haConnected=saved&&p.getBoolean(AlarmWatch.CONFIGURED,false);}

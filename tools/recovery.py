@@ -41,6 +41,14 @@ SETTINGS = ("window_animation_scale", "transition_animation_scale", "animator_du
 # This project's own launcher. When it already owned Home before debloating, restoring Home to it
 # would leave the stock launcher off, so restore goes back to the stock one instead.
 CUSTOM_LAUNCHER = "com.gathin.tvhome"
+# Unified TV's own Home (io.unifiedtv.launcher and its review build) is treated the same way: a record taken while it
+# owned Home must not hand Home back to an app that may since have been uninstalled.
+UNIFIED_HOME_RE = re.compile(r"io\.unifiedtv\.[A-Za-z0-9_.]+")
+
+
+def own_launcher(package):
+    """This project's launcher or Unified TV's: never the Home a restore puts back."""
+    return package == CUSTOM_LAUNCHER or bool(UNIFIED_HOME_RE.fullmatch(package or ""))
 VERSION = 1
 DEFAULT_PORT = "5555"
 # Set to restore a TV that has no record by enabling every listed package (the pre-#239 behaviour).
@@ -459,11 +467,11 @@ def restore_commands(list_path, stock, raw_host):
     if is_chooser(home):
         # A record taken while Android's chooser answered Home (written before query_home knew it): nothing to replay.
         home = None
-    if home and home.split("/", 1)[0] != CUSTOM_LAUNCHER:
+    if home and not own_launcher(home.split("/", 1)[0]):
         commands.append(f"cmd package set-home-activity --user 0 {home}")
     else:
         # Nothing handled HOME before cleanup (fresh TV, chooser only), or this project's launcher
-        # did, so there is no stock component to replay; ask the TV to resolve the stock launcher the
+        # (or Unified TV) did, so there is no stock component to replay; ask the TV to resolve the stock launcher the
         # way restore.sh always did.
         commands.append(f"cmd package set-home-activity --user 0 $(cmd package resolve-activity "
                         f"--brief -a android.intent.action.MAIN -c android.intent.category.HOME "

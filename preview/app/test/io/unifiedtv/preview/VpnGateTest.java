@@ -7,11 +7,8 @@ public class VpnGateTest {
         assertFalse(VpnGate.commit(stale,VpnGate.State.CONNECTED,10));assertEquals(VpnGate.State.CHECKING,VpnGate.current());
         int fresh=VpnGate.begin();assertTrue(VpnGate.commit(fresh,VpnGate.State.DISCONNECTED,20));assertEquals(VpnGate.State.DISCONNECTED,VpnGate.current());
     }
-    @Test public void noExplanationEverUnlocksLiveTv(){
-        for(boolean tunnel:new boolean[]{false,true})for(boolean routed:new boolean[]{false,true}){String s=VpnGate.explanation(tunnel,routed);assertFalse(s,s.toLowerCase().contains("protected"+" and ready"));assertTrue(s,tunnel?s.contains("Live TV stays locked"):s.contains("Connect NordVPN"));}
-        assertTrue(VpnGate.explanation(true,false).contains("leave some apps out"));
-        assertTrue(VpnGate.explanation(true,true).contains("until its protection has been checked"));
-        // Content first, underlying technology hidden: no network jargon in what a viewer reads.
-        for(boolean t:new boolean[]{false,true})for(boolean r:new boolean[]{false,true}){String s=VpnGate.explanation(t,r).toLowerCase();for(String jargon:new String[]{"tunnel","routing","split","transport","ip "})assertFalse(s,s.contains(jargon));}
+    /** The shield's words say what Android reports, nothing more: never "protected", never a kill switch (OD-26). */
+    @Test public void theShieldNeverClaimsProtection(){
+        for(VpnGate.State s:VpnGate.State.values()){String l=VpnGate.statusLabel(s).toLowerCase();assertFalse(l,l.contains("protected"));assertFalse(l,l.contains("kill"));assertFalse(l,l.contains("live tv"));}
     }
 }

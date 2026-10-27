@@ -22,6 +22,17 @@
     <intent><action android:name="android.speech.RecognitionService"/></intent>
     <!-- What this TV can do (SET-006): whether the TV has its own voice input screen when no speech service is visible. -->
     <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH"/></intent>
+    <!-- OD-27 Music: the Amazon Music app (by its known ids; any other build is found by its own name through the launcher
+         queries above), whether it handles Android's play-from-search and search requests, and whether it offers its
+         library through MediaBrowserService. Nothing else is read from it. -->
+    <package android:name="com.amazon.mp3"/>
+    <package android:name="com.amazon.music.tv"/>
+    <intent><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH"/></intent>
+    <intent><action android:name="android.intent.action.SEARCH"/></intent>
+    <intent><action android:name="android.media.browse.MediaBrowserService"/></intent>
+    <!-- OD-26 Live TV: which installed apps can run a VPN (package names only), so a VPN can be told to be NordVPN's when
+         NordVPN is the only one. Nothing is read from those apps. -->
+    <intent><action android:name="android.net.VpnService"/></intent>
   </queries>
   <application android:name=".PreviewApp" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="@string/app_name"
       android:icon="@mipmap/ic_launcher" android:banner="@drawable/app_banner"
@@ -47,14 +58,20 @@
     <activity android:name=".BuildMyTvActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Guided setup (SET-010): opens once over Home on a fresh install in Adults, and again from Settings. Not exported. -->
     <activity android:name=".FirstRunActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-26's safety net while Live TV that Unified TV opened is on: watches NordVPN through Android's network callback
+         and, if it drops, covers Live TV with LiveTvCoverActivity. Not a kill switch. -->
     <service android:name=".LiveTvGuard" android:exported="false"/>
+    <activity android:name=".LiveTvCoverActivity" android:exported="false" android:screenOrientation="landscape" android:excludeFromRecents="true"/>
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
     <!-- OD-19: Gallery's settings are the glass sidebar over a still Home; its slideshow fills the screen. -->
     <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".WallpaperActivity" android:exported="false" android:screenOrientation="landscape"/>
     <activity android:name=".PhotoFoldersActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
-    <activity android:name=".NowPlayingActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- OD-27: Now Playing is content (full screen). singleTop: coming back from Amazon Music's own screen reuses it. -->
+    <activity android:name=".NowPlayingActivity" android:exported="false" android:screenOrientation="landscape" android:launchMode="singleTop"/>
+    <!-- OD-19/OD-27: "Your Amazon Music" chooses what to play, so it is the glass sidebar over a still Home. -->
+    <activity android:name=".MusicLibraryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".RemoteCheckActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Lets Unified TV see the TV's media sessions once the owner allows notification access. The one notification it
          reads is NordVPN's, for the country beside the VPN shield (only the country code, in memory); without NordVPN it

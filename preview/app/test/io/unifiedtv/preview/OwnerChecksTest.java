@@ -22,10 +22,14 @@ public class OwnerChecksTest {
     }
     @Test public void liveTvIsNeverCalledProtected(){
         for(LiveTvProtection.State d:LiveTvProtection.State.values()){String s=OwnerChecks.liveTv("VPN ● Connected",true,d).toLowerCase();assertFalse(s,s.contains("protected"));
-            if(d!=LiveTvProtection.State.VERIFIED)assertFalse(s,s.contains("verified"));}
+            assertFalse(s,s.contains("verified"));LiveTvProtectionTest.neverClaimsAKillSwitch(s);}
         assertTrue(OwnerChecks.liveTv("VPN ○ Disconnected",false,LiveTvProtection.State.DISCONNECTED).contains("Live TV: disconnected"));
-        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.LOCKED).contains("stays locked on every route"));
-        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.VERIFIED).contains("automatic check"));
+        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.UNSURE).contains("Live TV: locked. Live TV is locked. Can't tell which VPN is on"));
+        assertTrue(OwnerChecks.liveTv("VPN ● Connected",true,LiveTvProtection.State.OPEN).contains("Live TV: open. NordVPN is connected."));
+        LiveTvProtection.Facts f=new LiveTvProtection.Facts();f.nordInstalled=true;f.notificationAccess=true;f.nordSays=true;
+        assertEquals("NordVPN installed: yes. Notification access: allowed. NordVPN's notice: says connected. Apps that can run a VPN: com.nordvpn.android. Live TV safety net: watching; last drop: covered.",
+            OwnerChecks.liveFacts(f,java.util.Collections.singleton(LiveTvProtection.NORDVPN),true,"covered"));
+        f.notificationAccess=false;assertTrue(OwnerChecks.liveFacts(f,null,false,null).contains("NordVPN's notice: not readable. Apps that can run a VPN: none found. Live TV safety net: not running."));
     }
     @Test public void advancedDetailsShowTheHostOnly(){
         assertEquals("192.0.2.10",OwnerChecks.host("http://192.0.2.10:50001/desc.xml?token=x"));assertEquals("",OwnerChecks.host("not a url"));

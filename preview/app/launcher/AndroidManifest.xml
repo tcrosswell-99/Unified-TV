@@ -20,6 +20,10 @@
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>
     </activity-alias>
+    <!-- OD-28: Take over the Home button, and Return to the original TV interface. Launcher app only (the preview never
+         has it); adults only; the glass sidebar over a still Home (OD-19). Not exported: only Unified TV opens it. -->
+    <activity android:name="io.unifiedtv.preview.HomeTakeoverActivity" android:exported="false" android:screenOrientation="landscape"
+        android:theme="@style/SettingsGlassTheme"/>
     <!-- OD-23: does nothing unless the household switched the feature on and allowed it; it never reads or reassigns keys
          and adds no Home entry (module 03). Exported only because Android's BOOT_COMPLETED, a protected broadcast that no
          other app can send, reaches receivers that way. -->
