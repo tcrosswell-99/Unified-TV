@@ -251,39 +251,53 @@ public final class VoiceActivity extends Activity {
 
     /**
      * "Play …" (OD-27): Amazon Music on this TV through its own media controls (AmazonMusic), or on an Echo through Home
-     * Assistant (Echoes). Saying where ("everywhere", "on the kitchen Echo", "on this TV") also becomes this profile's Play
-     * on choice. Echo speakers keep their Kids rule; the network is never touched on the main thread.
+     * Assistant (Echoes). "… on <words>" is a place only when the words name an Echo Home Assistant found; otherwise they
+     * are part of the title ("Carry On Wayward Son") and the whole phrase plays where this profile plays. A place said here
+     * is for this request only (owner, 27 October 2026): the profile's Play on choice never changes. Echo speakers keep
+     * their Kids rule; the network is never touched on the main thread.
      */
     private void music(String text) {
         VoiceCommand.Music m = VoiceCommand.music(text); if (m == null) return;
-        String said = "“" + text + "”", place = m.place.isEmpty() ? Echoes.target(prefs) : m.place;
-        if (Echoes.TV.equals(place)) {
-            if (!m.place.isEmpty()) Echoes.choose(prefs, Echoes.TV, "");
-            AmazonMusic.Result r = AmazonMusic.play(this, m.query, m.focus);
+        String said = "“" + text + "”";
+        if (!m.maybeEcho()) { playMusic(said, m.query, m.focus, m.place.isEmpty() ? null : m.place, null, null); return; }
+        show(said, "One moment…");
+        android.content.Context app = getApplicationContext();
+        Thread t = new Thread(() -> {
+            Echoes.Found f = Echoes.finder.find(app);
+            Echoes.Echo e = f.problem == null ? Echoes.named(f.echoes, m.place) : null;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                if (e == null) playMusic(said, m.whole, m.wholeFocus, null, null, null);
+                else playMusic(said, m.query, m.focus, e.id, e.name, f);
+            });
+        }, "voice-echo-name");
+        t.setDaemon(true); t.start();
+    }
+    /** Plays {@code query} at {@code place} (null: this profile's Play on choice), without remembering the place. */
+    private void playMusic(String said, String query, AmazonMusic.Focus focus, String place, String name, Echoes.Found found) {
+        String target = place == null ? Echoes.target(prefs) : place;
+        if (Echoes.TV.equals(target)) {
+            AmazonMusic.Result r = AmazonMusic.play(this, query, focus);
             if (r.words.isEmpty()) close(); else show(said, r.words);
             return;
         }
         if (!Echoes.allowed(prefs)) { show(said, Echoes.KIDS); return; }
-        show(said, "Asking your Echo for “" + m.query + "”…");
+        String shown = name != null ? name : place == null ? Echoes.targetName(prefs) : Echoes.EVERYWHERE.equals(target) ? "Everywhere" : target;
+        show(said, "Asking " + shown + " for “" + query + "”…");
         android.content.Context app = getApplicationContext();
         Thread t = new Thread(() -> {
-            Echoes.Found f = Echoes.finder.find(app); String target = place, name = Echoes.EVERYWHERE.equals(place) ? "Everywhere" : place, no = f.problem;
-            if (no == null && !Echoes.EVERYWHERE.equals(place) && !place.matches(Echoes.ENTITY)) {
-                Echoes.Echo e = Echoes.named(f.echoes, place);
-                if (e == null) no = "I couldn't find an Echo called “" + place + "”."; else { target = e.id; name = e.name; }
-            }
-            if (no == null) no = Echoes.play(app, Echoes.ha(app), target, m.query, f);
-            final String problem = no, chosen = target, chosenName = name;
+            String no = Echoes.play(app, Echoes.ha(app), target, query, found);
             runOnUiThread(() -> {
                 if (isFinishing()) return;
-                if (problem != null) { show(said, problem); return; }
-                Echoes.choose(prefs, chosen, chosenName);
-                startActivity(NowPlayingActivity.waiting(this, m.query, m.focus, AmazonMusic.Route.ECHO, ""));
+                if (no != null) { show(said, no); return; }
+                startActivity(NowPlayingActivity.waiting(this, query, focus, AmazonMusic.Route.ECHO, "", place == null ? null : target, shown));
                 close();
             });
         }, "voice-echo");
         t.setDaemon(true); t.start();
     }
+    /** Tests: as if these words were said. */
+    void askForTest(String words) { use(words); }
 
     /** The pane's glass: a soft still of Home's own light, a dark blue-charcoal tint, a top sheen, rim and hairline edge (as Settings). */
     static final class Pane extends Drawable {

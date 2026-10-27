@@ -33,7 +33,7 @@ final class NordCountry {
         for (CharSequence t : texts) {
             if (t == null) continue; String s = t.toString();
             String low = s.toLowerCase(Locale.ROOT);
-            if (low.contains("disconnect") || low.contains("connecting") || low.contains("paused")) return null;
+            if (negative(low)) return null;
             Matcher m = CONNECTED.matcher(s);
             if (m.find()) { String iso = iso(m.group(1)); if (iso != null) return iso; }
             if (low.matches(".*\\bconnected\\b.*")) connected = true;
@@ -42,19 +42,28 @@ final class NordCountry {
         return connected && server != null ? iso(server) : null;
     }
 
-    /** NordVPN says it is not connected (disconnected, connecting or paused). */
+    /** Words that mean NordVPN is not connected, checked before anything that says "connected". */
+    private static final Pattern NEGATIVE = Pattern.compile("(?s).*(disconnect|not\\s+connected|isn['’]?t\\s+connected|no\\s+connection|unprotected|not\\s+protected|connecting|paused).*");
+    private static boolean negative(String low) { return NEGATIVE.matcher(low).matches(); }
+    /** NordVPN says it is not connected (disconnected, not connected, unprotected, no connection, connecting or paused). */
     static boolean stopped(CharSequence... texts) {
-        for (CharSequence t : texts) { if (t == null) continue; String low = t.toString().toLowerCase(Locale.ROOT); if (low.contains("disconnect") || low.contains("connecting") || low.contains("paused")) return true; }
+        for (CharSequence t : texts) { if (t != null && negative(t.toString().toLowerCase(Locale.ROOT))) return true; }
         return false;
     }
     /**
-     * NordVPN's word in its notification texts: FALSE when it says it is not connected (disconnected, connecting, paused),
-     * TRUE when it says connected, null when it says neither (another NordVPN notice, a promotion).
+     * NordVPN's word in its notification texts. FALSE when any text says it is not connected (checked first: "Not
+     * connected", "Disconnected", "Unprotected", "No connection", "Connecting", "Paused"). TRUE only for NordVPN's explicit
+     * "Connected to <country>" or a title or text that is exactly "Connected" or "VPN connected". Otherwise null (unsure:
+     * another NordVPN notice, a promotion, new wording), which LiveTvProtection never treats as connected.
      */
     static Boolean status(CharSequence... texts) {
         if (stopped(texts)) return Boolean.FALSE;
         if (from(texts) != null) return Boolean.TRUE;
-        for (CharSequence t : texts) if (t != null && t.toString().toLowerCase(Locale.ROOT).matches("(?s).*\\bconnected\\b.*")) return Boolean.TRUE;
+        for (CharSequence t : texts) {
+            if (t == null) continue;
+            String exact = t.toString().trim().replaceAll("[.!]+$", "").replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+            if (exact.equals("connected") || exact.equals("vpn connected")) return Boolean.TRUE;
+        }
         return null;
     }
     private static final Map<String, String> ALIASES = new HashMap<>();

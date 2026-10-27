@@ -2,7 +2,14 @@ package io.unifiedtv.preview;
 /** Household stream paths must never appear in library diagnostics. */
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public final class PreviewApp extends android.app.Application {
-    @Override public void onCreate(){super.onCreate();LocalDiscovery.app=this;MemoryBudget.get(this);HouseholdSettings.ensure(this);TurnOn.track(this);registerActivityLifecycleCallbacks(LiveTvGuard.SCREENS);androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF);}
+    @Override public void onCreate(){super.onCreate();
+        // OD-28 first: while Unified TV has the TV's own Home off, crashes from here on count towards Home's safe screen
+        // (HomeSafety). When the safe screen will show, each start step below is best-effort, so the app lives to show it.
+        boolean safe=HomeSafety.appStart(this);
+        Runnable[] steps={()->LocalDiscovery.app=this,()->MemoryBudget.get(this),()->HouseholdSettings.ensure(this),()->TurnOn.track(this),
+            ()->registerActivityLifecycleCallbacks(LiveTvGuard.SCREENS),()->androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)};
+        for(Runnable step:steps){if(!safe){step.run();continue;}try{step.run();}catch(RuntimeException|LinkageError skipped){/* the safe screen still shows */}}
+    }
 
     /**
      * Memory pass (owner's TCL: 2 GB, lmkd and kswapd busy, 25 October 2026): the app-wide caches give memory back when

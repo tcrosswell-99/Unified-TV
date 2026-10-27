@@ -695,7 +695,7 @@ public final class SettingsActivity extends Screen {
             String pick=choices.get(n);
             if(pick.startsWith("Open")){settingsPass();if(!DefaultHome.openOriginal(this))new AlertDialog.Builder(this).setMessage("This TV doesn't let Unified TV open the original interface directly."+(ours?" Choose 'Make original interface the default' instead.":" Press the Home button on your remote to get there.")).setPositiveButton("OK",null).show();}
             else if(pick.startsWith("Make"))new AlertDialog.Builder(this).setTitle("Make original interface the default").setMessage("From now on, pressing Home will open the original TV interface until you choose Unified TV again in Settings > Appearance & Home.")
-                .setPositiveButton("Make it the default",(d2,w2)->{if(HomeTakeover.stockOff(this)){HomeTakeoverActivity.open(this,false);return;}DefaultHome.withdraw(this);note("The Home button now opens the original TV interface.");show(overlay.category());}).setNegativeButton("Cancel",null).show();
+                .setPositiveButton("Make it the default",(d2,w2)->{if(HomeTakeover.stockOff(this)||!DefaultHome.withdraw(this)){HomeTakeoverActivity.open(this,false);return;}note("The Home button now opens the original TV interface.");show(overlay.category());}).setNegativeButton("Cancel",null).show();
         }).show();
     }
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}

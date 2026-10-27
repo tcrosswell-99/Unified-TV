@@ -34,6 +34,16 @@ public class VoiceMusicTest {
         assertEquals(AmazonMusic.Focus.ARTIST, m("play songs by Queen").focus); assertEquals("Queen", m("play songs by Queen").query);
         assertEquals(AmazonMusic.Focus.SONG, m("play the song Yesterday").focus);
     }
+    @Test public void titlesWithOnKeepTheWholePhraseUntilAnEchoIsFound() {
+        VoiceCommand.Music carry = m("play carry on wayward son");
+        assertTrue("“wayward son” is only a possible Echo name", carry.maybeEcho());
+        assertEquals("carry on wayward son", carry.whole);
+        VoiceCommand.Music shine = m("Play Shine On You Crazy Diamond.");
+        assertTrue(shine.maybeEcho()); assertEquals("Shine On You Crazy Diamond", shine.whole);
+        assertEquals("the album, kept whole", AmazonMusic.Focus.ALBUM, m("play the album shine on").wholeFocus);
+        assertFalse("everywhere and this TV are places for sure", m("play jazz everywhere").maybeEcho() || m("play jazz on the TV").maybeEcho());
+        assertEquals("no “on”: the whole phrase", "carry", m("play carry").whole);
+    }
     @Test public void otherAppsAndLiveTvAreNeverMusic() {
         assertNotEquals("music", VoiceCommand.classify("play Stranger Things on Netflix"));
         assertNull(m("play Bluey on BBC iPlayer"));

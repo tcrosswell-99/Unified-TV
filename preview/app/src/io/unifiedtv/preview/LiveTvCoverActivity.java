@@ -24,7 +24,7 @@ import android.widget.TextView;
 public final class LiveTvCoverActivity extends Activity {
     static final String NOTICE="NordVPN disconnected — Live TV is covered. Reconnect NordVPN.";
     static final String AGAIN="NordVPN is connected again.";
-    private TextView title,more;private Button primary;private String live="";
+    private TextView title,more;private Button primary;private String live="";private boolean reconnecting;
 
     static Intent intent(Context c,String live){
         return new Intent(c,LiveTvCoverActivity.class).putExtra(LiveTvGuard.LIVE,live==null?"":live).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -49,14 +49,16 @@ public final class LiveTvCoverActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent i){super.onNewIntent(i);setIntent(i);String pkg=i.getStringExtra(LiveTvGuard.LIVE);if(pkg!=null&&!pkg.isEmpty())live=pkg;}
     /** Every time it shows (and back from NordVPN): what the rule says now. */
-    @Override protected void onResume(){super.onResume();refresh();}
+    @Override protected void onResume(){super.onResume();reconnecting=false;refresh();}
+    /** Left some other way than Back to Home, Reconnect or Watch Live TV (the TV's own Home, say): the guard says so. */
+    @Override protected void onStop(){super.onStop();if(!isFinishing()&&!reconnecting)LiveTvGuard.coverLeft();}
     void refresh(){
         boolean back=LiveTvProtection.opens(LiveTvProtection.now(this));
         title.setText(back?AGAIN:NOTICE);
         more.setText(back?LiveTvProtection.COVERS+" "+LiveTvProtection.NOT_A_KILL_SWITCH:LiveTvProtection.NOT_A_KILL_SWITCH);
         if(back&&!live.isEmpty()){
             primary.setText("Watch Live TV");primary.setOnClickListener(v->{String why=Launch.open(this,live,"Live TV");if(why==null)finish();else if(!why.isEmpty())more.setText(why);});
-        }else{primary.setText("Reconnect");primary.setOnClickListener(v->VpnGate.connect(this));}
+        }else{primary.setText("Reconnect");primary.setOnClickListener(v->{reconnecting=true;VpnGate.connect(this);});}
         primary.requestFocus();
     }
     /** Unified TV's Home, never Live TV uncovered underneath. */

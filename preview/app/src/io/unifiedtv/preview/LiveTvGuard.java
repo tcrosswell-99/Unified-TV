@@ -19,9 +19,12 @@ import android.os.*;
  * reconnects is not a drop) and then asks the same rule that opened Live TV ({@link LiveTvProtection#now}). One small
  * foreground service with a quiet notification, as TurnOnService: no wakelock, no screen, nothing drawn until a drop.
  *
- * <p>It stops when the Live TV session is over: any Unified TV screen comes to the front (Home included), the TV goes to
- * standby (screen off), another app comes to the front where Android lets Unified TV see that (the optional Kids app
- * guard's accessibility service, which reads only the front app's package name), or after {@link #MAX_SESSION_MS}.
+ * <p>It stops when the Live TV session is over: any Unified TV screen other than the cover comes to the front (Home
+ * included), the TV goes to standby (screen off), another app comes to the front where Android lets Unified TV see that
+ * (the optional Kids app guard's accessibility service, which reads only the front app's package name), or after
+ * {@link #MAX_SESSION_MS}. Without that front-app signal it covers only in the first {@link #NO_SIGNAL_MS} of a session,
+ * then says a drop in a notification, so it never covers an unrelated app later on. The cover keeps the watch going: if
+ * Live TV comes back to the front while NordVPN is still down (seen by the signal), it is covered again.
  * Module 03: it never reads, consumes or reassigns a key.
  */
 public final class LiveTvGuard extends Service {
@@ -30,6 +33,12 @@ public final class LiveTvGuard extends Service {
     static final long SETTLE_MS=1500;
     /** However long Live TV is left on, the watch ends after this (the TV left on Live TV overnight, say). */
     static final long MAX_SESSION_MS=6L*60*60*1000;
+    /**
+     * Without a front-app signal (the Kids app guard's accessibility service off), Unified TV can't tell that the owner has
+     * left Live TV for another app. After this long it no longer covers the screen (it might be Netflix by then): a drop is
+     * told in a notification instead.
+     */
+    static final long NO_SIGNAL_MS=15L*60*1000;
     private static final String CHANNEL="livetv",DROP_CHANNEL="livetvDrop";
     static final int ONGOING=43,DROPPED=44;
     private static final int OPEN_COVER=3;
@@ -41,7 +50,7 @@ public final class LiveTvGuard extends Service {
     private final Handler main=new Handler(Looper.getMainLooper());
     private final Runnable look=this::check,end=this::stopSelf;
     private ConnectivityManager.NetworkCallback callback;private BroadcastReceiver screen;
-    private boolean fired;private String live="";
+    private boolean fired,seen;private long startedAt;private String live="";
 
     static void start(Context c,String live){try{c.startForegroundService(new Intent(c,LiveTvGuard.class).putExtra(LIVE,live==null?"":live));}catch(RuntimeException ignored){}}
     static void stop(Context c){try{c.stopService(new Intent(c,LiveTvGuard.class));}catch(RuntimeException ignored){}}
@@ -64,7 +73,7 @@ public final class LiveTvGuard extends Service {
         else registerReceiver(screen,f);
     }
     @Override public int onStartCommand(Intent i,int flags,int id){
-        String pkg=i==null?null:i.getStringExtra(LIVE);live=pkg==null?"":pkg;fired=false;
+        String pkg=i==null?null:i.getStringExtra(LIVE);live=pkg==null?"":pkg;fired=false;seen=false;startedAt=SystemClock.elapsedRealtime();
         main.removeCallbacks(end);main.postDelayed(end,MAX_SESSION_MS);
         return START_NOT_STICKY;
     }
@@ -78,13 +87,26 @@ public final class LiveTvGuard extends Service {
             return;
         }
         if(fired)return;fired=true;
-        Intent notice=LiveTvCoverActivity.intent(this,live);
-        if(TurnOn.permitted(this))try{startActivity(notice);lastAction="covered";return;}catch(RuntimeException ignored){}
-        // Without "Display over other apps", Android won't let Unified TV come forward: say so in a notification instead.
-        PendingIntent open=PendingIntent.getActivity(this,OPEN_COVER,notice,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+        if(TurnOn.permitted(this)&&mayCover(frontSignal(),SystemClock.elapsedRealtime()-startedAt)&&cover())return;
+        notifyDrop();
+    }
+    /** Pure: the full-screen cover only while Unified TV can tell Live TV is still what's on screen (see NO_SIGNAL_MS). */
+    static boolean mayCover(boolean frontSignal,long sinceStart){return frontSignal||sinceStart<NO_SIGNAL_MS;}
+    /** A front-app signal exists: one has arrived this session, or the Kids app guard's accessibility service is on. */
+    private boolean frontSignal(){
+        if(seen)return true;
+        try{return KidsGuard.enabledIn(android.provider.Settings.Secure.getString(getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),getPackageName(),KidsGuardService.class.getName());}
+        catch(RuntimeException e){return false;}
+    }
+    private boolean cover(){
+        try{startActivity(LiveTvCoverActivity.intent(this,live));lastAction="covered";return true;}catch(RuntimeException e){return false;}
+    }
+    /** Without "Display over other apps", or when Live TV may no longer be on screen: a notification instead. */
+    private void notifyDrop(){
+        PendingIntent open=PendingIntent.getActivity(this,OPEN_COVER,LiveTvCoverActivity.intent(this,live),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationManager manager=getSystemService(NotificationManager.class);
         if(manager!=null)try{manager.notify(DROPPED,new Notification.Builder(this,DROP_CHANNEL).setContentTitle("NordVPN disconnected")
-            .setContentText("Live TV isn't covered. Open Unified TV to reconnect NordVPN.").setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentText("If Live TV is still on, it isn't covered. Open Unified TV to reconnect NordVPN.").setSmallIcon(android.R.drawable.ic_lock_lock)
             .setCategory(Notification.CATEGORY_STATUS).setContentIntent(open).setAutoCancel(true).build());}catch(RuntimeException ignored){}
         lastAction="notified";
     }
@@ -93,7 +115,21 @@ public final class LiveTvGuard extends Service {
     /** NordVPN's own notification says it isn't connected (MediaWatch): look again with the rule. */
     static void nordStopped(){LiveTvGuard g=current;if(g!=null)g.soon();}
     /** The front app changed (the Kids app guard's accessibility service, when it is on): the session ends if Live TV left. */
-    static void front(Context c,String pkg,String keyboard){LiveTvGuard g=current;if(g!=null&&left(pkg,g.live,c.getPackageName(),keyboard))g.main.post(g::stopSelf);}
+    static void front(Context c,String pkg,String keyboard){
+        LiveTvGuard g=current;if(g==null)return;
+        if(left(pkg,g.live,c.getPackageName(),keyboard)){g.main.post(g::stopSelf);return;}
+        g.main.post(()->{g.seen=true;if(pkg!=null&&pkg.equals(g.live))g.back();});
+    }
+    /** Live TV is in front again (front-app signal) after a drop: cover it again while NordVPN is still down. */
+    private void back(){
+        if(!fired||!LiveTvProtection.dropped(LiveTvProtection.now(this)))return;
+        if(!TurnOn.permitted(this)||!cover())notifyDrop();
+    }
+    /**
+     * The cover was left some other way than Back to Home or Reconnect (the TV's own Home, say) while NordVPN is still
+     * down: the watch goes on, and a notification says Live TV may be uncovered.
+     */
+    static void coverLeft(){LiveTvGuard g=current;if(g!=null)g.main.post(()->{if(g.fired&&LiveTvProtection.dropped(LiveTvProtection.now(g)))g.notifyDrop();});}
     /**
      * Pure: whether {@code front} coming to the front means Live TV has left. Live TV itself, NordVPN (reconnecting), Unified
      * TV (its own screens end the session anyway), the keyboard and Android's own system windows don't count.
@@ -114,7 +150,8 @@ public final class LiveTvGuard extends Service {
 
     /** Any Unified TV screen coming to the front ends the Live TV session: Live TV is no longer what's on screen. */
     static final Application.ActivityLifecycleCallbacks SCREENS=new Application.ActivityLifecycleCallbacks(){
-        @Override public void onActivityStarted(Activity a){if(running)stop(a);}
+        // The cover itself is the guard's own notice, not the household leaving Live TV: the watch goes on.
+        @Override public void onActivityStarted(Activity a){if(running&&!(a instanceof LiveTvCoverActivity))stop(a);}
         @Override public void onActivityCreated(Activity a,Bundle b){}
         @Override public void onActivityResumed(Activity a){}
         @Override public void onActivityPaused(Activity a){}

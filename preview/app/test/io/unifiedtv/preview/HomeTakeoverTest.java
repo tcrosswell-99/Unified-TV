@@ -54,6 +54,8 @@ public class HomeTakeoverTest {
             "cmd package set-home-activity --user 0 com.gathin.tvhome/.Home",
             "cmd package set-home-activity --user 0 " + FakeHome.SETUP,
             "cmd package set-home-activity --user 0 " + MINE + ";reboot",
+            "cmd package set-home-activity --user 0 com.google.android.tvlauncher/.MainActivity$Inner",   // no '$'
+            "cmd package set-home-activity --user 0 com.google.android.tvlauncher/$(id)",
             "cmd package set-home-activity --user 0 " + MINE + " && pm uninstall " + STOCK,
             "cmd package set-home-activity " + MINE,
             "cmd role add-role-holder android.app.role.HOME " + SELF,

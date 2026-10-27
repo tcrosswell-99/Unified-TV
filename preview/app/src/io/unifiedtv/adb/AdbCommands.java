@@ -48,8 +48,8 @@ public final class AdbCommands {
     public static final Set<String> STOCK_HOMES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("com.google.android.tvlauncher",
         "com.google.android.apps.tv.launcherx", "com.google.android.leanbacklauncher", "com.tcl.tvlauncher")));
     static final String SET_HOME = "cmd package set-home-activity --user 0 ";
-    /** package/class, the class either ".Relative" or fully named: nothing that could carry shell syntax. */
-    static final Pattern COMPONENT = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/(\\.?[A-Za-z_][A-Za-z0-9_$]*(?:\\.[A-Za-z_][A-Za-z0-9_$]*)*)");
+    /** package/class, the class either ".Relative" or fully named: letters, digits, '_' and dots only (no '$', nothing a shell reads). */
+    static final Pattern COMPONENT = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)/(\\.?[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)");
     /** The animation scales tools/recovery.py records; read only. */
     public static final String[] SCALES = {"window_animation_scale", "transition_animation_scale", "animator_duration_scale"};
 

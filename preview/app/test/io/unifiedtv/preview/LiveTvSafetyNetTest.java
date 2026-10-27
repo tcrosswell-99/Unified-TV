@@ -148,14 +148,59 @@ public class LiveTvSafetyNetTest {
             LiveTvCoverActivity a=c.get();String all=words(a.findViewById(android.R.id.content));
             assertTrue(all,all.contains("NordVPN disconnected — Live TV is covered. Reconnect NordVPN."));
             LiveTvProtectionTest.neverClaimsAKillSwitch(all);assertTrue(all.contains("This isn't a kill switch"));
-            Intent stopped=Shadows.shadowOf((android.app.Application)app()).getNextStoppedService();
-            assertNotNull("the notice on screen ends the watch",stopped);assertEquals(LiveTvGuard.class.getName(),stopped.getComponent().getClassName());
+            assertNull("the notice is the guard's own: the watch goes on",Shadows.shadowOf((android.app.Application)app()).getNextStoppedService());
             Button reconnect=find(a.findViewById(android.R.id.content),"Reconnect"),home=find(a.findViewById(android.R.id.content),"Back to Home");
             assertNotNull(reconnect);assertNotNull(home);assertTrue("Reconnect has the focus",reconnect.isFocused());
             home.performClick();Intent next=Shadows.shadowOf(a).getNextStartedActivity();
             assertNotNull(next);assertEquals(UnifiedPreviewActivity.class.getName(),next.getComponent().getClassName());assertTrue(a.isFinishing());
         }
         s.destroy();assertFalse(LiveTvGuard.running);
+    }
+    /** Review 7: the cover keeps the watch; leaving it another way says so, and Live TV back in front is covered again. */
+    @Test public void theCoverKeepsWatching(){
+        ShadowSettings.setCanDrawOverlays(true);ServiceController<LiveTvGuard> s=watching();
+        NotificationManager nm=app().getSystemService(NotificationManager.class);
+        nordDropped();s.get().check();Intent cover=Shadows.shadowOf((android.app.Application)app()).getNextStartedActivity();assertNotNull(cover);
+        try(ActivityController<LiveTvCoverActivity> c=Robolectric.buildActivity(LiveTvCoverActivity.class,cover).setup()){
+            assertNull("not stopped by its own notice",Shadows.shadowOf((android.app.Application)app()).getNextStoppedService());
+            // The TV's own Home over the cover (not Back to Home, not Reconnect): the watch says Live TV may be uncovered.
+            c.pause().stop();idle(10);
+            assertNotNull(Shadows.shadowOf(nm).getNotification(LiveTvGuard.DROPPED));assertTrue(LiveTvGuard.running);
+            assertFalse(Shadows.shadowOf(s.get()).isStoppedBySelf());
+        }
+        // Back to Live TV while NordVPN is still down (front-app signal): covered again.
+        LiveTvGuard.front(app(),LIVE,"");idle(10);
+        Intent again=Shadows.shadowOf((android.app.Application)app()).getNextStartedActivity();
+        assertNotNull("covered again",again);assertEquals(LiveTvCoverActivity.class.getName(),again.getComponent().getClassName());
+        // Reconnect is not leaving: no notice for it.
+        nm.cancel(LiveTvGuard.DROPPED);
+        try(ActivityController<LiveTvCoverActivity> c=Robolectric.buildActivity(LiveTvCoverActivity.class,again).setup()){
+            find(c.get().findViewById(android.R.id.content),"Reconnect").performClick();c.pause().stop();idle(10);
+            assertNull(Shadows.shadowOf(nm).getNotification(LiveTvGuard.DROPPED));
+        }
+        // Home on screen ends it.
+        try(ActivityController<UnifiedPreviewActivity> h=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()){
+            Intent stopped=Shadows.shadowOf((android.app.Application)app()).getNextStoppedService();
+            assertNotNull("Home ends the watch",stopped);assertEquals(LiveTvGuard.class.getName(),stopped.getComponent().getClassName());
+        }
+        s.destroy();
+    }
+    /** Review 6: without a front-app signal, the full-screen cover only in the first 15 minutes; then a notification. */
+    @Test public void withoutAFrontAppSignalItCoversOnlyAtFirst(){
+        assertTrue(LiveTvGuard.mayCover(false,LiveTvGuard.NO_SIGNAL_MS-1));assertFalse(LiveTvGuard.mayCover(false,LiveTvGuard.NO_SIGNAL_MS));
+        assertTrue("a front-app signal: any time",LiveTvGuard.mayCover(true,LiveTvGuard.MAX_SESSION_MS));
+        ShadowSettings.setCanDrawOverlays(true);
+        ServiceController<LiveTvGuard> s=watching();idle(LiveTvGuard.NO_SIGNAL_MS+60_000);
+        nordDropped();s.get().check();
+        assertNull("may be another app by now: never covered",Shadows.shadowOf((android.app.Application)app()).getNextStartedActivity());
+        assertEquals("notified",LiveTvGuard.lastAction);
+        assertNotNull(Shadows.shadowOf(app().getSystemService(NotificationManager.class)).getNotification(LiveTvGuard.DROPPED));
+        s.destroy();
+        s=watching();LiveTvGuard.front(app(),LIVE,"");idle(LiveTvGuard.NO_SIGNAL_MS+60_000);
+        nordDropped();s.get().check();
+        Intent cover=Shadows.shadowOf((android.app.Application)app()).getNextStartedActivity();
+        assertNotNull("the signal says Live TV is still in front",cover);assertEquals("covered",LiveTvGuard.lastAction);
+        s.destroy();
     }
     @Test public void backOnTheNoticeGoesHomeNeverToLiveTvUncovered(){
         try(ActivityController<LiveTvCoverActivity> c=Robolectric.buildActivity(LiveTvCoverActivity.class,LiveTvCoverActivity.intent(app(),LIVE)).setup()){

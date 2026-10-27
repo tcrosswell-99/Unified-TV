@@ -41,7 +41,8 @@ import java.util.concurrent.RejectedExecutionException;
  * the Amazon Music app; Back returns. Every listener is removed when the screen is hidden.
  */
 public final class NowPlayingActivity extends Screen {
-    static final String EXTRA_QUERY = "music.query", EXTRA_FOCUS = "music.focus", EXTRA_ROUTE = "music.route", EXTRA_BEFORE = "music.before";
+    static final String EXTRA_QUERY = "music.query", EXTRA_FOCUS = "music.focus", EXTRA_ROUTE = "music.route", EXTRA_BEFORE = "music.before",
+            EXTRA_PLACE = "music.place", EXTRA_PLACE_NAME = "music.placeName";
     /** How long a skip's light stays on the button pressed. */
     static final long FLASH_MS = 250;
     private enum Mode { NONE, ACCESS, NOTHING, PLAYING }
@@ -74,10 +75,20 @@ public final class NowPlayingActivity extends Screen {
     private AmazonMusic.Route waitRoute;
     private long waitUntil, statusUntil;
     private boolean waitRetried;
+    /**
+     * Where this visit's request played, when it wasn't this profile's Play on choice (owner, 27 October 2026: a place said
+     * by voice is for that request only): Echoes.TV, Echoes.EVERYWHERE or an Echo's entity; null for the profile's choice.
+     */
+    private String place, placeName;
 
     /** Now Playing waiting for Amazon Music to start {@code query} (play by name, the library). */
     static Intent waiting(Context c, String query, AmazonMusic.Focus focus, AmazonMusic.Route route, String before) {
-        return new Intent(c, NowPlayingActivity.class).putExtra(EXTRA_QUERY, query).putExtra(EXTRA_FOCUS, focus.name())
+        // A request played on this TV is shown from this TV, whatever the profile's Play on choice.
+        return waiting(c, query, focus, route, before, route == AmazonMusic.Route.ECHO ? null : Echoes.TV, null);
+    }
+    /** The same, shown from {@code place} (Echoes.TV, Echoes.EVERYWHERE or an Echo's entity; null: the profile's choice). */
+    static Intent waiting(Context c, String query, AmazonMusic.Focus focus, AmazonMusic.Route route, String before, String place, String placeName) {
+        return new Intent(c, NowPlayingActivity.class).putExtra(EXTRA_PLACE, place).putExtra(EXTRA_PLACE_NAME, placeName).putExtra(EXTRA_QUERY, query).putExtra(EXTRA_FOCUS, focus.name())
                 .putExtra(EXTRA_ROUTE, route.name()).putExtra(EXTRA_BEFORE, before == null ? "" : before);
     }
 
@@ -99,12 +110,14 @@ public final class NowPlayingActivity extends Screen {
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); readWait(intent); }
     private void readWait(Intent i) {
         String q = i == null ? null : i.getStringExtra(EXTRA_QUERY);
+        String p = i == null ? null : i.getStringExtra(EXTRA_PLACE);
+        if (p != null) { place = p; String n = i.getStringExtra(EXTRA_PLACE_NAME); placeName = n == null || n.isEmpty() ? null : n; }
         if (q == null || q.isEmpty()) return;
         waitQuery = q; waitFocus = AmazonMusic.Focus.of(i.getStringExtra(EXTRA_FOCUS));
         String r = i.getStringExtra(EXTRA_ROUTE); waitRoute = r == null ? AmazonMusic.Route.SESSION : AmazonMusic.Route.valueOf(r);
         String b = i.getStringExtra(EXTRA_BEFORE); waitBefore = b == null ? "" : b;
         waitUntil = SystemClock.uptimeMillis() + AmazonMusic.WAIT_MS; waitRetried = false;
-        say((waitRoute == AmazonMusic.Route.ECHO ? "Asking " + Echoes.targetName(prefs()) : "Asking " + AmazonMusic.NAME) + " for “" + q + "”…", AmazonMusic.WAIT_MS);
+        say((waitRoute == AmazonMusic.Route.ECHO ? "Asking " + targetName() : "Asking " + AmazonMusic.NAME) + " for “" + q + "”…", AmazonMusic.WAIT_MS);
     }
 
     @Override protected void onResume() { super.onResume(); start(); }
@@ -118,7 +131,7 @@ public final class NowPlayingActivity extends Screen {
         release();
         amazonPkg = AmazonMusic.installed(this);
         handler.postDelayed(tick, 1000);
-        if (Echoes.onEcho(prefs())) { echo(); return; }
+        if (!Echoes.TV.equals(target())) { echo(); return; }
         MusicSessions.Source src = MusicSessions.source;
         if (!src.granted(this)) { show(Mode.ACCESS); return; }
         src.listen(this, sessionsChanged, handler); listening = true;
@@ -134,7 +147,7 @@ public final class NowPlayingActivity extends Screen {
 
     /** "Play on" an Echo: that Echo's player, through Home Assistant. "Everywhere": the group, or an Echo that is playing. */
     private void echo() {
-        SharedPreferences p = prefs(); String target = Echoes.target(p), name = Echoes.targetName(p);
+        String target = target(), name = targetName();
         if (!Echoes.EVERYWHERE.equals(target)) { attachEcho(target, name); return; }
         nothing("Looking for your Echo speakers…", true);
         final int gen = generation; Context app = getApplicationContext();
@@ -263,7 +276,7 @@ public final class NowPlayingActivity extends Screen {
         page("Now playing");
         text(w, 30);
         if (echo) {
-            text("Playing on: " + Echoes.targetName(prefs()) + ", through Home Assistant.", 20);
+            text("Playing on: " + targetName() + ", through Home Assistant.", 20);
             button("Play on…", this::playOn);
         } else {
             text("Start something in Amazon Music, or play by name from the Music page, and it appears here.", 20);
@@ -282,7 +295,7 @@ public final class NowPlayingActivity extends Screen {
             waitRetried = true;
             if (AmazonMusic.retryWithIntent(this, waitQuery, waitFocus)) { waitUntil = SystemClock.uptimeMillis() + AmazonMusic.WAIT_MS; return; }
         }
-        String who = waitRoute == AmazonMusic.Route.ECHO ? Echoes.targetName(prefs()) : AmazonMusic.NAME;
+        String who = waitRoute == AmazonMusic.Route.ECHO ? targetName() : AmazonMusic.NAME;
         String q = waitQuery; waitQuery = null;
         say(who + " didn't start “" + q + "”." + (waitRoute == AmazonMusic.Route.ECHO ? "" : " Press Menu to open Amazon Music and choose it there."), 10_000);
         if (mode == Mode.NOTHING) nothing(status, waitRoute == AmazonMusic.Route.ECHO);
@@ -336,7 +349,21 @@ public final class NowPlayingActivity extends Screen {
         } catch (RuntimeException e) { noAnswer(); }
         extras(); if (stage != null) stage.invalidate();
     }
-    private void playOn() { startActivity(new Intent(this, MusicActivity.class).putExtra(MusicActivity.PLAY_ON, true)); }
+    /** This visit's place, else the profile's Play on choice; This TV where Echos aren't allowed (Kids). */
+    private String target() {
+        SharedPreferences p = prefs();
+        if (place == null) return Echoes.target(p);
+        return Echoes.TV.equals(place) || Echoes.allowed(p) ? place : Echoes.TV;
+    }
+    private String targetName() {
+        String t = target();
+        if (place == null || !t.equals(place)) return Echoes.targetName(prefs());
+        if (Echoes.TV.equals(t)) return "This TV";
+        if (Echoes.EVERYWHERE.equals(t)) return "Everywhere";
+        return placeName != null ? placeName : HaEntities.pretty(t.substring(t.indexOf('.') + 1));
+    }
+    /** Choosing where music plays: from then on, this screen follows the profile's choice. */
+    private void playOn() { place = null; placeName = null; startActivity(new Intent(this, MusicActivity.class).putExtra(MusicActivity.PLAY_ON, true)); }
     /** The real Amazon Music app; playback carries on either way. */
     private void openApp() {
         String pkg = AmazonMusic.installed(this);

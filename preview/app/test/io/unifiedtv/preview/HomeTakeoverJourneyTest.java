@@ -70,13 +70,32 @@ public class HomeTakeoverJourneyTest {
         CleanupLists.forTests = FakeTv.lists();
         CleanupActivity.fingerprintForTests = FakeTv.OWNER;
         CleanupActivity.backgroundForTests = Runnable::run;
-        CleanupActivity.openerForTests = (c, prompt, opening) -> { if (refuse != null) throw refuse; prompt.showing(); tv.closed = false; return new CleanupActivity.Opened(tv, tv); };
+        // The TV as Android shows it to this app follows the simulated TV: tvlauncher on (a Home) or off (none).
+        stockHome(true);
+        Cleanup.Shell mirrored = command -> { String out = tv.run(command);
+            if (command.equals(AdbCommands.enable(STOCK))) stockHome(!tv.disabled.contains(STOCK));
+            if (command.equals(AdbCommands.disable(STOCK))) stockHome(!tv.disabled.contains(STOCK));
+            return out; };
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { if (refuse != null) throw refuse; prompt.showing(); tv.closed = false; return new CleanupActivity.Opened(mirrored, tv); };
         HomeTakeoverActivity.candidateWaitMs = 0;
         if (record().exists()) assertTrue(record().delete());
     }
     @After public void tearDown() {
         CleanupLists.forTests = null; CleanupActivity.fingerprintForTests = null; CleanupActivity.backgroundForTests = null; CleanupActivity.openerForTests = null;
         HomeTakeoverActivity.candidateWaitMs = 600; HomeTakeover.cancel(app); HomeSafety.reset(app);
+    }
+
+    /** tvlauncher installed, and on (answering Home) or off, as Android reports it to this app. */
+    private void stockHome(boolean on) {
+        org.robolectric.shadows.ShadowPackageManager pm = Shadows.shadowOf(app.getPackageManager());
+        android.content.pm.PackageInfo info = new android.content.pm.PackageInfo(); info.packageName = STOCK;
+        info.applicationInfo = new android.content.pm.ApplicationInfo(); info.applicationInfo.packageName = STOCK; info.applicationInfo.enabled = true;
+        try { app.getPackageManager().getPackageInfo(STOCK, 0); } catch (PackageManager.NameNotFoundException e) { pm.installPackage(info); }
+        app.getPackageManager().setApplicationEnabledSetting(STOCK, on ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER, 0);
+        pm.removeResolveInfosForIntent(DefaultHome.homeIntent(), STOCK);
+        if (on) { android.content.pm.ResolveInfo r = new android.content.pm.ResolveInfo(); r.activityInfo = new android.content.pm.ActivityInfo();
+            r.activityInfo.packageName = STOCK; r.activityInfo.name = STOCK + ".MainActivity"; r.activityInfo.applicationInfo = info.applicationInfo;
+            pm.addResolveInfoForIntent(DefaultHome.homeIntent(), r); }
     }
 
     private ActivityController<HomeTakeoverActivity> open(boolean take) {
@@ -179,7 +198,7 @@ public class HomeTakeoverJourneyTest {
 
     @Test public void returnOverTheLinkRestoresTheStockHomeAndWithdrawsTheEntry() throws Exception {
         Assume.assumeTrue("launcher app only", launcher());
-        writeRecord("home-takeover-record.json"); entry(true); tv.disabled.add(STOCK);
+        writeRecord("home-takeover-record.json"); entry(true); tv.disabled.add(STOCK); stockHome(false);
         assertEquals(HomeTakeover.entry(app.getPackageName()), homes.resolve(tv));
         try (ActivityController<HomeTakeoverActivity> c = open(false)) {
             HomeTakeoverActivity a = c.get();
@@ -198,7 +217,7 @@ public class HomeTakeoverJourneyTest {
     // --- Settings
     @Test public void settingsShowTheUninstallGuardAndTheWayBackWhileTheStockHomeIsOff() throws Exception {
         Assume.assumeTrue("launcher app only", launcher());
-        writeRecord("home-takeover-record.json"); entry(true);
+        writeRecord("home-takeover-record.json"); entry(true); stockHome(false);
         try (ActivityController<SettingsActivity> c = Robolectric.buildActivity(SettingsActivity.class).setup()) {
             SettingsActivity a = c.get(); idle();
             category(a, "Updates & About");
@@ -216,7 +235,7 @@ public class HomeTakeoverJourneyTest {
             assertNull(find(root(a), "Make Unified TV the Home screen"));
         }
         assertTrue("record unchanged by looking", HomeTakeover.stockOff(app));
-        assertTrue(record().delete());
+        assertTrue(record().delete()); stockHome(true);
         try (ActivityController<SettingsActivity> c = Robolectric.buildActivity(SettingsActivity.class).setup()) {
             SettingsActivity a = c.get(); idle();
             category(a, "Updates & About");
@@ -240,13 +259,16 @@ public class HomeTakeoverJourneyTest {
     // --- crash safety
     @Test public void twoEarlyCrashesWhileHoldingHomeShowTheSafeScreen() throws Exception {
         Assume.assumeTrue("launcher app only", launcher());
-        writeRecord("home-takeover-record.json"); entry(true);
+        writeRecord("home-takeover-record.json"); entry(true); tv.disabled.add(STOCK); stockHome(false);
+        assertFalse("not yet", HomeSafety.appStart((android.app.Application) app));
         try (ActivityController<UnifiedPreviewActivity> first = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             idle();
             long now = SystemClock.elapsedRealtime();
-            HomeSafety.crashed(app, now + HomeSafety.EARLY_MS + 1);
+            HomeSafety.crashed(app, true, now + HomeSafety.EARLY_MS + 1);
             assertEquals("a crash after the first minute isn't counted", 0, HomeSafety.crashes(app));
-            HomeSafety.crashed(app, now + 10); HomeSafety.crashed(app, now + 20);
+            HomeSafety.crashed(app, false, now + 10);
+            assertEquals("Home is the resumed screen: any thread counts", 1, HomeSafety.crashes(app));
+            HomeSafety.crashed(app, true, now + 20);
             assertEquals(2, HomeSafety.crashes(app));
         }
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
@@ -272,6 +294,116 @@ public class HomeTakeoverJourneyTest {
         assertFalse(HomeSafety.holdsHome(app));
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             idle(); assertTrue(hasHome(c.get()));
+        }
+    }
+
+    @Test public void theSafeScreenSaysTheWaysBackWithoutUnifiedTv() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        writeRecord("home-takeover-record.json"); entry(true); stockHome(false);
+        app.getSharedPreferences(HomeSafety.PREFS, 0).edit().putInt(HomeSafety.CRASHES, 2).commit();
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            String said = words(root(c.get()));
+            assertTrue(said, said.contains(HomeTakeover.tvOnlySteps("Android TV Home")));
+            assertTrue(said.contains(HomeTakeover.pcFix(STOCK)));
+        }
+    }
+
+    @Test public void aCrashWhileTheAppStartsCountsAndTheNextStartShowsTheSafeScreen() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        writeRecord("home-takeover-record.json"); entry(true); tv.disabled.add(STOCK); stockHome(false);
+        android.app.Application application = (android.app.Application) app;
+        // Two starts that each crash inside PreviewApp.onCreate (main thread, no screen resumed yet).
+        assertFalse(HomeSafety.appStart(application));
+        HomeSafety.crashed(app, true, SystemClock.elapsedRealtime() + 5);
+        assertFalse(HomeSafety.appStart(application));
+        HomeSafety.crashed(app, true, SystemClock.elapsedRealtime() + 5);
+        assertEquals(2, HomeSafety.crashes(app));
+        assertTrue("the next start makes PreviewApp's own steps best-effort", HomeSafety.appStart(application));
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            idle(); assertTrue(words(root(c.get())).contains(HomeSafety.TITLE)); assertFalse(hasHome(c.get()));
+        }
+    }
+
+    @Test public void crashesInOtherScreensOrLaterDontCount() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        assertTrue("app start, nothing resumed, any thread", HomeSafety.counts(false, false, false, false, 10));
+        assertTrue("Home in front, any thread", HomeSafety.counts(false, true, true, false, 10));
+        assertTrue("Home still starting, main thread", HomeSafety.counts(true, true, false, true, 10));
+        assertFalse("Home still starting, another thread", HomeSafety.counts(false, true, false, true, 10));
+        assertFalse("another screen in front (Settings), main thread", HomeSafety.counts(true, true, false, false, 10));
+        assertFalse("after the first minute", HomeSafety.counts(true, false, true, true, HomeSafety.EARLY_MS + 1));
+        writeRecord("home-takeover-record.json"); entry(true);
+        HomeSafety.appStart((android.app.Application) app);
+        try (ActivityController<SettingsActivity> settings = Robolectric.buildActivity(SettingsActivity.class).setup()) {
+            idle();
+            HomeSafety.crashed(app, true, SystemClock.elapsedRealtime() + 5);
+            HomeSafety.crashed(app, false, SystemClock.elapsedRealtime() + 5);
+            assertEquals("Settings in front: not Home's crash", 0, HomeSafety.crashes(app));
+        }
+        assertNotNull("the handler is in place", Thread.getDefaultUncaughtExceptionHandler());
+    }
+
+    // --- the record is lost (storage cleared) while the TV's own Home is still off
+    @Test public void withdrawRefusesWhenNoOtherHomeIsLeft() {
+        Assume.assumeTrue("launcher app only", launcher());
+        entry(true); stockHome(false);
+        assertFalse("no record says so, but no other Home is on", HomeTakeover.stockOff(app));
+        assertFalse(DefaultHome.withdraw(app));
+        assertTrue("the Home entry stays", DefaultHome.offered(app));
+        assertEquals(STOCK, HomeTakeover.disabledStock(app));
+        stockHome(true);
+        assertTrue(DefaultHome.withdraw(app));
+        assertFalse(DefaultHome.offered(app));
+    }
+
+    @Test public void returnWithALostRecordTurnsTheStockHomeOnFirst() {
+        Assume.assumeTrue("launcher app only", launcher());
+        entry(true); tv.disabled.add(STOCK); stockHome(false);
+        try (ActivityController<HomeTakeoverActivity> c = open(false)) {
+            HomeTakeoverActivity a = c.get();
+            assertTrue(words(root(a)).contains("Unified TV has no record of it"));
+            press(a, HomeTakeoverActivity.RETURN_TITLE);
+            assertEquals("on first, then set as Home", Arrays.asList(AdbCommands.enable(STOCK), AdbCommands.setHome(FakeTv.HOME)), tv.changes());
+            assertFalse(tv.disabled.contains(STOCK));
+            assertFalse("then the Home entry withdrawn", DefaultHome.offered(app));
+            assertTrue(words(root(a)).contains("The Home button opens Android TV Home again."));
+        }
+    }
+
+    @Test public void lostRecordWithoutTheLinkGivesTheTvOnlyRouteAndNeverWithdrawsFirst() {
+        Assume.assumeTrue("launcher app only", launcher());
+        entry(true); tv.disabled.add(STOCK); stockHome(false);
+        refuse = new AdbException(AdbException.Kind.CLOSED, "Nothing answers on port 5555: network debugging is off.");
+        try (ActivityController<HomeTakeoverActivity> c = open(false)) {
+            HomeTakeoverActivity a = c.get();
+            press(a, HomeTakeoverActivity.RETURN_TITLE);
+            String said = words(root(a));
+            assertTrue(said, said.contains(HomeTakeover.tvOnlySteps("Android TV Home")));
+            assertTrue(said.contains(HomeTakeover.pcFix(STOCK)));
+            assertTrue("never withdrawn first", DefaultHome.offered(app));
+            press(a, "Check again");
+            assertTrue("still off: the entry stays", DefaultHome.offered(app));
+            stockHome(true);   // the owner turned Android TV Home on in the TV's settings
+            press(a, "Check again");
+            assertFalse(DefaultHome.offered(app));
+            assertTrue(words(root(a)).contains("The Home button opens the original TV interface again."));
+        }
+    }
+
+    @Test public void returnIsOpenToKidsBehindTheAdultPin() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        app.getSharedPreferences("unified-tv-preview", 0).edit().putString(Profiles.PREF, Profiles.CHILD).putString("pin", Pins.record("2468")).commit();
+        assertTrue(Profiles.kids(app));
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            assertTrue("taking over stays for Adults", words(root(c.get())).contains("This is for Adults"));
+        }
+        try (ActivityController<HomeTakeoverActivity> c = open(false)) {
+            HomeTakeoverActivity a = c.get();
+            assertFalse("the way back never refuses Kids", words(root(a)).contains("This is for Adults"));
+            android.app.AlertDialog pin = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull("but the adult PIN is asked", pin);
+            Pins.type(pin, "2468");
+            assertNotNull(find(root(a), HomeTakeoverActivity.RETURN_TITLE));
         }
     }
 

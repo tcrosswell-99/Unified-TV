@@ -207,6 +207,46 @@ final class HomeTakeover {
         return new Result(Outcome.RETURNED, read(sh), stock);
     }
 
+    /**
+     * The record is gone (Unified TV's storage cleared, or a damaged file) but a stock Home is still off: turns that one
+     * package back on, only when it is a known stock Home and the TV reports it installed and off, sets it as Home, then
+     * {@code withdraw} (only once it is on again), and Home read again. Nothing else is ever enabled here.
+     */
+    static Result restoreStock(Cleanup.Shell sh, String stock, Runnable withdraw) throws IOException {
+        if (!AdbCommands.STOCK_HOMES.contains(stock)) throw new Changed(null);
+        Set<String> installed = Cleanup.packages(sh.run(AdbCommands.PACKAGES)), disabled = Cleanup.packages(sh.run(AdbCommands.DISABLED));
+        if (!CleanupRecord.DISABLED.equals(Cleanup.state(stock, installed, disabled))) throw new Changed(null);
+        sh.run(AdbCommands.enable(stock));
+        if (!CleanupRecord.ENABLED.equals(Cleanup.states(sh, Collections.singletonList(stock)).get(stock))) return new Result(Outcome.FAILED, null, stock);
+        String previous = read(sh).claimOf(stock);
+        if (previous != null && AdbCommands.homeTarget(previous)) sh.run(AdbCommands.setHome(previous));
+        if (withdraw != null) withdraw.run();
+        return new Result(Outcome.RETURNED, read(sh), stock);
+    }
+
+    /** A known stock Home that is installed but turned off on this TV, as Android tells this app; null when there is none. */
+    static String disabledStock(Context c) {
+        PackageManager pm = c.getPackageManager();
+        for (String pkg : new TreeSet<>(AdbCommands.STOCK_HOMES)) {
+            try {
+                int state = pm.getApplicationEnabledSetting(pkg);
+                if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER) return pkg;
+            } catch (RuntimeException notInstalled) { /* not on this TV */ }
+        }
+        return null;
+    }
+
+    /** The stock Home that is off: the one the record names, else one Android reports off (record lost). */
+    static String stockToRestore(Context c) { String r = turnedOff(c); return r != null ? r : disabledStock(c); }
+
+    /** No record: {@code stock} is on again (turned on in the TV's settings, or with adb): Unified TV's Home entry goes. */
+    static boolean reconcileLost(Context c, String stock) {
+        try { int state = c.getPackageManager().getApplicationEnabledSetting(stock);
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER) return false; }
+        catch (RuntimeException e) { return false; }
+        return DefaultHome.withdraw(c);
+    }
+
     // --- on this TV, without the link
     static File recordFile(Context c) { return CleanupRecord.file(c.getNoBackupFilesDir()); }
     /** The package this flow turned off, while it is still off as far as Unified TV knows; null otherwise. */

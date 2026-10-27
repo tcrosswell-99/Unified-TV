@@ -29,6 +29,16 @@ public class LiveTvProtectionTest {
         assertEquals("no NordVPN on the TV",NO_NORDVPN,LiveTvProtection.decide(facts(UP,false,true,true,true)));
         assertEquals(ERROR,LiveTvProtection.decide(null));
     }
+    /** Review 2: NordVPN saying "Not connected" while another app's VPN is up never opens Live TV. */
+    @Test public void nordVpnsNegativeWordsLockWhileAnotherVpnIsUp(){
+        for(CharSequence[] words:new CharSequence[][]{{"NordVPN","Not connected"},{"You're not connected to VPN"},{"Unprotected"},{"No connection"}}){
+            Boolean says=NordCountry.status(words);
+            assertEquals(Arrays.toString(words),DISCONNECTED,LiveTvProtection.decide(facts(UP,true,true,says,false)));
+            assertFalse(LiveTvProtection.opens(LiveTvProtection.decide(facts(UP,true,true,says,true))));
+        }
+        assertEquals("unsure wording, another VPN app: locked",NOT_NORDVPN,LiveTvProtection.decide(facts(UP,true,true,NordCountry.status("Connected devices: 3"),false)));
+        assertEquals(OPEN,LiveTvProtection.decide(facts(UP,true,true,NordCountry.status("Connected to United Kingdom #2236"),false)));
+    }
     @Test public void notificationWordsCountOnlyWithAccess(){
         assertEquals("a remembered word without access is ignored",UNSURE,LiveTvProtection.decide(facts(UP,true,false,true,false)));
         assertEquals("a remembered 'disconnected' without access is ignored",OPEN,LiveTvProtection.decide(facts(UP,true,false,false,true)));

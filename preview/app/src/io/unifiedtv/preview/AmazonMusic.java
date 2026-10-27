@@ -237,7 +237,8 @@ final class AmazonMusic {
             MusicSession s = null;
             try { s = MusicSessions.amazon(app, MusicSessions.source.active(app)); } catch (RuntimeException ignored) { }
             if (s != null && s.read().playing()) {
-                try { app.startActivity(new Intent(app, NowPlayingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)); }
+                try { app.startActivity(new Intent(app, NowPlayingActivity.class).putExtra(NowPlayingActivity.EXTRA_PLACE, Echoes.TV)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)); }
                 catch (RuntimeException ignored) { /* Android may not let an app come back to the front by itself */ }
                 return;
             }

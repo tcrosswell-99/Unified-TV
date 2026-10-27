@@ -10,6 +10,12 @@
   <queries>
     <!-- OD-23: only to tell whether this TV has Android's "Display over other apps" screen. -->
     <intent><action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION"/></intent>
+    <!-- OD-28: whether a stock Home is turned off (Return to the original TV interface, even when Unified TV's record is
+         gone); a disabled package answers no Home query, so these are named. Nothing else is read about them. -->
+    <package android:name="com.google.android.tvlauncher"/>
+    <package android:name="com.google.android.apps.tv.launcherx"/>
+    <package android:name="com.google.android.leanbacklauncher"/>
+    <package android:name="com.tcl.tvlauncher"/>
   </queries>
   <application>
     <activity-alias android:name="io.unifiedtv.preview.HomeEntry" android:targetActivity="io.unifiedtv.preview.UnifiedPreviewActivity"

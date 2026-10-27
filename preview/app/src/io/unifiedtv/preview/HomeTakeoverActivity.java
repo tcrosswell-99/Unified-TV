@@ -70,7 +70,9 @@ public final class HomeTakeoverActivity extends GlassScreen {
         take = !RETURN.equals(getIntent().getStringExtra(MODE));
         screen(take ? TAKE_TITLE : RETURN_TITLE, "Appearance & Home", null);
         if (!DefaultHome.available(this)) { card(); text(PREVIEW_WORDS, 18); button("Back", this::finish).requestFocus(); return; }
-        if (Profiles.kids(this)) { card(); text("This is for Adults. Switch to Adults first.", 20); button("Back", this::finish).requestFocus(); return; }
+        // Taking over is for Adults. The way back never refuses Kids (Home's safe screen can't switch profile): the adult PIN,
+        // when one is set, is still asked below.
+        if (take && Profiles.kids(this)) { card(); text("This is for Adults. Switch to Adults first.", 20); button("Back", this::finish).requestFocus(); return; }
         card(); text("Adult access is needed for this.", 20);
         Runnable in = take ? this::takeIntro : this::returnIntro;
         button("Unlock", () -> EditLock.ask(this, in)); button("Back", this::finish);
@@ -228,24 +230,52 @@ public final class HomeTakeoverActivity extends GlassScreen {
     void returnIntro() {
         closeLink();
         String off = HomeTakeover.turnedOff(this);
+        // No record (storage cleared, or a damaged file), but Android reports a stock Home off: turn it on first, never
+        // withdraw first (that would leave the TV with no Home at all).
+        lost = off == null ? HomeTakeover.disabledStock(this) : null;
         screen(RETURN_TITLE, "Appearance & Home", null);
         card();
         text("The Home button will open the TV's own Home again. Unified TV stays installed and opens from the TV's apps.", 20);
         if (off != null) { text("Unified TV turned " + HomeTakeover.label(off) + " (" + off + ") off. It will be turned back on first.", 17); text(ADB_WORDS, 17); }
-        button(RETURN_TITLE, off != null ? this::giveBackNow : this::withdrawOnly).requestFocus();
+        if (lost != null) { text(HomeTakeover.label(lost) + " (" + lost + ") is turned off, and Unified TV has no record of it (its storage may have been cleared). It will be turned back on first.", 17); text(ADB_WORDS, 17); }
+        button(RETURN_TITLE, off != null ? this::giveBackNow : lost != null ? this::restoreLost : this::withdrawOnly).requestFocus();
         button("Not now", this::finish);
     }
+    /** A stock Home Android reports off with no record of it (Return, when the record is gone). */
+    private String lost;
 
-    /** Nothing was turned off: switching the Home entry off hands Home straight back. */
+    /** Nothing was turned off: switching the Home entry off hands Home straight back, unless no other Home would be left. */
     private void withdrawOnly() {
-        DefaultHome.withdraw(this);
+        if (!DefaultHome.withdraw(this)) {
+            String stock = HomeTakeover.disabledStock(this);
+            if (stock != null) { lost = stock; restoreLost(); return; }
+            screen(RETURN_TITLE, null, null);
+            card(); text("Unified TV is the only Home screen this TV has turned on, so it stays, or the TV would have none. Nothing was changed.", 18);
+            text(HomeTakeover.tvOnlySteps(HomeTakeover.label("com.google.android.tvlauncher")) + " From a computer: " + HomeTakeover.pcFix("com.google.android.tvlauncher"), 17);
+            button("Close", this::finish).requestFocus();
+            return;
+        }
         EventLog.record(getApplicationContext(), EventLog.SETTINGS, "Home button: handed back to the original TV interface");
         returned(null);
     }
 
+    /** The record is gone: the stock Home Android reports off goes back on over the link, then the Home entry. */
+    void restoreLost() {
+        String stock = lost;
+        if (stock == null) { withdrawOnly(); return; }
+        screen("Turning the TV's own Home back on", null, null);
+        card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
+        Context app = getApplicationContext();
+        work(true, sh -> {
+            HomeTakeover.Result r = HomeTakeover.restoreStock(sh, stock, () -> DefaultHome.withdraw(app));
+            if (r.outcome == HomeTakeover.Outcome.RETURNED) EventLog.record(app, EventLog.SETTINGS, "Home button: turned " + stock + " back on");
+            return () -> { if (r.outcome == HomeTakeover.Outcome.RETURNED) returned(r); else tvOnly(stock, "The TV didn't turn " + HomeTakeover.label(stock) + " back on."); };
+        });
+    }
+
     void giveBackNow() {
         CleanupRecord rec = CleanupRecord.read(HomeTakeover.recordFile(this));
-        if (rec == null || rec.takeoverLauncher == null) { withdrawOnly(); return; }
+        if (rec == null || rec.takeoverLauncher == null) { lost = HomeTakeover.disabledStock(this); if (lost != null) restoreLost(); else withdrawOnly(); return; }
         screen("Turning the TV's own Home back on", null, null);
         card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
         File file = HomeTakeover.recordFile(this); Context app = getApplicationContext(); String stock = rec.takeoverLauncher;
@@ -276,9 +306,10 @@ public final class HomeTakeoverActivity extends GlassScreen {
         text("1. " + HomeTakeover.tvOnlySteps(HomeTakeover.label(stock)), 17);
         text("2. Or from a computer: " + HomeTakeover.pcFix(stock), 17);
         text("3. Or turn on USB debugging in Settings > System > Developer options, then choose Try again.", 17);
-        button("Check again", () -> { if (HomeTakeover.reconcile(this)) returned(null); else note("The Home button doesn't open " + HomeTakeover.label(stock) + " yet."); }).requestFocus();
+        boolean recorded = stock.equals(HomeTakeover.turnedOff(this));
+        button("Check again", () -> { if (recorded ? HomeTakeover.reconcile(this) : HomeTakeover.reconcileLost(this, stock)) returned(null); else note("The Home button doesn't open " + HomeTakeover.label(stock) + " yet."); }).requestFocus();
         button("Open the TV's settings", () -> openSettings(Settings.ACTION_SETTINGS));
-        button("Try again", this::giveBackNow);
+        button("Try again", recorded ? this::giveBackNow : () -> { lost = stock; restoreLost(); });
         button("Close", this::finish);
     }
 
@@ -365,6 +396,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
 
     private void problem(AdbException.Kind kind) {
         String stock = HomeTakeover.turnedOff(this);
+        if (stock == null && !take) stock = lost;
         // Handing Home back needs the link; without it, the TV-only route.
         if (!take && stock != null && kind != AdbException.Kind.NOT_THIS_TV) { tvOnly(stock, null); return; }
         if (stock != null && kind == AdbException.Kind.CLOSED) { tvOnly(stock, null); return; }

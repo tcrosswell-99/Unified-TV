@@ -28,6 +28,15 @@ public class NordCountryTest {
         assertEquals(Boolean.FALSE, NordCountry.status("VPN paused for 5 minutes"));
         assertNull("a promotion says neither", NordCountry.status("Get 3 extra months free"));
         assertNull(NordCountry.status((CharSequence) null));
+        // Review 2: negations first; "connected" inside a negative never counts.
+        for (String[] no : new String[][]{{"NordVPN", "Not connected"}, {"You're not connected to VPN"}, {"You’re not connected to United Kingdom"},
+                {"VPN isn't connected"}, {"Unprotected", "Connected devices"}, {"No connection"}, {"Disconnected from United Kingdom #2236"}})
+            assertEquals(java.util.Arrays.toString(no), Boolean.FALSE, NordCountry.status(no));
+        assertNull("not connected to a country is never a flag", NordCountry.from("Not connected to United Kingdom #2236"));
+        assertEquals(Boolean.TRUE, NordCountry.status("Connected"));
+        assertEquals(Boolean.TRUE, NordCountry.status("NordVPN", "VPN connected."));
+        assertNull("unsure wording is not connected", NordCountry.status("NordVPN", "Auto-connect is on and connected devices are safe"));
+        assertNull(NordCountry.status("Connected devices: 3"));
     }
     @Test public void namesBecomeCodesAndFlags() {
         assertEquals("GB", NordCountry.iso("UK")); assertEquals("GB", NordCountry.iso(" united  kingdom ")); assertEquals("US", NordCountry.iso("USA"));

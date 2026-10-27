@@ -119,11 +119,12 @@ final class DefaultHome {
     static boolean chooserHelps(String resolved){return resolved==null||resolved.equals("android");}
     /**
      * Hand Home back: with our entry switched off, Android returns to the original interface. Reversible from Settings.
-     * Refused (false) while Unified TV has turned the TV's own Home off (OD-28): withdrawing then would leave the TV with no
-     * Home at all, so only Return to the original TV interface (HomeTakeover.giveBack) may, once the TV's Home is back on.
+     * Refused (false) whenever that would leave the TV with no Home at all: while Unified TV's record says it turned the
+     * TV's own Home off (OD-28), and also whenever no other enabled Home exists on the TV, whatever the record says (it may
+     * have been cleared with Unified TV's storage). Return to the original TV interface turns the TV's Home on first.
      */
     static boolean withdraw(Context c){
-        if(HomeTakeover.stockOff(c))return false;
+        if(HomeTakeover.stockOff(c)||!otherHome(c))return false;
         fixed(c,false);c.getPackageManager().setComponentEnabledSetting(entry(c),PackageManager.COMPONENT_ENABLED_STATE_DISABLED,PackageManager.DONT_KILL_APP);return true;
     }
     /** The manufacturer's own Home, when exactly one can be identified; Android's boot-time placeholder is not it. */
@@ -131,6 +132,11 @@ final class DefaultHome {
         List<ComponentName> found=new ArrayList<>();
         try{for(ResolveInfo r:c.getPackageManager().queryIntentActivities(homeIntent(),0)){if(r.activityInfo==null)continue;ComponentName n=new ComponentName(r.activityInfo.packageName,r.activityInfo.name);if(candidate(c.getPackageName(),n))found.add(n);}}catch(RuntimeException ignored){}
         return found.size()==1?found.get(0):null;
+    }
+    /** Another enabled Home exists on this TV (Android's boot placeholder and Settings don't count); a disabled one isn't listed. */
+    static boolean otherHome(Context c){
+        try{for(ResolveInfo r:c.getPackageManager().queryIntentActivities(homeIntent(),0)){if(r.activityInfo!=null&&candidate(c.getPackageName(),new ComponentName(r.activityInfo.packageName,r.activityInfo.name)))return true;}}catch(RuntimeException ignored){}
+        return false;
     }
     static boolean candidate(String self,ComponentName n){return !n.getPackageName().equals(self)&&!n.getClassName().endsWith("FallbackHome")&&!n.getPackageName().equals("com.android.settings");}
     /** "Open original interface for now": leaves the default untouched. False when this TV doesn't allow it. */
