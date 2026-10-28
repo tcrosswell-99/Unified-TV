@@ -1,0 +1,2 @@
+# Built, unsigned test packages. Never commit a package, signed or not.
+out/

@@ -1,0 +1,1 @@
+This CSV is a **migration example only**, NOT the live register. Inspect and update the repository `docs/ACCEPTANCE_REGISTER.csv` without overwriting existing evidence. PR #9 implementation claims are unverified until audited.

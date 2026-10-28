@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unified TV DLNA discovery proof of concept. PROTOTYPE, NOT the Unified TV app.
+
+  Its own package id (UTVDLNAPOC), so it installs beside Unified TV (UTVFRAME00) and is removed without touching it:
+    tizen uninstall -p UTVDLNAPOC.Probe -s <device>
+  The ids are placeholders for a test build; no certificate material belongs in this repository.
+
+  Hybrid package: a one-screen web page (UTVDLNAPOC.Probe) and a web service (UTVDLNAPOC.svc) on the TV's Node runtime.
+  The page starts the service with tizen.application.launchAppControl and a per-launch token. The service listens on
+  127.0.0.1:18731 only and does the SSDP a web page can't (UDP). See samsung/poc-dlna/README.md.
+
+  Privileges (the minimum; a web service has no privileges of its own: "a privilege defined for the Web application
+  covers the entire application package", Tizen Web Service guide, Samsung/tizen-docs service-app.md):
+    internet             the page's request to the service on 127.0.0.1, and the service's SSDP (UDP) and its HTTP
+                         requests to the media server it found
+    application.launch   tizen.application.launchAppControl to start the service with the token (as in Samsung's
+                         TizenTVApps SimpleService and SamsungDForum BackgroundServiceLocal samples)
+  Not requested: filesystem, download, mediastorage, externalstorage (nothing is read or written on the TV),
+  network.public (the service reads its own address from Node's os.networkInterfaces), tv.inputdevice (only
+  arrows, OK and Return are used, which need no registration).
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://unifiedtv.invalid/dlna-poc" version="0.1.0" viewmodes="maximized">
+  <tizen:application id="UTVDLNAPOC.Probe" package="UTVDLNAPOC" required_version="4.0"/>
+  <tizen:profile name="tv-samsung"/>
+  <name>Unified TV DLNA probe</name>
+  <description>Prototype test of media-server discovery. Not the Unified TV app. Changes nothing on the TV.</description>
+  <content src="index.html"/>
+  <icon src="icon.png"/>
+
+  <!-- The service. type="service" as in Tessel (MIT), which runs this kind of service on retail Samsung TVs. -->
+  <tizen:service id="UTVDLNAPOC.svc" type="service">
+    <tizen:content src="service/service.js"/>
+    <tizen:name>UTVDLNAPOCsvc</tizen:name>
+    <tizen:description>Finds media servers by SSDP for the probe page. Listens on 127.0.0.1 only.</tizen:description>
+  </tizen:service>
+
+  <!-- The page may reach the service on loopback and nothing else. -->
+  <access origin="http://127.0.0.1:18731" subdomains="false"/>
+  <!-- The packaged page may count as a secure context; this lets it call the plain-http service on loopback.
+       The Content-Security-Policy below still limits connections to 127.0.0.1:18731. -->
+  <tizen:allow-mixed-content>true</tizen:allow-mixed-content>
+  <tizen:content-security-policy>default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src http://127.0.0.1:18731; object-src 'none'; base-uri 'none'; form-action 'none'</tizen:content-security-policy>
+
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                 encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

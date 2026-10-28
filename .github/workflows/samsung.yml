@@ -1,0 +1,62 @@
+name: Samsung Frame web app
+
+# Tests and packages the Tizen web app in samsung/. No Tizen SDK and no certificates are involved: the .wgt uploaded
+# here is UNSIGNED and test-only. It will not install on a retail Samsung TV until the owner signs it on their own
+# computer with their own Samsung certificates (samsung/README.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'samsung/**'
+      - 'preview/app/src/io/unifiedtv/preview/AmbientMesh.java'
+      - '.github/workflows/samsung.yml'
+  pull_request:
+    paths:
+      - 'samsung/**'
+      - 'preview/app/src/io/unifiedtv/preview/AmbientMesh.java'
+      - '.github/workflows/samsung.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frame:
+    name: Frame web app tests and unsigned package (test only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Node tests (palettes, focus, alerts, Wallpaper, settings, Live TV guard, keys, AVPlay, DLNA)
+        run: node --test samsung/test/*.test.js
+      - name: Unsigned package
+        run: bash samsung/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedTV-Frame-unsigned-test-only
+          path: |
+            samsung/out/UnifiedTV-Frame-unsigned.wgt
+            samsung/out/SHA256SUMS.txt
+            samsung/out/manifest.txt
+          retention-days: 14
+          if-no-files-found: error
+      # The DLNA discovery proof of concept (samsung/poc-dlna/): a separate package (UTVDLNAPOC), not the Unified TV app.
+      - name: DLNA probe tests (SSDP parsing, validation, Browse, token, private-address guard, send-queue drain)
+        run: node --test samsung/poc-dlna/test/*.test.js
+      - name: DLNA probe unsigned package (prototype, test only)
+        run: bash samsung/poc-dlna/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedTV-DLNA-POC-unsigned-test-only
+          path: |
+            samsung/poc-dlna/out/UnifiedTV-DLNA-POC-unsigned.wgt
+            samsung/poc-dlna/out/SHA256SUMS.txt
+            samsung/poc-dlna/out/manifest.txt
+          retention-days: 14
+          if-no-files-found: error

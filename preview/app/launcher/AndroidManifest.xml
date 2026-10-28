@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher app (io.unifiedtv.launcher) only. Merged over the shared manifest.
+     Spec 29.3: the Home entry ships switched off, so installing never changes the TV's Home. Only the owner's guided
+     choice in Settings > Appearance & Home > Home button switches it on, and Android's own Home selection decides; switching it off
+     hands Home straight back to the original interface. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- OD-23 "Open Unified TV when the TV turns on" (off by default, adult PIN): told that the TV has started. The preview
+       never receives it. SYSTEM_ALERT_WINDOW (shared manifest) is what lets Unified TV come to the front afterwards. -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+  <queries>
+    <!-- OD-23: only to tell whether this TV has Android's "Display over other apps" screen. -->
+    <intent><action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION"/></intent>
+    <!-- OD-28: whether a stock Home is turned off (Return to the original TV interface, even when Unified TV's record is
+         gone); a disabled package answers no Home query, so these are named. Nothing else is read about them. -->
+    <package android:name="com.google.android.tvlauncher"/>
+    <package android:name="com.google.android.apps.tv.launcherx"/>
+    <package android:name="com.google.android.leanbacklauncher"/>
+    <package android:name="com.tcl.tvlauncher"/>
+  </queries>
+  <application>
+    <activity-alias android:name="io.unifiedtv.preview.HomeEntry" android:targetActivity="io.unifiedtv.preview.UnifiedPreviewActivity"
+        android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.HOME"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
+    </activity-alias>
+    <!-- OD-28: Take over the Home button, and Return to the original TV interface. Launcher app only (the preview never
+         has it); adults only; the glass sidebar over a still Home (OD-19). Not exported: only Unified TV opens it. -->
+    <activity android:name="io.unifiedtv.preview.HomeTakeoverActivity" android:exported="false" android:screenOrientation="landscape"
+        android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-23: does nothing unless the household switched the feature on and allowed it; it never reads or reassigns keys
+         and adds no Home entry (module 03). Exported only because Android's BOOT_COMPLETED, a protected broadcast that no
+         other app can send, reaches receivers that way. -->
+    <receiver android:name="io.unifiedtv.preview.TurnOnBoot" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter>
+    </receiver>
+    <!-- OD-23's small watcher for "screen on again", running only while the feature is on and allowed. -->
+    <service android:name="io.unifiedtv.preview.TurnOnService" android:exported="false"/>
+  </application>
+</manifest>

@@ -1,37 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.unifiedtv.preview"
-    android:versionCode="4" android:versionName="0.4-preview">
+    android:versionCode="5" android:versionName="0.5-preview">
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <!-- Ask your TV only: asked for the first time the household presses Speak, and used only while the pane says
+       "Listening" (VoiceActivity). Nothing listens in the background. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-feature android:name="android.software.leanback" android:required="false"/>
   <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
   <queries>
     <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent>
     <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
+    <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/></intent>
+    <!-- Build My TV (SET-BUILD-03): only to tell whether a store can open a Google Play listing; nothing is installed. -->
+    <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="market"/></intent>
+    <!-- Ask your TV: whether the TV's own speech service can listen inside the pane (SpeechRecognizer). -->
+    <intent><action android:name="android.speech.RecognitionService"/></intent>
+    <!-- What this TV can do (SET-006): whether the TV has its own voice input screen when no speech service is visible. -->
+    <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH"/></intent>
+    <!-- OD-27 Music: the Amazon Music app (by its known ids; any other build is found by its own name through the launcher
+         queries above), whether it handles Android's play-from-search and search requests, and whether it offers its
+         library through MediaBrowserService. Nothing else is read from it. -->
+    <package android:name="com.amazon.mp3"/>
+    <package android:name="com.amazon.music.tv"/>
+    <intent><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH"/></intent>
+    <intent><action android:name="android.intent.action.SEARCH"/></intent>
+    <intent><action android:name="android.media.browse.MediaBrowserService"/></intent>
+    <!-- OD-26 Live TV: which installed apps can run a VPN (package names only), so a VPN can be told to be NordVPN's when
+         NordVPN is the only one. Nothing is read from those apps. -->
+    <intent><action android:name="android.net.VpnService"/></intent>
   </queries>
   <application android:name=".PreviewApp" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="@string/app_name"
-      android:icon="@drawable/preview_icon" android:banner="@drawable/preview_banner"
+      android:icon="@mipmap/ic_launcher" android:banner="@drawable/app_banner"
       android:theme="@android:style/Theme.Material.NoActionBar"
       android:hardwareAccelerated="true" android:usesCleartextTraffic="true">
     <!-- HTTP is permitted only by LocalApi after explicit consent for the configured origin.
          Redirects are refused. No WebView, exported setup receiver or remote URL activity. -->
     <activity android:name=".DlnaLibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".ServiceDiscoveryActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- Choosing the folders for Films & TV: the same glass sheet over a still Home as Settings. -->
+    <activity android:name=".LibrarySetupActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- SET-034 "Wrong picture?": choosing a title's poster (or none) is the glass sidebar over the still library (OD-19). -->
+    <activity android:name=".PictureFixActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Setup screens are the same glass sheet over a still Home as Settings (OD-19). -->
+    <activity android:name=".ServiceDiscoveryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-19: Music's choice page (Amazon Music, the store or Now Playing) is the glass sidebar; Now Playing is content. -->
+    <activity android:name=".MusicActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Module 13: a translucent glass overlay over a stationary Home (res/values/settings_glass.xml). -->
+    <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".QuickConnectActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".AppsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- Build My TV (v3.4.5/3.4.6): optional setup, opened from the guided setup or Settings. Not exported. -->
+    <activity android:name=".BuildMyTvActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Guided setup (SET-010): opens once over Home on a fresh install in Adults, and again from Settings. Not exported. -->
+    <activity android:name=".FirstRunActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-26's safety net while Live TV that Unified TV opened is on: watches NordVPN through Android's network callback
+         and, if it drops, covers Live TV with LiveTvCoverActivity. Not a kill switch. -->
+    <service android:name=".LiveTvGuard" android:exported="false"/>
+    <activity android:name=".LiveTvCoverActivity" android:exported="false" android:screenOrientation="landscape" android:excludeFromRecents="true"/>
+    <!-- Notification access through the TV's debugging prompt, for TVs with no notification-access screen (the TCL):
+         one allow_listener command for Unified TV's own MediaWatch, over the clean-up's session link. Adults only. -->
+    <activity android:name=".NotificationAccessActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".LibraryActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape"/>
-    <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".PlayerActivity" android:exported="false" android:screenOrientation="landscape" android:configChanges="keyboard|keyboardHidden|navigation"/>
+    <!-- OD-19: Gallery's settings are the glass sidebar over a still Home; its slideshow fills the screen. -->
+    <activity android:name=".GalleryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".WallpaperActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <activity android:name=".PhotoFoldersActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-27: Now Playing is content (full screen). singleTop: coming back from Amazon Music's own screen reuses it. -->
+    <activity android:name=".NowPlayingActivity" android:exported="false" android:screenOrientation="landscape" android:launchMode="singleTop"/>
+    <!-- OD-19/OD-27: "Your Amazon Music" chooses what to play, so it is the glass sidebar over a still Home. -->
+    <activity android:name=".MusicLibraryActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".RemoteCheckActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Lets Unified TV see the TV's media sessions once the owner allows notification access. The one notification it
+         reads is NordVPN's, for the country beside the VPN shield (only the country code, in memory); without NordVPN it
+         disconnects as soon as it is bound. Only the system can bind it (the permission). -->
+    <service android:name=".MediaWatch" android:exported="true" android:label="@string/app_name"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter>
+    </service>
+    <!-- Kids app guard (KidsGuardService): optional, off until an adult switches it on in Kids settings and allows it in
+         the TV's accessibility settings. Only the system can bind it (the permission). Not a hard lock: see KidsGuard. -->
+    <service android:name=".KidsGuardService" android:exported="true" android:label="@string/kids_guard_label"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/kids_guard"/>
+    </service>
+    <!-- OD-19: Kids settings and Owner diagnostics are the glass sidebar over a still Home (GlassScreen). -->
+    <activity android:name=".KidsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".OwnerDiagnosticsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <activity android:name=".HouseholdActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Ask your TV: a small glass listening pane under Home's pill, over a still Home (translucent). -->
+    <activity android:name=".VoiceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-19: setup and check screens open as the glass sidebar over a still Home (GlassScreen). -->
+    <activity android:name=".PerformanceActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- Optional clean-up (OD-19: the glass sidebar). Adults only; talks only to this TV's own network debugging, and only
+         while the page is open (CleanupActivity, io.unifiedtv.adb.AdbLink). -->
+    <activity android:name=".CleanupActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- SET-043: an adult resets a forgotten PIN from a computer (PinReset says why this is safe). Only a sender holding
+         WRITE_SECURE_SETTINGS (the ADB shell; never a store app) can reach it. -->
+    <receiver android:name=".PinReset" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">
+      <intent-filter><action android:name="io.unifiedtv.RESET_PIN"/></intent-filter>
+    </receiver>
     <service android:name=".HouseholdService" android:exported="false" android:foregroundServiceType="dataSync"/>
-    <activity android:name=".UnifiedPreviewActivity" android:exported="true"
+    <activity android:name=".UnifiedPreviewActivity" android:exported="true" android:launchMode="singleTask"
         android:screenOrientation="landscape" android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
@@ -39,5 +115,7 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
+    <!-- No HOME entry here: the preview never becomes a Home candidate. The separate launcher app adds one
+         (launcher/AndroidManifest.xml), switched off until the owner chooses it. -->
   </application>
 </manifest>

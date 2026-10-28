@@ -14,3 +14,47 @@ The Preview 0.3 ambient mesh, cached blur, material, dock migration and VPN hand
 
 
 Preview 0.4 includes five AI-generated gallery JPGs supplied by the owner, who expressly authorised public inclusion as example artwork on 24 October 2026. They are preserved unedited at `preview/app/src/main/assets/gallery/example-1.jpg` through `example-5.jpg`; they are not third-party film stills or private household photographs. Source filenames identify Gemini-generated images, as supplied by the owner. Original gallery/discovery/settings code follows the project licence; no new runtime dependency was added.
+
+
+Team fixtures and the UK team list (owner decision OD-22, 25 October 2026) come by default from **TheSportsDB** (https://www.thesportsdb.com), a community-edited sports database, through its free public JSON API (version 1) with the free public test key that TheSportsDB documents for small and non-commercial projects. That key is public and the same for everyone; it is not a household secret. Only UK league names and numbers, team numbers, round and season numbers and club names are sent, to `www.thesportsdb.com` over HTTPS (a club's name: the household's chosen club, to find its number, and a name typed in the picker only when an adult presses "Look up on TheSportsDB"); team names, short codes, colours and fixture dates and times are kept on the TV. Scores, results, crests, badges and pictures in its replies are never read or shown. Settings > Updates & About > Open-source licences and the team picker credit TheSportsDB. Because the free key lists only about 10 teams a league, the Premier League, Championship and League One are completed from Unified TV's own list in `preview/app/res/raw/football_teams.json` (club names, other names and kit colours, written for this project from public league membership, marked with its season; facts only, no crests or artwork; MIT like the rest of this repository). Its terms, the exact free key and the free tier's limits were **not** re-checked on thesportsdb.com itself when this was written (the site could not be reached; the limits used come from client libraries' published measurements); confirm them before any wider release, and move to a supporter key if TheSportsDB's terms require one.
+
+Team fixtures can instead come from **API-Football** (api-sports.io), optionally, using the household's own API key, added from a phone through phone setup and stored encrypted on the TV; no key is in the source and nothing but the team's number is sent to that service. API-Football data is used under the household's own account and its terms. Team badges are drawn by the app from a team's short name and colours (TheSportsDB's colours when it gives them); no club crest or logo is bundled or downloaded.
+
+### Trademarks on the dock
+
+The dock's marks for YouTube (also shown on the SmartTube tile the household names YouTube), Netflix, Disney+ and BBC iPlayer are simple white monochrome shapes drawn in code by the app (`DockGlyphs.java`): YouTube's rounded play button, Netflix's N ribbon and BBC's three lettered blocks. Disney+ uses Disney's own 2024 wordmark, from an SVG the owner supplied on 25 October 2026 ("Disney_2024_Print.svg", source not recorded), kept as path data in `BrandMarks.java` and drawn in plain white. No image file is bundled, and no brand colour is used. These names and marks belong to their owners; they are shown only to identify the app the tile opens, and Unified TV is not affiliated with or endorsed by them. The other dock symbols (Live TV's television, Music's notes, the library shelf) are original drawings.
+
+Unified TV's own app icon and TV banner (`res/drawable/ic_launcher_*.xml`, `res/drawable/app_banner.xml`) are original vector drawings: a white monoline "Unified TV" wordmark on the app's dark blue gradient. No font or third-party artwork is used.
+
+Film and programme posters (25 October 2026, optional) come from **The Movie Database (TMDB)** using the household's own free API key or read-access token, added from a phone and stored encrypted on the TV; no key is in the source. Only a cleaned title and, when known, a year are sent, to `api.themoviedb.org`, and pictures are fetched from `image.tmdb.org`; never a file name, folder, server name or address. Matches and pictures are cached on the TV. TMDB data and images are used under the household's own account and TMDB's terms of use. **This product uses the TMDB API but is not endorsed or certified by TMDB.** No TMDB logo or artwork is bundled.
+
+## QR Code generator library (Java), Project Nayuki, MIT License
+
+Phone setup (25 October 2026) draws its QR codes with Project Nayuki's QR Code generator library, vendored unchanged from https://github.com/nayuki/QR-Code-generator (commit 3c6d0b3cefb4e049dc337e82237c9644399716a8, `java/src/main/java/io/nayuki/qrcodegen/`: `QrCode.java`, `QrSegment.java`, `BitBuffer.java`, `DataTooLongException.java`) at `preview/app/src/io/nayuki/qrcodegen/`. Each file keeps its copyright and licence header. It has no dependencies, uses no network, files or reflection, and adds no Gradle dependency. Licence text:
+
+```
+Copyright © 2026 Project Nayuki. (MIT License)
+https://www.nayuki.io/page/qr-code-generator-library
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+* The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+* The Software is provided "as is", without warranty of any kind, express or
+  implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose and noninfringement. In no event shall the
+  authors or copyright holders be liable for any claim, damages or other
+  liability, whether in an action of contract, tort or otherwise, arising from,
+  out of or in connection with the Software or the use or other dealings in the
+  Software.
+```
+
+Phone setup's own page (served by the TV on the home network) is original project code: inline CSS only, no script, fonts, images or third-party resources.
+
+The Optional clean-up's ADB client (`preview/app/src/io/unifiedtv/adb/`: `AdbLink`, `AdbKey`, `AdbCommands`) is original project code, written from the ADB protocol as Android's open-source `system/core/adb` documents it (message header, CNXN/AUTH/OPEN/WRTE/OKAY/CLSE, the RSA token signature and adbd's public-key format). No ADB library or other third-party code was copied, and no new runtime dependency was added. Its tested package lists come from this repository's own `examples/*/debloat.txt` (MIT, CleanYourTV contributors), generated by `preview/tools/cleanup_lists.py`.

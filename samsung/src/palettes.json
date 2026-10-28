@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "note": "Shared with Android: these numbers must equal preview/app/src/io/unifiedtv/preview/AmbientMesh.java (samsung/test/palettes.test.js fails if they drift). Colours are 0xAARRGGBB; x, y and r are fractions of the screen width/height; period is seconds; ax/ay are drift amplitudes.",
+  "palettes": {
+    "smartutube": {"base": "0xFF15171C", "accent": "0xFFE0303C", "lights": [
+      {"x": 0.16, "y": 0.8, "r": 0.42, "colour": "0xD8D42230", "period": 31, "phase": 0, "ax": 0.05, "ay": 0.03},
+      {"x": 0.38, "y": 0.56, "r": 0.3, "colour": "0x8CA01C2A", "period": 37, "phase": 1.7, "ax": 0.04, "ay": 0.05},
+      {"x": 0.7, "y": 0.22, "r": 0.34, "colour": "0x96B0202E", "period": 27, "phase": 3.1, "ax": 0.05, "ay": 0.03}
+    ]},
+    "netflix": {"base": "0xFF050203", "accent": "0xFFE50914", "lights": [
+      {"x": 0.42, "y": 0.44, "r": 0.4, "colour": "0xC0800A10", "period": 34, "phase": 0, "ax": 0.03, "ay": 0.03},
+      {"x": 0.66, "y": 0.3, "r": 0.28, "colour": "0x7A60080E", "period": 26, "phase": 2.2, "ax": 0.05, "ay": 0.04}
+    ]},
+    "disney": {"base": "0xFF080E2C", "accent": "0xFF2D6BE0", "lights": [
+      {"x": 0.32, "y": 0.34, "r": 0.4, "colour": "0xC02A3FB8", "period": 33, "phase": 0, "ax": 0.05, "ay": 0.03},
+      {"x": 0.66, "y": 0.28, "r": 0.38, "colour": "0xB03A6AD8", "period": 29, "phase": 2.4, "ax": 0.04, "ay": 0.05},
+      {"x": 0.5, "y": 0.48, "r": 0.3, "colour": "0x7A5A40C8", "period": 38, "phase": 4, "ax": 0.03, "ay": 0.03},
+      {"x": 0.36, "y": 0.7, "r": 0.22, "colour": "0x9C50D0F0", "period": 23, "phase": 1.1, "ax": 0.03, "ay": 0.02}
+    ]},
+    "bbc": {"base": "0xFF1A0A14", "accent": "0xFFD6336F", "lights": [
+      {"x": 0.46, "y": 0.18, "r": 0.42, "colour": "0xC0B83672", "period": 32, "phase": 0, "ax": 0.05, "ay": 0.03},
+      {"x": 0.3, "y": 0.6, "r": 0.32, "colour": "0xB4A8103F", "period": 27, "phase": 2, "ax": 0.04, "ay": 0.05},
+      {"x": 0.76, "y": 0.4, "r": 0.32, "colour": "0xA0C04478", "period": 36, "phase": 3.6, "ax": 0.05, "ay": 0.03}
+    ]},
+    "live": {"base": "0xFF100E26", "accent": "0xFF8A5CF0", "lights": [
+      {"x": 0.45, "y": 0.46, "r": 0.4, "colour": "0xA05A1AA0", "period": 35, "phase": 0, "ax": 0.04, "ay": 0.03},
+      {"x": 0.8, "y": 0.66, "r": 0.32, "colour": "0x905828C0", "period": 28, "phase": 2.6, "ax": 0.05, "ay": 0.04},
+      {"x": 0.2, "y": 0.3, "r": 0.28, "colour": "0x66302080", "period": 39, "phase": 4.4, "ax": 0.03, "ay": 0.03}
+    ]},
+    "music": {"base": "0xFF181216", "accent": "0xFFF0507A", "lights": [
+      {"x": 0.24, "y": 0.44, "r": 0.32, "colour": "0xB0E07E62", "period": 30, "phase": 0, "ax": 0.05, "ay": 0.05},
+      {"x": 0.76, "y": 0.34, "r": 0.32, "colour": "0xA8E58C68", "period": 26, "phase": 1.9, "ax": 0.05, "ay": 0.05},
+      {"x": 0.5, "y": 0.62, "r": 0.36, "colour": "0xB4E04A72", "period": 34, "phase": 3.3, "ax": 0.05, "ay": 0.03},
+      {"x": 0.56, "y": 0.86, "r": 0.26, "colour": "0x96F05062", "period": 22, "phase": 5, "ax": 0.04, "ay": 0.025}
+    ]},
+    "xbox": {"base": "0xFF07120A", "accent": "0xFF2CA243", "lights": [
+      {"x": 0.36, "y": 0.4, "r": 0.4, "colour": "0xA0167C2C", "period": 33, "phase": 0, "ax": 0.05, "ay": 0.03},
+      {"x": 0.72, "y": 0.62, "r": 0.3, "colour": "0x80309A48", "period": 27, "phase": 2.5, "ax": 0.04, "ay": 0.05}
+    ]},
+    "tvplus": {"base": "0xFF07101E", "accent": "0xFF3D7FE0", "lights": [
+      {"x": 0.4, "y": 0.4, "r": 0.4, "colour": "0xA0244E9C", "period": 32, "phase": 0, "ax": 0.05, "ay": 0.03},
+      {"x": 0.72, "y": 0.6, "r": 0.3, "colour": "0x80306CC0", "period": 28, "phase": 2.2, "ax": 0.04, "ay": 0.05}
+    ]}
+  },
+  "neutral": {"base": "0xFF0C121B", "accent": "0xFF7C93AE", "lights": [
+      {"x": 0.4, "y": 0.38, "r": 0.4, "colour": "0x8C3E536C", "period": 34, "phase": 0, "ax": 0.04, "ay": 0.03},
+      {"x": 0.74, "y": 0.64, "r": 0.3, "colour": "0x704A5E78", "period": 28, "phase": 2.4, "ax": 0.05, "ay": 0.04}
+    ]}
+}

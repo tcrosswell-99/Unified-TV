@@ -10,7 +10,7 @@ import javax.crypto.spec.PBEKeySpec;
 import android.util.Base64;
 
 final class EditLock {
-    static boolean child(Context c) { return c.getSharedPreferences("unified-tv-preview",0).getString("profile","adult").equals("child"); }
+    static boolean child(Context c) { return Profiles.kids(c); }
     static void ask(Activity a,Runnable success) {
         String saved=a.getSharedPreferences("unified-tv-preview",0).getString("pin","");
         if (saved.isEmpty()) { if (!child(a)) success.run(); return; }
@@ -34,7 +34,7 @@ final class EditLock {
     }
     static void set(Activity a) {
         EditText field=new EditText(a); field.setInputType(18); field.setHint("New PIN, at least 4 digits");
-        new AlertDialog.Builder(a).setTitle("Protect editing and adult profile").setView(field).setNegativeButton("Cancel",null)
+        new AlertDialog.Builder(a).setTitle("Protect editing and Adults").setView(field).setNegativeButton("Cancel",null)
             .setPositiveButton("Save",(d,w)->{
                 try {
                     String pin=field.getText().toString(); if (!pin.matches("[0-9]{4,12}")) throw new IllegalArgumentException();
