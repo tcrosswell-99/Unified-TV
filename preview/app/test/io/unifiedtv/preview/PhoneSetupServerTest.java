@@ -73,14 +73,26 @@ public class PhoneSetupServerTest {
         Reply ok = send("GET", tokenPath(), host(), null);
         assertEquals(200, ok.status); assertTrue(ok.body.contains("first page")); assertEquals(1, opened);
         assertTrue(ok.headers.get("content-security-policy").startsWith("default-src 'none'"));
-        assertEquals("no-referrer", ok.headers.get("referrer-policy")); assertEquals("no-store", ok.headers.get("cache-control"));
+        assertEquals("same-origin", ok.headers.get("referrer-policy")); assertEquals("no-store", ok.headers.get("cache-control"));
         assertEquals("DENY", ok.headers.get("x-frame-options")); assertEquals("close", ok.headers.get("connection"));
         assertEquals(404, send("GET", "/AAAAAAAAAAAAAAAAAAAAAA/", host(), null).status);
         assertEquals("a token prefix is not the token", 404, send("GET", tokenPath().substring(0, 10), host(), null).status);
         assertEquals(400, send("GET", tokenPath(), "evil.example:80", null).status);
         assertEquals("a foreign Origin can't post", 403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: http://evil.example").status);
+        assertEquals("Origin: null outside the session can't post", 403, send("POST", "/AAAAAAAAAAAAAAAAAAAAAA/save", host(), "ok=yes", "Origin: null").status);
         assertEquals(405, send("PUT", tokenPath(), host(), null).status);
         assertNull("nothing has ended", ended.get());
+    }
+
+    /** Owner's TCL, 28 Oct 2026: phones sent "Origin: null" (the old no-referrer policy) and every save said "Not allowed". */
+    @Test public void aPhonesNullOriginInsideTheSessionMayPost() throws Exception {
+        start(true);
+        assertNotEquals(403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: null").status);
+    }
+
+    @Test public void thisTvsOwnOriginMayPost() throws Exception {
+        start(true);
+        assertNotEquals(403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: http://" + host()).status);
     }
 
     @Test public void theShortAddressNeedsTheCodeAndFiveWrongCodesStopIt() throws Exception {

@@ -32,7 +32,7 @@ final class PhonePages {
     /** The page frame: title, then body HTML that the caller has already escaped. */
     static String page(String title, String body) {
         return "<!doctype html><html lang=\"en-GB\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-            + "<meta name=\"referrer\" content=\"no-referrer\"><title>" + esc(title) + " · Unified TV</title><style>" + STYLE + "</style></head><body><main><h1>"
+            + "<meta name=\"referrer\" content=\"same-origin\"><title>" + esc(title) + " · Unified TV</title><style>" + STYLE + "</style></head><body><main><h1>"
             + esc(title) + "</h1>" + body + "</main></body></html>";
     }
     static String message(String title, String text) { return page(title, text == null || text.isEmpty() ? "" : "<p>" + esc(text) + "</p>"); }

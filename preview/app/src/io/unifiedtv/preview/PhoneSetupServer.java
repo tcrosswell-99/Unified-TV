@@ -37,8 +37,8 @@ import java.util.function.Predicate;
  *     them the session ends. Requests are read one at a time with a short timeout and size limits (header 8 KB, body
  *     16 KB), so a slow or oversized client can't hold the TV.</li>
  * <li><b>No third-party resources and no script:</b> inline CSS only; Content-Security-Policy {@code default-src 'none'},
- *     no-store caching, no framing, and {@code Referrer-Policy: no-referrer} so the session path never leaks to the
- *     sign-up sites the page links to.</li>
+ *     no-store caching, no framing, and {@code Referrer-Policy: same-origin} (and {@code rel="noreferrer"} on every outside link) so the session
+ *     path never leaks to the sign-up sites the page links to, while the phone still names this TV as a form's Origin.</li>
  * <li><b>Files:</b> the settings backup (SET-081) is the only download, sent as an attachment under the same session path
  *     and headers; it never contains a secret (SettingsBackup). The only upload is that file back, as
  *     multipart/form-data within the same 16 KB body limit; the TV checks it and an adult confirms on the TV.</li>
@@ -182,7 +182,7 @@ final class PhoneSetupServer {
         if (!host(r.headers.getOrDefault("host", ""), bind, server.getLocalPort())) { write(out, Response.status(400, PhonePages.message("Wrong address", "Scan the code on the TV again."))); return false; }
         if (!"GET".equals(r.method) && !"POST".equals(r.method)) { write(out, Response.status(405, PhonePages.message("Not allowed", ""))); return false; }
         String origin = r.headers.get("origin");
-        if (r.post() && origin != null && !origin.equals(this.origin) && !(origin.regionMatches(true, 0, "http://", 0, 7) && host(origin.substring(7), bind, server.getLocalPort()))) { write(out, Response.status(403, PhonePages.message("Not allowed", ""))); return false; }
+        if (r.post() && !originAllowed(origin, r.path)) { write(out, Response.status(403, PhonePages.message("Not allowed", "Scan the code on the TV again and try once more."))); return false; }
         r.origin = this.origin; r.session = this.origin + "/" + token;
         if (r.path.equals("/favicon.ico")) { write(out, Response.status(404, "")); return false; }
         // The short typed address: the code shown on the TV, then on to the session's own pages.
@@ -209,6 +209,19 @@ final class PhoneSetupServer {
         if (response == null) response = Response.status(404, PhonePages.message("Page not found", ""));
         write(out, response);
         return response.success;
+    }
+
+    /**
+     * A form post's Origin (owner's TCL, 28 October 2026: every save from the phone said "Not allowed"). Browsers send
+     * {@code Origin: null} for a same-page form post when the page's referrer policy is {@code no-referrer}, which these
+     * pages used to send; pages now say {@code same-origin}, so the real origin comes back. Accepted: no Origin, this
+     * TV's own origin (Host rules), and {@code null} only on a path inside the session (the one-time secret in the path
+     * already proves the page came from this TV). Refused: any other site.
+     */
+    private boolean originAllowed(String origin, String path) {
+        if (origin == null || origin.equals(this.origin)) return true;
+        if (origin.trim().equalsIgnoreCase("null")) return token != null && path.length() > token.length() && same(path.substring(1, 1 + token.length()), token);
+        return origin.regionMatches(true, 0, "http://", 0, 7) && host(origin.substring(7), bind, server.getLocalPort());
     }
 
     /**
@@ -349,7 +362,7 @@ final class PhoneSetupServer {
         if (r.location != null) h.append("Location: ").append(r.location).append("\r\n");
         if (r.filename != null) h.append("Content-Disposition: attachment; filename=\"").append(r.filename).append("\"\r\n");
         h.append("Content-Type: ").append(r.type).append("\r\nContent-Length: ").append(body.length).append("\r\n")
-         .append("Cache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\n")
+         .append("Cache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: same-origin\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\n")
          .append("Content-Security-Policy: ").append(CSP).append("\r\nConnection: close\r\n\r\n");
         out.write(h.toString().getBytes(StandardCharsets.ISO_8859_1)); out.write(body); out.flush();
     }

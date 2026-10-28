@@ -74,6 +74,7 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **Phone setup said "Not allowed" for every save (owner's TCL, 28 October 2026):** the phone pages asked the browser to send no referrer, which makes phones mark their form posts "Origin: null", and the TV refused them. Pages now use a same-site referrer policy, and a null Origin is accepted only on the one-time session path. This affected the TMDB key, API-Football key and Home Assistant sign-in. **Not tested** on a television.
 - **Home Assistant sign-in (phone setup):** with NordVPN on, the TV's alerts and status checks now reach Home Assistant over the home network; phones are sent to Home Assistant's number address instead of `homeassistant.local`; a repeat attempt no longer fails to create the TV's key; every failure says which step failed, on the phone and on the TV, and Owner diagnostics shows the last one. **Not tested** on a television.
 - **Film posters:** a TMDB key added on the phone now takes effect without restarting; edition names, web-address prefixes and hyphen-joined names are cleaned before matching; the library says when no key is saved; Owner diagnostics has a Film posters section. **Not tested** on a television.
 
