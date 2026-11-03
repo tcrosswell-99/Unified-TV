@@ -61,6 +61,16 @@
     <!-- OD-26's safety net while Live TV that Unified TV opened is on: watches NordVPN through Android's network callback
          and, if it drops, covers Live TV with LiveTvCoverActivity. Not a kill switch. -->
     <service android:name=".LiveTvGuard" android:exported="false"/>
+    <!-- OD-29: Unified TV runs NordVPN itself. The VPN page (On/Off, country, connect at start) is the glass sidebar over a
+         still Home (OD-19); it opens from holding OK on Home's shield and from Settings. Not exported. -->
+    <activity android:name=".VpnActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
+    <!-- OD-29: the WireGuard tunnel library's own VPN service (com.wireguard.android:tunnel, preview/THIRD_PARTY.md). The
+         library's manifest declares it too; it is written here so the app's one VPN is visible in its own manifest. Only
+         Android can bind it (BIND_VPN_SERVICE), and it runs only after the household's consent (VpnService.prepare). -->
+    <service android:name="com.wireguard.android.backend.GoBackend$VpnService" android:exported="false"
+        android:permission="android.permission.BIND_VPN_SERVICE">
+      <intent-filter><action android:name="android.net.VpnService"/></intent-filter>
+    </service>
     <activity android:name=".LiveTvCoverActivity" android:exported="false" android:screenOrientation="landscape" android:excludeFromRecents="true"/>
     <!-- Notification access through the TV's debugging prompt, for TVs with no notification-access screen (the TCL):
          one allow_listener command for Unified TV's own MediaWatch, over the clean-up's session link. Adults only. -->

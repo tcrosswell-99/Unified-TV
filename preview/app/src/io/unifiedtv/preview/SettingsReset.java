@@ -26,7 +26,7 @@ final class SettingsReset {
      */
     static final String[][] CONNECTIONS={{"ha","Home Assistant"},{TmdbKey.VAULT,"the film poster key"},{ApiFootball.VAULT,"the football key"},
         {LibraryFolders.STORE,"your media server folders"},{KidsPolicy.STORE,"the Kids folders"},{"media-adult","the Adults media account"},{"media-child","the Kids media account"},
-        {"photos","photo folders"},{"gallery","Gallery pictures"}};
+        {"photos","photo folders"},{"gallery","Gallery pictures"},{OwnVpn.VAULT,"the NordVPN key"}};
 
     static final class Plan {
         final List<String> keys=new ArrayList<>(),changes=new ArrayList<>(),kept=new ArrayList<>();

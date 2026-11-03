@@ -16,8 +16,8 @@ import java.util.function.Consumer;
  * task "phone-" + its id.
  */
 final class PhoneService {
-    static final String HA = "ha", FOOTBALL = "football", TMDB = "tmdb", BACKUP = "backup", ASSISTANT = "assistant";
-    static final String[] IDS = {HA, FOOTBALL, TMDB, BACKUP, ASSISTANT};
+    static final String HA = "ha", FOOTBALL = "football", TMDB = "tmdb", BACKUP = "backup", ASSISTANT = "assistant", NORDLYNX = "nordlynx";
+    static final String[] IDS = {HA, FOOTBALL, TMDB, BACKUP, ASSISTANT, NORDLYNX};
     /**
      * API-Football (owner's sign-up on a phone, 25 October 2026): the key is at Account → My Access in the dashboard's
      * sidebar (behind ☰ on a phone), labelled API-KEY and masked until tapped. "Reset API key" does not show it.
@@ -57,6 +57,8 @@ final class PhoneService {
     final String id, name, title, tvIntro, phoneIntro, note, signup, signupLabel, next, tvDone, phoneDone;
     /** What the TV says when the service refused a request because of a VPN on the TV (Verdict.VPN); null for most. */
     String vpnWords;
+    /** What the TV and the phone say when the service refused what was pasted (Verdict.REFUSED); null for the usual words. */
+    String refusedTv, refusedPhone;
     final String[] tvSteps; final Step[] steps; final List<Field> fields; final Submit submit; final Custom custom;
 
     PhoneService(String id, String name, String title, String tvIntro, String[] tvSteps, String phoneIntro, Step[] steps, List<Field> fields, String note,
@@ -99,6 +101,12 @@ final class PhoneService {
                 null, null, "", "The settings file arrived. Check what would change below.", "Sent to the TV.", null,
                 (c, progress, background) -> new PhoneFlows.Backup(() -> SettingsBackup.export(c.getSharedPreferences(HouseholdSettings.PREFS, 0).getAll(), java.time.LocalDate.now().toString()),
                     SettingsBackup::offer, progress));
+            // OD-29: the NordVPN access token is checked once with NordVPN; only the NordLynx key it returns is kept (OwnVpn).
+            case NORDLYNX: return nordLynx(values -> {
+                NordLynx.KeyResult r = NordLynx.fetchKey(OwnVpn.http, values.get("key"));
+                if (r.verdict == PhoneFlows.Verdict.OK) OwnVpn.save(app, r.key);
+                return r.verdict;
+            });
             case ASSISTANT: return assistant(values -> {
                 String endpoint = Assistant.endpoint(values.get("endpoint"));
                 if (endpoint == null) return PhoneFlows.Verdict.REFUSED;
@@ -145,6 +153,32 @@ final class PhoneService {
             "This product uses the TMDB API but is not endorsed or certified by TMDB. Only film titles are sent to TMDB.",
             TMDB_SIGNUP, "TMDB sign-up page", "The TV checks the key with TMDB and saves it. Posters then appear in your library.",
             "Key saved. Film posters are on.", "Key saved. Film posters will appear in your library.", submit, null);
+    }
+    /** Nord Account, where the owner signs in and makes a NordVPN access token (NordVPN → Set up NordVPN manually). */
+    static final String NORD_ACCOUNT = "https://my.nordaccount.com/";
+    /**
+     * OD-29: NordVPN for Unified TV's own VPN. The owner makes an access token in Nord Account (NordVPN → Set up NordVPN
+     * manually → Generate new token) and pastes it on the phone. The TV asks NordVPN once, with that token, for the
+     * NordLynx (WireGuard) key and keeps only that key, encrypted; the token is not kept. NordVPN's API for this is
+     * unofficial (NordLynx), so the pages don't promise more than a check.
+     */
+    static PhoneService nordLynx(Submit submit) {
+        PhoneService s = new PhoneService(NORDLYNX, "NordVPN", OwnVpn.PHONE_TITLE,
+            "Unified TV can run NordVPN itself, so the shield on Home connects and disconnects with one press. It needs a NordVPN access token, pasted on your phone.",
+            new String[]{SCAN, "On your phone, tap Open Nord Account and sign in. Choose NordVPN, then Set up NordVPN manually, then Generate new token.",
+                "Copy the access token, come back to the setup page and paste it. The TV checks it with NordVPN and keeps only the VPN key it needs."},
+            "Unified TV can run NordVPN by itself, so one press on the TV's shield connects or disconnects. It needs an access token from your Nord Account. It takes about two minutes.",
+            new Step[]{new Step("Tap Open Nord Account and sign in with your NordVPN account. It opens in a new tab.", NORD_ACCOUNT, "Open Nord Account"),
+                new Step("Choose NordVPN, then Set up NordVPN manually. Nord Account may email you a code to confirm it's you."),
+                new Step("Under Access token, tap Generate new token. Choose how long it lasts (it is only used once, now), then copy it."),
+                new Step("Come back to this page, paste the token below and tap Save on the TV.")},
+            Collections.singletonList(Field.key("NordVPN access token", "[A-Za-z0-9._~+/=-]{20,512}", "a NordVPN access token")),
+            "The TV sends the token to NordVPN once, to get the VPN key for your account, and keeps only that key. The token itself is not kept.",
+            NORD_ACCOUNT, "Nord Account", "The TV checks the token with NordVPN and saves the VPN key. Then press the shield on Home to connect.",
+            "Saved. Press the shield on Home to connect.", "Saved on the TV. Press the shield on Home to connect.", submit, null);
+        s.refusedTv = "NordVPN didn't accept that token. Your phone shows what to try.";
+        s.refusedPhone = "NordVPN didn't accept that token. Generate a new token in Nord Account (NordVPN, Set up NordVPN manually), copy all of it and paste it again.";
+        return s;
     }
     /**
      * The household's own assistant relay (Assistant): its address and key, saved encrypted. NOT tested: the TV doesn't

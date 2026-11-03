@@ -7,12 +7,16 @@ import android.content.Intent;
 /**
  * OD-23, after the TV starts (launcher app only, declared in launcher/AndroidManifest.xml): when "Open Unified TV when the
  * TV turns on" is switched on and allowed, starts the small watcher, which counts the start as one wake. Otherwise it does
- * nothing at all. Only Android can send BOOT_COMPLETED (a protected broadcast), so no other app can trigger it.
+ * nothing at all. OD-29: "Connect when the TV turns on" (off by default) connects Unified TV's own VPN here too. Only
+ * Android can send BOOT_COMPLETED (a protected broadcast), so no other app can trigger it.
  * Module 03: no keys are read or reassigned here.
  */
 public final class TurnOnBoot extends BroadcastReceiver {
     @Override public void onReceive(Context c,Intent i){
         if(i==null||!Intent.ACTION_BOOT_COMPLETED.equals(i.getAction()))return;
         if(TurnOn.active(c))TurnOnService.start(c,TurnOnService.BOOT);
+        // OD-29: "Connect when the TV turns on" (off by default): Unified TV's own VPN connects, if Android's consent was
+        // given before. The receiver waits for the answer (goAsync), so the TV doesn't stop Unified TV half-way.
+        if(OwnVpn.atStart(c)){PendingResult waiting=goAsync();OwnVpn.boot(c,()->{try{waiting.finish();}catch(RuntimeException ignored){}});}
     }
 }

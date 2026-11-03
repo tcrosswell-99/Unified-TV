@@ -45,9 +45,14 @@ public final class UnifiedPreviewActivity extends Activity {
     private Preview surface;
     private android.net.ConnectivityManager.NetworkCallback vpnWatcher;
     @Override protected void onStart(){super.onStart();if(safe)return;LocalDiscovery.prefetch(this);AirPlayReceiver.now(this,()->{if(surface!=null)surface.postInvalidate();});VpnGate.invalidate();vpnWatcher=VpnGate.watch(this,()->{if(surface!=null)surface.invalidate();});VpnGate.listen(()->{if(surface!=null)surface.postInvalidate();});
+        OwnVpn.listen(ownVpn);   // OD-29: the shield follows Unified TV's own VPN at once; a failure is said in plain words
         getSharedPreferences(HouseholdSettings.PREFS,0).registerOnSharedPreferenceChangeListener(livePreview);
         TurnOn.sync(this);}   // OD-23: the "when the TV turns on" watcher follows its switch (and a permission given from a computer)
-    @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;VpnGate.listen(null);super.onStop();}
+    @Override protected void onStop(){getSharedPreferences(HouseholdSettings.PREFS,0).unregisterOnSharedPreferenceChangeListener(livePreview);VpnGate.unwatch(this,vpnWatcher);vpnWatcher=null;VpnGate.listen(null);OwnVpn.unlisten(ownVpn);super.onStop();}
+    private OwnVpn.Phase ownSeen=OwnVpn.Phase.OFF;
+    private final Runnable ownVpn=()->{if(surface==null)return;OwnVpn.Phase now=OwnVpn.phase();
+        if(now!=ownSeen&&now==OwnVpn.Phase.FAILED&&OwnVpn.problem()!=null)surface.say(OwnVpn.problem());
+        ownSeen=now;surface.refreshUtilities();surface.invalidate();};
     /**
      * SET-GLASS-09 / GLASS-04: Settings is a translucent sheet over Home, so Home is paused, not stopped, and stays on
      * screen. While Home can be seen (started), an appearance change saved by Settings (or by a timed preview going back)
@@ -209,7 +214,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private void utilities() {
             airPin = AirPlayReceiver.installed(activity);
             nordVpn = false; for (Item x : installed) if (LiveTvProtection.NORDVPN.equals(x.pkg)) nordVpn = true;
-            List<String> next = HomeUtilities.items(HomeUtilities.order(prefs.getString(HomeUtilities.PREF, "")), airPin != null, nordVpn);
+            // OD-29: the shield is there with NordVPN's app installed, or once Unified TV can run NordVPN itself.
+            List<String> next = HomeUtilities.items(HomeUtilities.order(prefs.getString(HomeUtilities.PREF, "")), airPin != null, nordVpn || OwnVpn.saved(activity));
             headerIndex = HomeUtilities.keep(pill, headerIndex, next); pill = next;
         }
         private String labels() { return DockLabels.value(prefs.getString(DockLabels.key(Profiles.current(prefs)), DockLabels.FOCUSED_ONLY)); }
@@ -272,7 +278,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private final Runnable hold = () -> {
             if (okDown && !held) {
                 held = true;
-                if (!header && index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menuNow = menuFor(dock.get(index)); menu = true; menuIndex = 0; invalidate(); }); }
+                if (header) { if (onShield()) VpnActivity.open(activity); return; }   // OD-29: hold OK on the shield: the VPN page
+                if (index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menuNow = menuFor(dock.get(index)); menu = true; menuIndex = 0; invalidate(); }); }
             }
         };
         private final Runnable clockTick = new Runnable() {
@@ -318,7 +325,7 @@ public final class UnifiedPreviewActivity extends Activity {
             android.view.accessibility.AccessibilityManager am = (android.view.accessibility.AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
             String words = title;
-            if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), VpnGate.statusLabel(VpnGate.current()), AirPlayReceiver.ready, AirPlayReceiver.checking()) + ". Press OK.";
+            if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), OwnVpn.shieldWords(), AirPlayReceiver.ready, AirPlayReceiver.checking()) + (onShield() ? ". Press OK to connect or disconnect; hold OK for the VPN page." : ". Press OK.");
             else if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
             else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
             if (words.equals(spoken)) return;
@@ -592,7 +599,7 @@ public final class UnifiedPreviewActivity extends Activity {
                     okDown = true;
                     held = false;
                     handler.removeCallbacks(hold);
-                    if (!moving && !menu && !shelf && !header) handler.postDelayed(hold, HOLD_MS);
+                    if (!moving && !menu && !shelf && (!header || onShield())) handler.postDelayed(hold, HOLD_MS);
                 } else if (!down) {
                     handler.removeCallbacks(hold);
                     if (okDown && !held && !e.isCanceled()) confirm();
@@ -620,6 +627,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 invalidate(); return true;
             }
             if (header) {
+                if (code == KeyEvent.KEYCODE_MENU && onShield()) { VpnActivity.open(activity); return true; }   // OD-29: Menu on the shield, as holding OK
                 if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_DOWN) { header = false; moved(); }
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     int next = HomeUtilities.step(headerIndex, code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1, pill.size());
@@ -716,12 +724,21 @@ public final class UnifiedPreviewActivity extends Activity {
             prefs.edit().putBoolean(BACK_HINT, true).apply(); info(STAYS_OPEN, 6000L);
         }
 
+        /** OD-29: focus is on the VPN shield in the top row. */
+        private boolean onShield() { return header && headerIndex >= 0 && headerIndex < pill.size() && HomeUtilities.VPN.equals(pill.get(headerIndex)); }
+        /** The flag beside the shield: Unified TV's own VPN's server country, else NordVPN's app's (from its notice). */
+        private String shieldCountry() { String own = OwnVpn.country(); return own != null ? own : OwnVpn.phase() == OwnVpn.Phase.OFF ? NordCountry.shown(NordCountry.code, VpnGate.current()) : null; }
+        /** OwnVpn's listener: a plain line under the header (a failure to connect). */
+        void say(String words) { info(words, 6000L); }
+        /** The pill again (the shield appears once a NordVPN key is saved). */
+        void refreshUtilities() { utilities(); }
         /** OK on a pill icon opens it directly (UX-UTILITY-03): AirPin LITE, NordVPN, voice, or Settings. */
         private void utility(String id) {
             switch (id) {
-                // Ready: the "how to connect" panel, AirPin not opened. Not ready: AirPin starts, and Home comes back (AirPlayStart).
+                // OD-30: a panel only, never AirPin. Ready: how to connect. Not ready: Check again or Start AirPin now (AirPlayStart).
                 case HomeUtilities.AIRPLAY: { String error = AirPlayStart.press(activity, airPin); if (error != null && !error.isEmpty()) info(error); break; }
-                case HomeUtilities.VPN: VpnGate.connect(activity); break;
+                // OD-29: one press connects or disconnects Unified TV's own VPN (no key yet: the phone step, said in one line).
+                case HomeUtilities.VPN: OwnVpn.press(activity); break;
                 case HomeUtilities.VOICE: activity.startActivity(new Intent(activity, VoiceActivity.class)); break;
                 default: {
                     Runnable open = () -> { settingsFromGear = true; activity.startActivity(new Intent(activity, SettingsActivity.class)); };
@@ -901,7 +918,7 @@ public final class UnifiedPreviewActivity extends Activity {
         /** The clock (household zone, the TV's 12/24-hour choice) and the utility pill (UX-UTILITY-01): text-free glyphs. */
         private void drawHeader(Canvas c) {
             text(c, java.time.ZonedDateTime.now(zone).format(clockFormat), 96, 142, 66, WHITE, false, Paint.Align.LEFT);
-            String vpnLabel = nordVpn ? VpnGate.label(activity) : "";   // keeps the VPN state fresh (sampled off the main thread)
+            String vpnLabel = pill.contains(HomeUtilities.VPN) ? VpnGate.label(activity) : "";   // keeps the VPN state fresh (sampled off the main thread)
             int n = pill.size(); if (n == 0) return;
             float right = 1817, left = right - (n * 96 + 32);
             glass(c, left, 62, right, 145, 30, 0x6A2B303B, 0x44FFFFFF);
@@ -916,17 +933,18 @@ public final class UnifiedPreviewActivity extends Activity {
                 }
                 switch (id) {
                     case HomeUtilities.AIRPLAY: airPlay(c, cx, cy); break;
-                    case HomeUtilities.VPN: shield(c, cx, cy, VpnGate.current()); flag(c, cx + 21, cy + 15, NordCountry.shown(NordCountry.code, VpnGate.current())); break;
+                    case HomeUtilities.VPN: shield(c, cx, cy, VpnGate.current()); flag(c, cx + 21, cy + 15, shieldCountry()); break;
                     case HomeUtilities.VOICE: microphone(c, cx, cy); break;
                     default: gear(c, cx, cy); break;
                 }
             }
             if (header && headerIndex >= 0 && headerIndex < n) {
                 // The short label sits outside the icon, under the pill, only while it has focus.
-                String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel, AirPlayReceiver.ready, AirPlayReceiver.checking());
+                String words = HomeUtilities.label(pill.get(headerIndex), vpnLabel.isEmpty() ? vpnLabel : OwnVpn.shieldWords(), AirPlayReceiver.ready, AirPlayReceiver.checking());
                 if (HomeUtilities.VOICE.equals(pill.get(headerIndex))) words = HomeUtilities.voiceLabel(prefs.getBoolean(Assistant.CONFIGURED, false));
                 String country = NordCountry.shown(NordCountry.code, VpnGate.current());
-                if (HomeUtilities.VPN.equals(pill.get(headerIndex)) && country != null) words += " · " + NordCountry.name(country);
+                // Unified TV's own VPN names its country itself (OwnVpn.shieldWords); NordVPN's app's comes from its notice.
+                if (HomeUtilities.VPN.equals(pill.get(headerIndex)) && country != null && OwnVpn.phase() == OwnVpn.Phase.OFF) words += " · " + NordCountry.name(country);
                 float cx = Math.min(left + 64 + headerIndex * 96, W - 80 - 6.5f * words.length());
                 text(c, words, cx, 186, 23, WHITE, false, Paint.Align.CENTER);
             }
@@ -958,7 +976,7 @@ public final class UnifiedPreviewActivity extends Activity {
         }
         private void shield(Canvas c, float cx, float cy, VpnGate.State state) {
             // One rule for the pill (HomeUtilities.vpnLook): off is as dim as AirPlay off, with a slash; on is bright, ticked.
-            HomeUtilities.Look look = HomeUtilities.vpnLook(state);
+            HomeUtilities.Look look = HomeUtilities.vpnLook(state, OwnVpn.phase());
             iconPaint(look.alpha, false);
             glyph.reset(); glyph.moveTo(cx, cy - 20); glyph.lineTo(cx + 16, cy - 14); glyph.lineTo(cx + 16, cy - 1);
             glyph.quadTo(cx + 15, cy + 14, cx, cy + 21); glyph.quadTo(cx - 15, cy + 14, cx - 16, cy - 1); glyph.lineTo(cx - 16, cy - 14); glyph.close();

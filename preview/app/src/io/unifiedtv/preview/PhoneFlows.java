@@ -371,8 +371,8 @@ final class PhoneFlows {
             try { v = service.submit.submit(values); } catch (Exception e) { v = Verdict.OFFLINE; }
             switch (v) {
                 case OK: return PhoneSetupServer.Response.done(PhonePages.done("Saved", service.phoneDone));
-                case REFUSED: progress.accept(service.name + " didn't accept that. Your phone shows what to try.");
-                    return PhoneSetupServer.Response.page(form(r, service.name + " didn't accept that. Check you copied all of it, and that your account is confirmed."));
+                case REFUSED: progress.accept(service.refusedTv != null ? service.refusedTv : service.name + " didn't accept that. Your phone shows what to try.");
+                    return PhoneSetupServer.Response.page(form(r, service.refusedPhone != null ? service.refusedPhone : service.name + " didn't accept that. Check you copied all of it, and that your account is confirmed."));
                 case VPN: progress.accept(service.vpnWords != null ? service.vpnWords : service.name + " refused the request because a VPN is on.");
                     return PhoneSetupServer.Response.page(form(r, service.name + " refused the TV's request because a VPN is on (on the TV, not your phone). Your key may be fine: see the TV for what to do."));
                 case BUSY: progress.accept(service.name + " is busy. Your phone shows what to try.");

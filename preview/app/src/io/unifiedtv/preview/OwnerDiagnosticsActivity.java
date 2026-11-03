@@ -63,6 +63,7 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
         group("VPN and Live TV");card();
         String live=LiveTvProtection.livePackage(this);
         text(OwnerChecks.liveTv(VpnGate.statusLabel(VpnGate.inspect(this)),VpnGate.routed(this),LiveTvProtection.now(this)),17);
+        text(OwnVpn.diagnostics(this),16);   // OD-29: Unified TV's own VPN, with no key, token or address
         LiveTvProtection.VpnApps vpnApps=LiveTvProtection.vpnAppsDetail(this);
         text(OwnerChecks.liveFacts(LiveTvProtection.read(this),vpnApps.counted,vpnApps.ignored,LiveTvGuard.running,LiveTvGuard.lastAction),16);
         text("Live TV app: "+(live.isEmpty()?"not identified":live)+". "+LiveTvProtection.NOT_A_KILL_SWITCH+" Only Android's always-on VPN with “block connections without VPN”, where it is set up, stops traffic when NordVPN drops; this page can't test that.",16);

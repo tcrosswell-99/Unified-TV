@@ -29,8 +29,9 @@ import static org.junit.Assert.*;
  *     ("NordVPN connected — opening Live TV"); if the household comes back first and the rule still refuses, the reason.</li>
  * <li>Notification access through the TV's debugging prompt: exactly one allow_listener command for Unified TV's own
  *     listener, checked with Android, the link closed, then the debugging-off check.</li>
- * <li>AirPlay: ready → the "how to connect" panel without opening AirPin; not ready → AirPin starts, and Unified TV comes
- *     back with the panel as soon as the service appears; never → the plain "didn't start", with Open AirPin.</li>
+ * <li>AirPlay (OD-30): the icon never opens AirPin. Ready → the "how to connect" panel; not ready → "AirPlay isn't running",
+ *     with Check again (looks in place) and Start AirPin now, the only way into AirPin: it starts, and Unified TV comes back
+ *     with the panel as soon as the service appears; never → the plain "didn't start". Settings says the same.</li>
  * </ul>
  * Both flavours run this class. Nothing here reads or consumes a key.
  */
@@ -172,26 +173,71 @@ public class RoundTripTest {
     }
     private static List<View> all(View v) { List<View> out = new ArrayList<>(); out.add(v); if (v instanceof ViewGroup) for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) out.addAll(all(((ViewGroup) v).getChildAt(i))); return out; }
 
-    // --- AirPlay
+    // --- AirPlay (OD-30: the icon never takes the household into AirPin)
+    private static Button firstButton(View v) { if (v instanceof Button && v.isShown()) return (Button) v; if (v instanceof ViewGroup) for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) { Button b = firstButton(((ViewGroup) v).getChildAt(i)); if (b != null) return b; } return null; }
     @Test public void airPlayReadyShowsHowToConnectAndOpensNothing() {
         install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
         AirPlayReceiver.ready = true; AirPlayReceiver.advertisedAs = "Living Room TV";
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
-            assertNull(AirPlayStart.press(a, AIRPIN));
+            assertNull(AirPlayStart.press(a, AIRPIN)); idle(10);
             assertNull("AirPin is not opened", Shadows.shadowOf(a).getNextStartedActivity());
+            assertNull(Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
             View s = sheet(); assertNotNull(s);
             assertTrue(words(s), words(s).contains("AirPlay is ready. On your iPhone or Mac, open Control Centre > Screen Mirroring (or the AirPlay button) and choose 'Living Room TV'."));
-            assertTrue(words(s).contains(AirPlayStart.TIP)); assertNotNull(find(s, "Open AirPin settings"));
+            assertTrue(words(s).contains(AirPlayStart.TIP)); assertNotNull(find(s, "Done"));
+            assertNull("no way into AirPin from the ready panel", find(s, "Open AirPin settings")); assertNull(find(s, AirPlayStart.START_NOW));
+            assertFalse(Comeback.armed()); assertFalse(AirPlayStart.watching());
         }
         assertTrue(AirPlayStart.readyWords("").endsWith("choose this TV."));
     }
-    @Test public void airPlayNotReadyStartsAirPinAndComesBackWhenItAppears() {
+    @Test public void airPlayNotReadyShowsThePanelAndOpensNothing() {
+        install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
+        int[] asked = {0}; AirPlayReceiver.probeForTests = c -> { asked[0]++; return "Living Room TV"; };
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
+            assertNull(AirPlayStart.press(a, AIRPIN)); idle(AirPlayStart.WINDOW_MS + 1000);
+            assertNull("AirPin is never opened by the icon", Shadows.shadowOf(a).getNextStartedActivity());
+            assertNull(Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
+            assertNotEquals(AirPlayStart.STARTING, ShadowToast.getTextOfLatestToast());
+            assertEquals("no look until the household asks for one", 0, asked[0]);
+            assertFalse(Comeback.armed()); assertFalse(AirPlayStart.watching());
+            View s = sheet(); assertNotNull(s);
+            assertTrue(words(s), words(s).contains("AirPlay isn't running. Turn on 'start at boot' (or 'run in background') in AirPin's settings once, and AirPlay will always be ready."));
+            Button again = firstButton(s); assertNotNull(again);
+            assertEquals("Check again comes first, with focus", AirPlayStart.CHECK_AGAIN, again.getText().toString()); assertTrue(again.isFocused());
+            assertNotNull(find(s, AirPlayStart.START_NOW)); assertNull(find(s, "Open AirPin"));
+        }
+    }
+    @Test public void checkAgainLooksInPlace() {
+        install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
+        String[] seen = {null}; String[] answer = {null}; int[] asked = {0};
+        AirPlayReceiver.probeForTests = c -> { asked[0]++; View s = sheet(); seen[0] = s == null ? null : words(s); return answer[0]; };
+        try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
+            Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
+            AirPlayStart.press(a, AIRPIN); idle(10);
+            Dialog panel = ShadowDialog.getLatestDialog();
+            find(sheet(), AirPlayStart.CHECK_AGAIN).performClick();
+            assertEquals("one look", 1, asked[0]); assertTrue(seen[0], seen[0].contains(AirPlayStart.CHECKING));
+            assertTrue("still looking until the answer is back on screen", AirPlayStart.checking());
+            idle(10);
+            assertFalse(AirPlayStart.checking()); assertSame("the same panel", panel, ShadowDialog.getLatestDialog()); assertTrue(panel.isShowing());
+            assertTrue(words(sheet()), words(sheet()).contains(AirPlayStart.STILL_NOT_RUNNING));
+            answer[0] = "Living Room TV";
+            find(sheet(), AirPlayStart.CHECK_AGAIN).performClick(); idle(10);
+            assertEquals(2, asked[0]); assertTrue(AirPlayReceiver.ready); assertFalse(panel.isShowing());
+            View s = sheet(); assertNotNull(s); assertTrue(words(s), words(s).contains("choose 'Living Room TV'")); assertNotNull(find(s, "Done"));
+            assertNull("checking never opens AirPin", Shadows.shadowOf(a).getNextStartedActivity());
+        }
+    }
+    @Test public void startAirPinNowStartsAirPinAndComesBackWhenItAppears() {
         install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
         int[] asked = {0}; AirPlayReceiver.probeForTests = c -> ++asked[0] < 3 ? null : "Living Room TV";
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
-            assertNull(AirPlayStart.press(a, AIRPIN));
+            assertNull(AirPlayStart.press(a, AIRPIN)); idle(10);
+            assertNull(Shadows.shadowOf(a).getNextStartedActivity());
+            find(sheet(), AirPlayStart.START_NOW).performClick();
             assertEquals(AirPlayStart.STARTING, ShadowToast.getTextOfLatestToast());
             assertTrue("AirPin starts", is(Shadows.shadowOf(a).getNextStartedActivity(), AIRPIN));
             c.pause(); idle(10);   // AirPin in front; the service appeared on the third look
@@ -202,20 +248,39 @@ public class RoundTripTest {
             View s = sheet(); assertNotNull(s); assertTrue(words(s), words(s).contains("choose 'Living Room TV'"));
         }
     }
-    @Test public void airPlayThatNeverStartsSaysSoPlainly() {
+    @Test public void startAirPinNowThatNeverStartsSaysSoPlainly() {
         install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
         int[] asked = {0}; AirPlayReceiver.probeForTests = c -> { asked[0]++; return null; };
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             Activity a = c.get(); Shadows.shadowOf(a).getNextStartedActivity();
-            AirPlayStart.press(a, AIRPIN); Shadows.shadowOf(a).getNextStartedActivity(); c.pause(); idle(10);
+            AirPlayStart.press(a, AIRPIN); idle(10); find(sheet(), AirPlayStart.START_NOW).performClick();
+            Shadows.shadowOf(a).getNextStartedActivity(); c.pause(); idle(10);
             // Review: never pulled out of AirPin's own prompts, or another app, when AirPlay didn't start.
             assertNull("nothing brought forward", Shadows.shadowOf((android.app.Application) app()).getNextStartedActivity());
             assertTrue("it waits for the household to come back", Comeback.armed());
             c.resume(); idle(10);
             assertTrue("a bounded number of looks", asked[0] <= AirPlayStart.ATTEMPTS && asked[0] > 0);
             View s = sheet(); assertNotNull(s); assertTrue(words(s), words(s).contains(AirPlayStart.NOT_STARTED));
-            Button open = find(s, "Open AirPin"); assertNotNull(open); open.performClick();
+            assertNotNull(find(s, AirPlayStart.CHECK_AGAIN));
+            Button start = find(s, AirPlayStart.START_NOW); assertNotNull(start); start.performClick();
             assertTrue(is(Shadows.shadowOf(a).getNextStartedActivity(), AIRPIN));
+        }
+    }
+    @Test public void settingsAirPlaySaysTheSameAndChecksAgain() {
+        install(AIRPIN, AIRPIN + ".MainActivity", "AirPin LITE");
+        AirPlayReceiver.probeForTests = c -> "Living Room TV";
+        try (ActivityController<SettingsActivity> c = Robolectric.buildActivity(SettingsActivity.class).setup()) {
+            SettingsActivity a = c.get(); View root = a.getWindow().getDecorView();
+            Button row = null; for (View v : all(root)) if (v instanceof Button && ((Button) v).getText().toString().startsWith("Connections & Devices")) row = (Button) v;
+            assertNotNull(row); row.performClick(); idle(500);
+            String w = words(root);
+            assertTrue(w, w.contains(AirPlayStart.NOT_RUNNING)); assertTrue(w.contains(AirPlayStart.HOW_TO));
+            // AirPlay's own Check again: the one just above Open AirPin LITE (Connections has another, for the network).
+            Button again = null; for (View v : all(root)) { if (v instanceof Button && ((Button) v).getText().toString().equals("Open AirPin LITE")) break; if (v instanceof Button && ((Button) v).getText().toString().equals(AirPlayStart.CHECK_AGAIN)) again = (Button) v; }
+            assertNotNull(again); again.performClick(); idle(500);
+            w = words(root);
+            assertTrue(w, w.contains(AirPlayStart.readyWords("Living Room TV"))); assertFalse(w.contains(AirPlayStart.NOT_RUNNING));
+            assertNull("checking opens nothing", Shadows.shadowOf(a).getNextStartedActivity());
         }
     }
     // --- review: a closed screen is never reopened, and each trip delivers only its own step

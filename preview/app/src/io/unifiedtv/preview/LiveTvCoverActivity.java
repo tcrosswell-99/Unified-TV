@@ -58,7 +58,9 @@ public final class LiveTvCoverActivity extends Activity {
         more.setText(back?LiveTvProtection.COVERS+" "+LiveTvProtection.NOT_A_KILL_SWITCH:LiveTvProtection.NOT_A_KILL_SWITCH);
         if(back&&!live.isEmpty()){
             primary.setText("Watch Live TV");primary.setOnClickListener(v->{String why=Launch.open(this,live,"Live TV");if(why==null)finish();else if(!why.isEmpty())more.setText(why);});
-        }else{primary.setText("Reconnect");primary.setOnClickListener(v->{reconnecting=true;VpnGate.connect(this);});}
+        }else{primary.setText("Reconnect");primary.setOnClickListener(v->{reconnecting=true;
+            // OD-29: Unified TV's own VPN reconnects here, without leaving the cover; otherwise NordVPN's app opens.
+            if(OwnVpn.saved(this)){reconnecting=false;OwnVpn.turnOn(this,ok->refresh());}else VpnGate.connect(this);});}
         primary.requestFocus();
     }
     /** Unified TV's Home, never Live TV uncovered underneath. */

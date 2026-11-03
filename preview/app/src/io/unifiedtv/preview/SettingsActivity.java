@@ -38,6 +38,8 @@ public final class SettingsActivity extends Screen {
      *  picker and household setup. All inside this sheet: no setup screen is a full-screen page (OD-19). */
     static final String PHONE_HA="phone-"+PhoneService.HA,PHONE_FOOTBALL="phone-"+PhoneService.FOOTBALL,PHONE_TMDB="phone-"+PhoneService.TMDB,
         HA_ADVANCED="ha-advanced",TEAM="team",HOUSEHOLD="household";
+    /** OD-29: the NordVPN access token for Unified TV's own VPN, on the phone (Live TV & Network Protection). */
+    static final String PHONE_NORDLYNX="phone-"+PhoneService.NORDLYNX;
     /** Privacy & Data tasks: the event log (SET-055) and settings backup on the phone (SET-081). */
     static final String EVENTS="events",PHONE_BACKUP="phone-"+PhoneService.BACKUP;
     /** Tests only: whether Home Assistant counts as set up (the Vault needs Android's keystore, which tests don't have). */
@@ -503,6 +505,14 @@ public final class SettingsActivity extends Screen {
         text(live.isEmpty()?"No single Live TV app was recognised on this TV.":"Live TV app: "+live,15);
         button("Check again",()->{VpnGate.invalidate();show(LIVE_TV);});
         button("NordVPN",()->VpnGate.show(this));
+        // OD-29: Unified TV runs NordVPN itself. The same page as holding OK on Home's shield (VpnActivity, the glass sidebar).
+        section("Unified TV's VPN");
+        boolean key=OwnVpn.saved(this);
+        text(key?OwnVpn.status(this):"Unified TV can run NordVPN itself, so one press on Home's shield connects or disconnects. It needs a NordVPN access token, added on your phone.",16);
+        if(key)chevron(button("VPN: "+(OwnVpn.on()?"On":"Off")+" · "+OwnVpn.countryWords(OwnVpn.chosen(this)),()->startActivity(new Intent(this,VpnActivity.class))));
+        else chevron(button("Add your NordVPN token on your phone",()->EditLock.ask(this,()->expandTask(PHONE_NORDLYNX))));
+        text(OwnVpn.LAN,15);
+        section("About Live TV and the VPN");
         // NordVPN's own "Connected" notice (MediaWatch, NordCountry): only the country flag beside the shield; Live TV doesn't need it.
         if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this)){
             text("Allow notification access to show the country NordVPN is connected to, as a small flag beside the shield on Home. Live TV doesn't need it. The same access makes Now Playing work for Amazon Music.",15);
@@ -563,13 +573,17 @@ public final class SettingsActivity extends Screen {
         if(DefaultHome.available(this))button(HomeTakeoverActivity.RETURN_TITLE,()->HomeTakeoverActivity.open(this,false));   // OD-28, asks the PIN itself
         if(DefaultHome.available(this)){Button original=button("Open original TV interface",()->EditLock.ask(this,this::original));original.setTextSize(TypedValue.COMPLEX_UNIT_PX,textPx(21));original.setMinHeight(0);original.setMinimumHeight(px(52));original.setAlpha(.85f);}
     }
-    /** Spec 7.1: AirPlay through AirPin LITE. Setup happens in AirPin itself; Unified TV only reports what it can confirm. */
+    /**
+     * Spec 7.1, OD-30: AirPlay through AirPin LITE. Setup happens in AirPin itself (its own start-at-boot setting); Unified TV
+     * only reports what it can confirm, in the same words as Home's AirPlay panel. Check again looks in place.
+     */
     private void airPlay(){
         String pkg=AirPlayReceiver.installed(this);
         if(pkg==null){text("AirPlay from iPhone: install AirPin LITE from the TV's app store to receive AirPlay.",16);return;}
-        text(AirPlayReceiver.ready?"AirPlay from iPhone: ready"+(AirPlayReceiver.advertisedAs.isEmpty()?".":", shown on iPhones as \""+AirPlayReceiver.advertisedAs+"\"."):"AirPlay from iPhone: AirPin LITE is installed but isn't offering AirPlay on the network right now. Open it once, and check its own setting to start with the TV.",16);
+        text(AirPlayStart.checking()?AirPlayStart.CHECKING:AirPlayReceiver.ready?AirPlayStart.readyWords(AirPlayReceiver.advertisedAs):AirPlayStart.NOT_RUNNING,16);
+        button(AirPlayStart.CHECK_AGAIN,()->{if(AirPlayStart.check(this,()->{if(on(CONNECTIONS,null))refresh();}))refresh();});
         button("Open AirPin LITE",()->{String error=Launch.open(this,pkg,"AirPin LITE");if(error!=null&&!error.isEmpty())note(error);});
-        text(AirPlayStart.TIP,15);
+        text(AirPlayStart.HOW_TO,15);
     }
     /**
      * Spec 33: Settings → Appearance → Wallpaper. Artwork is bundled; the clock follows the picture (OD-03, OD-04). My Photos

@@ -47,6 +47,7 @@ final class SetupPages {
     static int category(String task, int current) {
         if (SettingsActivity.PHONE_TMDB.equals(task)) return SettingsActivity.LIBRARY;
         if (SettingsActivity.PHONE_BACKUP.equals(task)) return SettingsActivity.PRIVACY;
+        if (SettingsActivity.PHONE_NORDLYNX.equals(task)) return SettingsActivity.LIVE_TV;
         if ((SettingsActivity.HOUSEHOLD.equals(task) || SettingsActivity.PHONE_HA.equals(task)) && current == SettingsActivity.NOTIFICATIONS) return current;
         return SettingsActivity.SMART_HOME;
     }
@@ -244,13 +245,15 @@ final class SetupPages {
             TextView under = a.text(OPENS, 17); under.setGravity(Gravity.CENTER_HORIZONTAL);
             a.text(fallback(phone.origin(), phone.code()), 14).setTypeface(Typeface.MONOSPACE);
             // Owner's TCL, 25 October 2026: with NordVPN connected, the phone may not reach the TV at all.
-            if (VpnGate.tunnel(a)) a.text(VPN_HINT, 15);
+            // Unified TV's own VPN (OD-29) leaves the home network out of the tunnel, so the hint is only for another app's.
+            if (VpnGate.tunnel(a) && !OwnVpn.on()) a.text(VPN_HINT, 15);
         }
         phoneStatus = a.text(phone.status(), 19); phoneStatus.setFocusable(false);
         if (phone.succeeded()) {
             // SET-081: the phone sent a settings file; the TV shows what would change, and only an adult applies it.
             if (PhoneService.BACKUP.equals(kind)) { a.privacy().incoming(); return; }
             if (PhoneSetup.FOOTBALL.equals(kind)) a.button("Choose your team", () -> a.expandTask(SettingsActivity.TEAM));
+            if (PhoneService.NORDLYNX.equals(kind)) a.button("Connect now", () -> OwnVpn.turnOn(a, ok -> a.refresh()));
             a.button("Done", a::back);
             return;
         }
@@ -258,6 +261,8 @@ final class SetupPages {
         else a.button("Cancel", a::back);
         if (PhoneSetup.TMDB.equals(kind) && TmdbKey.saved(a)) a.button("Remove the film poster key", () -> new AlertDialog.Builder(a).setTitle("Remove the film poster key?")
             .setMessage("Film posters and details stop updating. Posters already shown may stay until the library refreshes.").setPositiveButton("Remove", (d, w) -> { TmdbKey.forget(a); a.note("Film poster key removed."); a.refresh(); }).setNegativeButton("Cancel", null).show());
+        if (PhoneService.NORDLYNX.equals(kind) && OwnVpn.saved(a)) a.button("Forget the NordVPN key", () -> new AlertDialog.Builder(a).setTitle("Forget the NordVPN key?")
+            .setMessage("Unified TV's VPN turns off and the key is removed from this TV. NordVPN's own app is not affected.").setPositiveButton("Forget", (d, w) -> { OwnVpn.forget(a); a.note("NordVPN key forgotten."); a.refresh(); }).setNegativeButton("Cancel", null).show());
         if (PhoneService.ASSISTANT.equals(kind) && Assistant.configured(a)) a.button("Remove the assistant details", () -> new AlertDialog.Builder(a).setTitle("Remove the assistant details?")
             .setMessage("Ask your TV keeps opening apps and finding films.").setPositiveButton("Remove", (d, w) -> { Assistant.forget(a); a.note("Assistant details removed."); a.refresh(); }).setNegativeButton("Cancel", null).show());
         if (live) a.text("Your phone needs to be on the same home network as this TV. This code works for 10 minutes, once.", 15);

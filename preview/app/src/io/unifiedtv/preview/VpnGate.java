@@ -69,6 +69,8 @@ final class VpnGate {
         return why==null;
     }
     static final String TRY_AGAIN="Try again",RECHECKING="Checking…";
+    /** OD-29: Live TV locked while Unified TV could run the VPN itself. */
+    static final String OWN_LOCKED="Live TV is locked. Press Connect to turn on Unified TV's VPN.";
     /** How long "Checking…" stays on the sheet before the fresh answer, so a press of Try again visibly re-checks. */
     static final long RECHECK_MS=500;
     static void show(Activity a){show(a,null,null);}
@@ -84,7 +86,11 @@ final class VpnGate {
         LiveTvProtection.State now=LiveTvProtection.now(a);
         java.util.List<String> names=new java.util.ArrayList<>();java.util.List<Runnable> actions=new java.util.ArrayList<>();
         Dialog[] dialog=new Dialog[1];TextView[] state=new TextView[1];
-        names.add("Connect");actions.add(()->{dialog[0].dismiss();if(connect(a)&&livePkg!=null)NordConnect.after(a,livePkg,label);});
+        // OD-29: with a NordVPN key saved, Connect turns on Unified TV's own VPN, then Live TV opens through the same gate.
+        boolean own=OwnVpn.saved(a);
+        names.add("Connect");actions.add(()->{dialog[0].dismiss();
+            if(own)OwnVpn.turnOn(a,ok->{if(ok&&livePkg!=null)NordConnect.open(a,livePkg,label);});
+            else if(connect(a)&&livePkg!=null)NordConnect.after(a,livePkg,label);});
         names.add(TRY_AGAIN);actions.add(()->{TextView words=state[0];if(words==null)return;
             invalidate();words.setText(RECHECKING);
             words.postDelayed(()->{if(!dialog[0].isShowing())return;
@@ -92,7 +98,7 @@ final class VpnGate {
                 if(LiveTvProtection.opens(again)&&retry!=null){dialog[0].dismiss();retry.run();}
                 else words.setText(statusLabel(inspect(a))+" · "+LiveTvProtection.message(again));},RECHECK_MS);});
         names.add("Cancel");actions.add(()->dialog[0].dismiss());
-        dialog[0]=sheet(a,"Live TV",LiveTvProtection.message(now),names,actions,state);
+        dialog[0]=sheet(a,"Live TV",own&&(now==LiveTvProtection.State.DISCONNECTED||now==LiveTvProtection.State.NO_NORDVPN)?OWN_LOCKED:LiveTvProtection.message(now),names,actions,state);
     }
     /**
      * A small glass sheet at the bottom of the screen (the Live TV sheet, AirPlay's panel): a title, plain words and its

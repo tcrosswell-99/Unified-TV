@@ -77,6 +77,16 @@ final class HomeUtilities {
         boolean bright(){return alpha==BRIGHT;}
         @Override public String toString(){return alpha+"/"+mark;}
     }
+    /**
+     * OD-29: with Unified TV's own VPN: connecting is a dim shield with a dot; on is bright and ticked; a failure is dim with
+     * the slash. Otherwise what Android reports, as before.
+     */
+    static Look vpnLook(VpnGate.State state,OwnVpn.Phase own){
+        if(own==OwnVpn.Phase.CONNECTING)return new Look(DIM,Mark.DOT);
+        if(own==OwnVpn.Phase.ON)return new Look(BRIGHT,Mark.TICK);
+        if(own==OwnVpn.Phase.FAILED&&state!=VpnGate.State.CONNECTED)return new Look(DIM,Mark.OFF);
+        return vpnLook(state);
+    }
     /** The VPN shield: bright with a tick only while Android reports a VPN; otherwise dim, with a slash when it is off. */
     static Look vpnLook(VpnGate.State state){
         if(state==VpnGate.State.CONNECTED)return new Look(BRIGHT,Mark.TICK);

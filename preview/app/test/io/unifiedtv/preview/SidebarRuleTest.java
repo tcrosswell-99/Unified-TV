@@ -50,7 +50,8 @@ public class SidebarRuleTest {
         "PictureFixActivity",        // Your Films & TV > hold OK > Wrong picture?: choosing a title's poster (SET-034)
         "QuickConnectActivity",      // signing in with your phone
         "RemoteCheckActivity",       // Check your remote's buttons
-        "ServiceDiscoveryActivity"));// finding the media server on the home network
+        "ServiceDiscoveryActivity",  // finding the media server on the home network
+        "VpnActivity"));             // OD-29: Unified TV's own VPN (On/Off, country, connect at start), from the shield or Settings
 
     /** Settings that draw the module 13 sheet themselves, or have no page at all; still the sidebar theme. */
     static final Set<String> OWN_SHEET=new TreeSet<>(Arrays.asList(

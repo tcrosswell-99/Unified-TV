@@ -15,6 +15,8 @@ One rule (`LiveTvProtection`) decides for every route into Live TV: the dock til
 1. **Android reports a VPN** on any network (the VPN transport, whether Android has validated it or not); and
 2. **NordVPN is installed** on the TV.
 
+Or: **Unified TV's own NordVPN tunnel is up** ([OD-29](#unified-tvs-own-vpn-od-29)). Unified TV knows that exactly, and it is NordVPN's service, so it opens Live TV with or without NordVPN's app.
+
 Nothing else decides. Other apps that can run a VPN, a system VPN service with no app to open (such as a data saver), notification access and NordVPN's own notification are shown in Owner diagnostics as information only; none of them keeps Live TV locked. When Unified TV may read NordVPN's notification (notification access the household allowed), it only changes the words: "NordVPN is connected to *<country>*" instead of "A VPN is connected", and the flag beside the shield. It never refuses Live TV, even when it says "Disconnected" while Android still reports a VPN.
 
 | What Unified TV reads | Live TV | What the household sees |
@@ -60,11 +62,48 @@ It stops when the Live TV session is over: a Unified TV screen other than the no
 
 **This isn't a kill switch.** If NordVPN drops, Android doesn't block Live TV's connection, and Unified TV can't: an ordinary app can't see or stop another app's traffic. In the second or two before the notice appears, and for as long as Live TV keeps streaming behind it (its sound may carry on until Live TV pauses itself), Live TV's traffic can leave outside the VPN. Settings > Live TV & Network Protection says so in those words. Nothing in Unified TV calls this protection, "verified" or a kill switch.
 
+## Unified TV's own VPN (OD-29)
+
+**Owner decision, 3 November 2026: "Unified TV runs the VPN itself."** NordVPN's Android TV app has no way for another app to connect or disconnect it, so the shield on Home could only open NordVPN. Unified TV now runs its own WireGuard tunnel to NordVPN's NordLynx servers, using the official WireGuard tunnel library for Android (`com.wireguard.android:tunnel` 1.0.20260102, Apache-2.0, see [preview/THIRD_PARTY.md](../preview/THIRD_PARTY.md)). **Not tested on a TV.**
+
+### Setting it up (on the phone, OD-17)
+
+Settings > Live TV & Network Protection > **Add your NordVPN token on your phone** (or press the shield on Home before a key is saved). The phone page says: sign in at [Nord Account](https://my.nordaccount.com/), choose **NordVPN**, then **Set up NordVPN manually**, then **Generate new token**, copy the access token and paste it. The TV sends that token once, as HTTP Basic auth with the user name `token`, to `https://api.nordvpn.com/v1/users/services/credentials`, and keeps only the `nordlynx_private_key` from the answer, encrypted in the Vault (`nordlynx`). The token itself is not kept. If NordVPN says no (401 or 403), the phone and the TV say "NordVPN didn't accept that token". Neither the token nor the key is ever logged, shown, put in the event log or Owner diagnostics, exported or backed up. **Forget the NordVPN key** is on the VPN page, the phone page and Privacy & Data; "Reset Unified TV settings" with "Also forget connections and keys" forgets it too.
+
+### Using it
+
+- **OK on the shield** connects or disconnects. While connecting the shield is dim with a dot ("Connecting…"); when on it is bright with a tick and the flag of the server's country; if it fails, a plain message says why and the shield stays dim.
+- **Hold OK (or press Menu) on the shield** opens the VPN page, the glass sidebar over Home (OD-19): **VPN** On/Off, **Country** (flags; **Fastest**, NordVPN's own recommendation, by default; kept on the TV), **Connect when the TV turns on** (off by default; the Unified TV app only, as it is told when the TV starts), **Use NordVPN's own app instead**, and the server and the time it connected. Settings > Live TV & Network Protection opens the same page.
+- **Android's consent.** The first connection needs Android's own VPN permission (a system dialog, one OK). Unified TV explains it in plain words first.
+- **One VPN at a time.** Android allows one VPN. Connecting Unified TV's replaces NordVPN's own app's connection (said once); using NordVPN's app later takes it back, and Unified TV's stays off (it never fights for it; Android may ask for its permission again next time). The shield's words say whose VPN is on: "Unified TV", "NordVPN's app" (when its notice says so) or "another app".
+- **Kids:** an adult turns it on or off; Kids sees the state only.
+
+### What it builds
+
+| Setting | Value | Where it comes from |
+| --- | --- | --- |
+| Servers | NordVPN's recommended NordLynx servers: `GET /v1/servers/recommendations?filters[servers_technologies][identifier]=wireguard_udp&filters[country_id]=<id>&limit=5` | NordVPN's own Linux app (`nordvpn-linux`, package `core`) and community guides |
+| Countries | `GET /v1/servers/countries` (id, name, code; kept for a week) | as above |
+| Server key | `technologies[]` entry `wireguard_udp`, `metadata[]` entry `public_key` | community guides (bluewalk's NordVPN WireGuard gist and its comments) |
+| Endpoint | the server's `station` address (its `hostname` if none), port 51820 | WireGuard's port; every guide |
+| Interface address | 10.5.0.2/32 | every guide; **assumed** to be the same for every account |
+| DNS | 103.86.96.100, 103.86.99.100 | NordVPN's support pages list these as its DNS servers |
+| Keepalive | 25 seconds | every guide; WireGuard sends it, Unified TV doesn't poll |
+| Allowed IPs | all IPv4 and IPv6 except 10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4, ::1/128, fc00::/7, fe80::/10, ff00::/8 | Unified TV: the home network (NAS, Home Assistant, AirPlay, DLNA and mDNS discovery, the phone setup page) never enters the tunnel. IPv6 internet traffic is routed into the tunnel too; NordLynx gives the TV no IPv6 address, so it is **assumed** not to get through at all rather than leak |
+| MTU | the library's default (1280) | **assumed**; NordLynx guides often use 1420 |
+
+**Unofficial.** NordVPN does not publish this API for other apps. It may change without notice; then the TV says it couldn't reach NordVPN or got no server, and NordVPN's own app still works.
+
+**Coming back by itself, with no polling.** While the household wants it on, one Android network callback watches for a network: if the tunnel couldn't connect (the TV was offline, say), it tries once when a network arrives. A running tunnel carries on across a network change by itself (WireGuard). "Connect when the TV turns on" connects after Android's "the TV has started", only if Android's permission was given before. If the owner makes Unified TV the TV's always-on VPN in Android's own settings, Android starts the tunnel itself and Unified TV connects it.
+
+**Live TV.** Unified TV's own tunnel counts as a VPN connected. Unified TV knows its state exactly, so when it drops, the safety net looks again at once and covers Live TV (the cover's **Reconnect** reconnects Unified TV's VPN without leaving the cover). **It is still not a kill switch:** if the tunnel drops, Android doesn't block Live TV's traffic, unless the owner sets **Unified TV** as the TV's always-on VPN with **Block connections without VPN** (as described below for NordVPN; `vpn_check.py lockdown` sets NordVPN's app, so for Unified TV choose it in the TV's VPN settings where they exist).
+
 ## Limits
 
 - **Whose VPN.** By the owner's choice (3 November 2026) the rule doesn't ask whose VPN is up: any VPN Android reports opens Live TV while NordVPN is installed, including another app's VPN, a system VPN service, or a VPN Android hasn't validated yet. If another VPN is connected instead of NordVPN, Live TV opens all the same, and nothing says where its traffic goes. Owner diagnostics lists the VPN apps and NordVPN's notice so the owner can see which it is likely to be.
 - **Split tunnelling.** NordVPN connected does not prove Live TV's own traffic goes through it. If NordVPN is set to leave Live TV out, Live TV opens unprotected. Keep split tunnelling off, or Live TV not excluded.
 - **Seeing Live TV leave.** Without the Kids app guard's accessibility service, Unified TV can't tell that Live TV has left the front for another app or the TV's own Home. A drop in the first 15 minutes may still show the notice over another app the owner switched to; after 15 minutes only the notification is used, so a drop while Live TV is still on is no longer covered.
+- **Unified TV's own VPN (OD-29).** Uses NordVPN's unofficial API, which may change; the interface address and MTU are assumed; not tested on a TV, with NordVPN's service, or with the WireGuard library on the TCL or Sony.
 - **Firmware.** Not tested on any TV yet (see [COMPATIBILITY.md](COMPATIBILITY.md)). Android TV may not show heads-up notifications, so without "Display over other apps" the notice may only appear in the TV's notification list.
 - **Samsung (Tizen)** has no equivalent, and needs its own strategy.
 

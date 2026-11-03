@@ -31,9 +31,11 @@ final class PrivacyPage {
         item("Photo copies for the Wallpaper: "+PrivacyData.size(photos),photos>0&&!kids,()->confirm("Delete photo copies?","Copies of your photos kept for when the NAS is off are deleted. Your photos on the NAS are not touched.",()->PrivacyData.clearPhotos(a),"Photo copies deleted."));
         a.text("Doorbell camera pictures are never saved. The live view is shown and then gone.",15);
         a.section("Connected services");
-        a.text("Home Assistant: "+(SetupPages.haSaved(a)?"connected":"not set up")+" · Film posters: "+(TmdbKey.saved(a)?"key saved":"not set up")+" · Football: "+(FixtureFeed.listed(a)?"TheSportsDB, no account":FixtureFeed.team(a)!=null?"your calendar":"no team")+(FixtureFeed.apiConfigured(a)?", API-Football key saved":"")+" · Media server: "+(MediaSources.library(a).ready?"set up":"not set up"),16);
+        a.text("Home Assistant: "+(SetupPages.haSaved(a)?"connected":"not set up")+" · Film posters: "+(TmdbKey.saved(a)?"key saved":"not set up")+" · Football: "+(FixtureFeed.listed(a)?"TheSportsDB, no account":FixtureFeed.team(a)!=null?"your calendar":"no team")+(FixtureFeed.apiConfigured(a)?", API-Football key saved":"")+" · Media server: "+(MediaSources.library(a).ready?"set up":"not set up")+" · NordVPN key: "+(OwnVpn.saved(a)?"saved":"not set up"),16);
         a.text("Keys and sign-ins are encrypted on this TV and never shown, exported or backed up. Remove each one where it is set up.",15);
         if(!kids)a.chevron(a.button("Manage Home Assistant and football",()->a.show(SettingsActivity.SMART_HOME)));
+        // OD-29: Unified TV's own VPN key can be forgotten here as well as on the VPN page.
+        if(!kids&&OwnVpn.saved(a))a.button("Forget the NordVPN key",()->confirm("Forget the NordVPN key?","Unified TV's VPN turns off and its NordVPN key is removed from this TV. NordVPN's own app is not affected.",()->OwnVpn.forget(a),"NordVPN key forgotten."));
         a.section("Event log");
         int events=EventLog.recent(a).size();
         a.taskRow("Event log: "+(EventLog.on(a)?PrivacyData.count(events,"event","events"):"off"),SettingsActivity.EVENTS,false,null);
@@ -76,7 +78,7 @@ final class PrivacyPage {
     }
     private void apply(SettingsReset.Plan plan,boolean forget){
         SharedPreferences.Editor e=prefs().edit();for(String k:plan.keys)e.remove(k);e.remove(SettingsSchema.LIVE_PROTECTION).commit();
-        if(forget){Vault v=new Vault(a);for(String[] c:SettingsReset.CONNECTIONS)v.forget(c[0]);
+        if(forget){if(OwnVpn.saved(a))OwnVpn.forget(a);Vault v=new Vault(a);for(String[] c:SettingsReset.CONNECTIONS)v.forget(c[0]);
             try{a.stopService(new android.content.Intent(a,HouseholdService.class));}catch(RuntimeException ignored){}
             LibraryIndex.clear(a);EventLog.record(a,EventLog.CONNECTION,"Connections and keys forgotten by a reset");}
         EventLog.record(a,EventLog.SETTINGS,"Unified TV settings reset");
