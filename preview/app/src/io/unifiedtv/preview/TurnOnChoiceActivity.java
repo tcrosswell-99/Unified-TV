@@ -12,7 +12,8 @@ import android.widget.Button;
  * the three options of {@link TurnOnChoice}, the true one ticked, each with one plain line; then the Home button's own
  * rows, which now live only here: what the Home button opens, Android's own Home choice (spec 29.3, "Make Unified TV the
  * Home screen") and Return to the original TV interface (OD-28; also in Updates &amp; About &gt; Advanced and on Home's
- * safe screen). Choosing 1 or 2 asks the adult PIN; option 3 and Return ask it themselves.
+ * safe screen). Choosing 1 or 2 asks the adult PIN; option 3 and Return ask it themselves. Last, OD-31's Remote button
+ * that opens Unified TV ({@link RemoteButton.Page}): every change there asks the adult PIN too.
  */
 public final class TurnOnChoiceActivity extends GlassScreen {
     static final String ANDROID_CHOICE = "Make Unified TV the Home screen";
@@ -20,6 +21,15 @@ public final class TurnOnChoiceActivity extends GlassScreen {
     static final String PREVIEW_WORDS = "This is the Unified TV preview. It never changes what the TV shows when it turns on; the separate Unified TV app can.";
 
     private TurnOnChoice.Flow flow;
+    /** OD-31: the remote button that opens Unified TV (its own group on this page). */
+    private RemoteButton.Page button;
+    /** Optional: open with focus on the remote button's rows (Appearance & Home's row for it). */
+    static final String BUTTON = "remoteButton";
+    static void openButton(Context c) {
+        Intent i = new Intent(c, TurnOnChoiceActivity.class).putExtra(BUTTON, true);
+        if (!(c instanceof android.app.Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+    }
     /** Android's own Home choice was asked: what it recorded is read when the household comes back. */
     private boolean homeAsked;
 
@@ -29,9 +39,24 @@ public final class TurnOnChoiceActivity extends GlassScreen {
         c.startActivity(i);
     }
 
+    /** Optional: the option to choose as soon as the page shows (only {@link TurnOnChoice.Option#QUICK}). */
+    static final String CHOOSE = "choose";
+    /**
+     * The page with option 2 chosen for the household, as if pressed (its adult PIN and "Display over other apps" check as
+     * usual): from the Home takeover when this TV keeps its own Home (owner's Sony, 3 November 2026). An open page is
+     * brought back rather than stacked.
+     */
+    static void open(Context c, TurnOnChoice.Option choose) {
+        Intent i = new Intent(c, TurnOnChoiceActivity.class).putExtra(CHOOSE, choose.name()).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        if (!(c instanceof android.app.Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+    }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         flow = new TurnOnChoice.Flow(this, this::show);
+        button = new RemoteButton.Page(this, this::show);
         if (!TurnOnChoice.offered(this)) { page(TurnOnChoice.TITLE, "Appearance & Home"); card(); text(PREVIEW_WORDS, 18); button("Back", this::finish); }
     }
     /** Drawn on every return: back from the takeover, Return, the PIN or Android's own screens, it shows what is true now. */
@@ -40,7 +65,13 @@ public final class TurnOnChoiceActivity extends GlassScreen {
         if (isFinishing() || !TurnOnChoice.offered(this)) return;
         if (homeAsked) homeChecked();
         flow.resumed();
+        button.resumed();
         show();
+        String pick = getIntent().getStringExtra(CHOOSE);
+        if (pick != null) {
+            getIntent().removeExtra(CHOOSE);   // once: coming back to the page doesn't choose again
+            if (TurnOnChoice.Option.QUICK.name().equals(pick)) flow.choose(TurnOnChoice.Option.QUICK);
+        }
     }
     TurnOnChoice.Flow flow() { return flow; }
 
@@ -58,8 +89,19 @@ public final class TurnOnChoiceActivity extends GlassScreen {
         if (!ours && !kept && !off) { row(ANDROID_CHOICE, null, false, () -> EditLock.ask(this, this::homeSetup)); text(ANDROID_NOTE, 15); }
         if (ours || off || DefaultHome.offered(this)) row(HomeTakeoverActivity.RETURN_TITLE, null, false, () -> HomeTakeoverActivity.open(this, false));
         if (off) text(HomeTakeoverActivity.REVIEW_BUILD_WORDS, 15);
-        if (ticked != null) focusOn(ticked);
+        // OD-31: the remote button that opens Unified TV.
+        Button chooseRow = button.rows();
+        if (getIntent().getBooleanExtra(BUTTON, false) && chooseRow != null) { getIntent().removeExtra(BUTTON); focusOn(chooseRow); }
+        else if (!button.listening() && ticked != null) focusOn(ticked);
     }
+    RemoteButton.Page button() { return button; }
+    /** While the page is choosing a button, every press comes here first (Back stops). */
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        if (button != null && button.onKey(e)) return true;
+        return super.dispatchKeyEvent(e);
+    }
+    /** Leaving the page always ends a choice under way. */
+    @Override protected void onPause() { if (button != null) button.paused(); super.onPause(); }
 
     /** Spec 28.3 onboarding, as it was in Appearance & Home: explain, let Android ask, then confirm what actually happened. */
     private void homeSetup() {

@@ -74,7 +74,7 @@ $tv = "<the TV's address>:5555"
    If it fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE ... signatures do not match`, that is expected: each GitHub build signs the review build with a new temporary test key, so one review build cannot update another (seen on the TCL, 25 October 2026). Remove only the review build, using the command under "To remove the review build" below, then run this step again without `-r`. This clears only the review build's own settings; the preview and the TV's own Home are untouched. Settings surviving an update can only be tested with the launcher signed with your own key ([SIGNING.md](SIGNING.md)).
 5. **Repeat step 3.** **Expected:** the same versionName and firstInstallTime: the preview was not touched.
 6. **Press Home on the remote.** **Expected:** the TV's own Home appears; installing changed nothing.
-7. **Work through the checks** in [PREVIEW_0_5_TESTS.md](PREVIEW_0_5_TESTS.md): Home, Films & TV, Apps, NAS playback, and the alarm test under Settings → Notifications → Doorbell, reminders & room setup.
+7. **Work through the checks** in [PREVIEW_0_5_TESTS.md](PREVIEW_0_5_TESTS.md): Home, Films & TV, Apps, NAS playback, and the alarm test under Settings → Notifications & Doorbell → Doorbell, alarms & this TV (see [Ring doorbell, alarms and this TV](#ring-doorbell-alarms-and-this-tv-settings--notifications--doorbell)).
 
 **To remove the review build** (only the review build; never the preview):
 
@@ -141,6 +141,28 @@ Report the model, firmware, build, what each step said and how long each wake to
 
 Report the model, firmware, build, what each step said, the PC output, and anything on the remote that stopped working. Unified TV never reads or reassigns any key, and never turns off anything except the TV's own Home.
 
+### On the Sony BRAVIA 4K UR2 (no tested list yet)
+
+Your report of 3 November 2026 (review build run 106, Android TV 10, `QTG3.200305.006.S97`): after **Allow USB debugging?** the page waited without end. No tested list covers this Sony, so Unified TV now **never turns anything off on it**: it can only ask Android to use Unified TV as Home, which changes no other app and is fully undone by **Return to the original TV interface**. **Not tested on the Sony yet.**
+
+1. **Debugging:** on the Sony, Settings → Device Preferences → About → press OK on **Build** seven times; then Settings → Device Preferences → Developer options → turn on **USB debugging** (and **Network debugging**, if your Sony lists it).
+2. **Before:** from the PC, write down the firmware, the Home and the disabled list:
+
+   ```powershell
+   & "$HOME\platform-tools\adb.exe" -s $tv shell getprop ro.build.fingerprint
+   & "$HOME\platform-tools\adb.exe" -s $tv shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+   & "$HOME\platform-tools\adb.exe" -s $tv shell pm list packages -d
+   ```
+
+3. **Start:** Settings → Appearance & Home → **When the TV turns on** → **Make Unified TV the TV's Home (instant)**, PIN. Expected, before any debugging prompt, one of:
+   - *This TV keeps its own Home. Use 'Open Unified TV (quick)' instead.* (Android lists the Sony's own Home ahead of other Home screens, so Android's own choice can't change the Home button). Nothing was opened or changed. Note what the line above it names, then try **Try anyway** once, so we learn what the Sony really does.
+   - *This TV hasn't been tested yet. Unified TV can ask Android to use it as Home without turning anything off. If the TV's own Home still wins, it will say so and change nothing.* Choose **Start**.
+4. **Allow:** if the Sony asks **Allow USB debugging?** for `unifiedtv@tv`, the page says *Waiting for you to choose Allow on the TV…*; tick **Always allow** and choose **OK** within a minute. **Back** on the remote cancels at any time while it waits.
+5. **Result:** within about a minute, never more than two, the page says either *Unified TV is the Home screen* (then **Next**, the debugging-off check, **Next: try the Home button** and press Home within 20 seconds), or *This TV keeps its own Home. Use 'Open Unified TV (quick)' instead.* Write down exactly what it says. If it stops with a problem instead, it names the step (for example *The TV didn't answer the debugging link*); write that down too.
+6. **Steps:** Settings → Updates & About → Advanced → **Owner diagnostics** → **Debugging link**: copy *Last debugging-link step* and the list under it (times and steps only; no key, token or output).
+7. **Nothing turned off:** run the last command of step 2 again; the disabled list must be the same as before.
+8. **Option 2:** if the Sony keeps its own Home, choose **Use Open Unified TV (quick)**. Expected: the When the TV turns on page with **Open Unified TV (quick)** ticked (and Android's "Display over other apps" asked for, if it isn't allowed yet). Then put the Sony in standby and wake it: note how long the Sony's own Home shows before Unified TV.
+
 ## Open Unified TV when the TV turns on (launcher app, OD-23)
 
 For a TV that keeps its own Home button. In the launcher app: **Settings → Appearance & Home → When the TV turns on → Open Unified TV (quick)** (adult PIN; see the section above). It is off by default, and not needed once the Home button opens Unified TV (option 3 then has the tick). The Home button still opens the TV's own Home; nothing reads or reassigns a key.
@@ -154,6 +176,40 @@ It needs Android's **Display over other apps** permission, used only to bring Un
 To take the permission away again: the same command with `default` instead of `allow`. Choosing **Show the TV's own Home** stops the small watcher.
 
 On the TCL, with it switched on, record for each case which screen appears and after how long: (1) standby with the remote, wait 10 seconds, wake; (2) the same from inside Netflix, paused; (3) start a video, put the TV in standby and wake it: if the video is still playing, Unified TV should stay out of the way; (4) a full power cycle at the wall; (5) waking the TV by turning on a device on HDMI (HDMI-CEC), and with the TV set to start on its last input or on its own Live TV. Android does not tell apps the TV woke into another input, so in (5) Unified TV may come to the front over that input: say if it does. Also say if the TV's own Home appears on top of Unified TV a moment later, and send `adb shell dumpsys meminfo io.unifiedtv.launcher` after a day with it on.
+
+## Remote button that opens Unified TV (launcher app, OD-31)
+
+**Not tested on a TV yet.** The owner asked (3 November 2026): "On the Sony, pressing the remote's TV button should turn the TV on if it's asleep and then open Unified TV." It is offered on any TV, the TCL included. In the launcher app: **Settings → Appearance & Home → Remote button that opens Unified TV** opens **When the TV turns on** at the button's rows. Off by default; every change asks the adult PIN.
+
+It works through a separate accessibility service, **Unified TV remote button**, that you switch on in the TV's own settings. Android shows a warning when you do: Unified TV only reacts to the one button you chose; it doesn't read the screen or other keys. Every other button keeps working as before.
+
+On the Sony (BRAVIA 4K UR2, Android TV 10):
+
+1. **Choose the button:** press **Use the TV button (suggested)** and type the PIN. Or press **Choose a button by pressing it**, then the button: *Press the button you want to use…*; Back, the arrows, OK, volume, power, numbers and play/pause are refused with a reason. Expected: the row shows **TV** (or the button's name). If pressing the TV button switches the TV to its own Live TV instead, the TV keeps that button from apps until step 3 is done: do step 3, then choose again.
+2. **Switch it on:** **Open Unified TV with this button**, PIN. Expected: *Unified TV remote button* opens with the steps and what Android's warning means.
+3. **Android's switch:** press **Open the TV's accessibility settings**, then **Device Preferences → Accessibility → Unified TV remote button**, switch it on and confirm Android's warning, then Back. Expected: *Switched on ✓ Unified TV remote button is on.* and the row **Android's accessibility switch** says *Switched on ✓*. If the TV has no such screen, the page shows the computer line below.
+4. **Awake:** from the TV's own Home, Live TV, Netflix (paused) and YouTube, press the TV button. Expected: Unified TV's Home straight away, and the TV's own Live TV doesn't open. Then check that nothing else changed: volume (pressed and held), mute, Back, the arrows, OK, Home, numbers, channels, play/pause inside an app, and the voice button.
+5. **Inside Unified TV:** in Settings, press the TV button: Home. With a film playing in Unified TV's player: nothing happens and the film keeps playing (Back or Stop return as usual).
+6. **From standby:** put the TV in standby, wait 10 seconds, press the TV button. Record whether the TV wakes, what shows first and for how long (the TV's own Live TV may show for a moment), and whether Unified TV then comes to the front. Then wake it with the Power button: Unified TV comes to the front then too, because Android doesn't tell apps which button woke the TV (the page says so).
+7. **Off again:** switch **Open Unified TV with this button** off. Expected: the TV button does what it did before. To remove the service altogether, switch **Unified TV remote button** off in the TV's accessibility settings.
+8. **Kids:** in Kids, the TV button still opens Unified TV; changing anything asks the adult PIN.
+
+The computer alternative to step 3 (the page shows the same as one line). It **adds** the service to Android's list instead of replacing it, so the Kids guard and any other accessibility service stay on:
+
+```powershell
+$adb = "$HOME\platform-tools\adb.exe"
+$me = "io.unifiedtv.launcher/io.unifiedtv.preview.ButtonService"
+$cur = (& $adb -s $tv shell settings get secure enabled_accessibility_services | Out-String).Trim()
+if ($cur -eq "" -or $cur -eq "null") { $new = $me } elseif ($cur -like "*$me*") { $new = $cur } else { $new = "${cur}:${me}" }
+& $adb -s $tv shell settings put secure enabled_accessibility_services "$new"
+& $adb -s $tv shell settings put secure accessibility_enabled 1
+```
+
+For the review build the package is `io.unifiedtv.launcher.devicecheck` (the class name stays `io.unifiedtv.preview.ButtonService`). `adb shell input keyevent` does not go through accessibility services, so only the real remote tests this.
+
+On the TCL, do steps 1 to 8 as well, and also hold Volume up and Volume down with the option on: on some TCL Google TV builds any service that filters keys stops volume repeating while held (docs/devices/tcl-55p71b-g09-key-repeat.md). Unified TV asks Android for keys only while the option is on, so switching it off should bring repeat back. After restarting the TV at the wall, check the row still says *Switched on ✓* and the button still works.
+
+Report the model, firmware, build, the button's name as the page showed it, what each step did and how long the TV's own Live TV showed, and anything on the remote that stopped working.
 
 ## Fetching the Wallpaper artwork
 
@@ -245,6 +301,19 @@ Report the model, firmware, build and each step's result. Never include the toke
 8. **AirPlay (AirPin LITE), OD-30:** first, in AirPin LITE's own settings, turn on **start at boot** (or **run in background**) once. With AirPlay ready (bright icon), OK on the AirPlay icon shows a small panel, "AirPlay is ready. On your iPhone or Mac, open Control Centre > Screen Mirroring … and choose '<name>'", with **Done**; AirPin does not open. Force-stop AirPin so the icon is dim with a slash, then press OK: a panel says "AirPlay isn't running. Turn on 'start at boot' …", with **Check again** focused and **Start AirPin now**; AirPin must **not** open. Press **Check again**: "Checking…" for a few seconds, then "AirPlay still isn't running …" (or the ready panel, if AirPin came back by itself). Press **Start AirPin now**: "Starting AirPlay…", AirPin opens briefly, and Unified TV comes back by itself with the ready panel. Say how long AirPin stayed on screen, and whether your iPhone then sees the TV. If AirPlay never appears, Unified TV leaves you in AirPin (it never pulls you out of AirPin's own prompts or another app); when you come back to Home, the panel says "AirPlay didn't start…". Finally restart the TV, wait a minute and say whether the icon is bright without opening AirPin (AirPin's start-at-boot working). Settings > Connections & Devices > AirPlay should say the same, with **Check again** and a short how-to.
 
 Report the model, firmware, build and each step's result.
+
+## Ring doorbell, alarms and this TV (Settings > Notifications & Doorbell)
+
+Nothing needs setting up in Home Assistant beyond the Ring integration itself: no automation, no script. Unified TV listens to Home Assistant directly. **Not tested with a real Ring yet**, so please report each step.
+
+1. **Ring in Home Assistant:** in Home Assistant, Settings > Devices & services should list **Ring** with your doorbell. If not, add it there (Settings > Devices & services > Add integration > Ring) and sign in with your Ring account.
+2. **The page:** on the TV, Settings > Notifications & Doorbell > **Doorbell, alarms & this TV** (adult PIN). The top card should say "Home Assistant is connected. When someone rings Front Door, this TV shows who's there. Nothing else to set up in Home Assistant." (with your doorbell's name). If it says "No Ring doorbell found in Home Assistant…" or "Home Assistant knows … but isn't hearing from Ring right now", note the exact words and check step 1.
+3. **Doorbell rows:** *Doorbell press* and *Picture* should show your doorbell with a tick (for example "Picture: Front Door live view ✓"); *Motion at the door (optional)* says Off. Open *Doorbell press*: the list replaces the page inside the same sidebar (nothing behind it), your doorbell is under **Ring doorbells** with a tick, and no Echo or "Amazon Kids" items appear. **Show everything** lists the rest, with their technical names in smaller type. Back returns to the page with *Doorbell press* in focus.
+4. **Test the doorbell:** the card that a real ring brings up appears in the lower right, marked TEST, with your doorbell's name. Say whether the live picture appeared, or "Live view unavailable", and how long it took. Back closes it.
+5. **A real ring:** with Unified TV on screen (and once while playing something), press the doorbell. Expected: the same card without TEST, within a few seconds. Say how long it took, and whether it appeared once or twice (some Ring models send two alerts per ring). Leaving and reopening Unified TV, or restarting Home Assistant, should never bring up an old ring.
+6. **Motion (optional):** choose *Motion at the door*, pick your doorbell's motion, and walk past the doorbell. Expected: a small "Movement at Front Door" notice for about 5 seconds, no camera. Set it back to Off if you'd rather not have it.
+7. **Smoke and carbon monoxide:** the row says "On — found N alarms in Home Assistant" with their names below. **Test the alarm screen** shows the full alarm screen marked TEST; **End the alarm test** clears it.
+8. **Xbox (optional, Sony):** *Turn on the Xbox from this TV* lists Home Assistant scripts, scenes and buttons with Xbox ones first. Pick the one that turns your Xbox on, then choose Xbox on Home and say whether it switched on.
 
 ## Live TV protection check (Android's own block, optional)
 

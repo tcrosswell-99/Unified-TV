@@ -254,14 +254,14 @@ public class SettingsJourneyTest {
             SettingsActivity a=controller.get();
             assertEquals(SettingsOverlay.Phase.TASK,a.overlay().page());assertEquals(SettingsActivity.HOUSEHOLD,a.overlay().task());assertEquals(SettingsActivity.NOTIFICATIONS,a.overlay().category());
             assertEquals("Doorbell, alarms & this TV",title(a));
-            assertNotNull(find(root(a),"This TV: TCL"));assertNotNull(find(root(a),"Doorbell button: none chosen"));
+            assertNotNull(find(root(a),"This TV: TCL"));assertNotNull(find(root(a),"Doorbell press: "+HouseholdPage.NOT_SET));
             for(String frame:new String[]{"Request native Frame Art Mode","Samsung TV Plus script","Art Mode return script","Doorbell entry script","Doorbell return script"})assertNull(frame,find(root(a),frame));
-            assertFalse(anyText(root(a),"Samsung"));assertNull("Xbox is the Sony's",find(root(a),"Turn on the Xbox: none chosen"));
+            assertFalse(anyText(root(a),"Samsung"));assertNull("Xbox is the Sony's",find(root(a),"Turn on the Xbox from this TV: "+HouseholdPage.XBOX_NOT_SET));
             for(String jargon:new String[]{"binary sensor","entity","owner script","HDMI","Experimental","APK","Tizen"})assertFalse(jargon,anyText(root(a),jargon));
             a.onBackPressed();idle();assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());assertEquals(SettingsActivity.NOTIFICATIONS,a.overlay().category());
         }
         prefs().edit().putString("room","sony").commit();
-        try(var controller=Robolectric.buildActivity(SettingsActivity.class,intent).setup()){assertNotNull(find(root(controller.get()),"Turn on the Xbox: none chosen"));}
+        try(var controller=Robolectric.buildActivity(SettingsActivity.class,intent).setup()){assertNotNull(find(root(controller.get()),"Turn on the Xbox from this TV: "+HouseholdPage.XBOX_NOT_SET));}
     }
     // The older entries hand over to the sheet: no full-screen setup page is left for Home Assistant.
     @Test public void olderEntriesOpenTheSheet(){

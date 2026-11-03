@@ -73,9 +73,19 @@ public final class DlnaLibraryActivity extends Screen {
         calm=prefs.getBoolean("reduceMotion",false)||!android.animation.ValueAnimator.areAnimatorsEnabled();
         light=prefs.getBoolean("lightweight",false)||((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).isLowRamDevice();
         posters=Posters.get(this);   // whether there is a key is read off the main thread (onResume), never per focus move
-        lib=LibraryFolders.library(this);udn=lib.udn();collector=LibraryCollector.get(this);
+        collector=LibraryCollector.get(this);
         LibraryCollector.Status was=collector.status();finishedPass=was.scanning()?was.pass-1:was.pass;
-        frame();keyHint();
+        frame();keyHint();opening();
+        // Owner's Sony, build run 106: the screen "locked the TV" while the library was being checked. The folders (an
+        // encrypted record) and the saved list are read on the worker; until then a skeleton row and Back are on screen,
+        // so the remote always has somewhere to go.
+        android.content.Context app=getApplicationContext();
+        try{quick.execute(()->{LibraryFolders.Library l=LibraryFolders.library(app);handler.post(()->opened(l,kids,in));});}catch(RuntimeException ignored){/* closing */}
+    }
+    /** The folders have been read (on the worker): the not-set-up page, or the rows from the saved list. */
+    private void opened(LibraryFolders.Library l,boolean kids,Intent in){
+        if(isFinishing()||isDestroyed())return;
+        lib=l;udn=lib.udn();keyHint();
         if(kids&&!lib.ready){message(KidsPolicy.ASK_ADULT,"An adult chooses the folders for Kids in the Adults profile.",null,null);return;}
         if(!lib.ready){message("Your Films & TV isn't set up yet.","Unified TV finds the media server on your home network. Choose the folders that hold your films and programmes.","Set up Your Films & TV",this::setup);return;}
         String search=in.getStringExtra("search");
@@ -83,15 +93,34 @@ public final class DlnaLibraryActivity extends Screen {
         // Home's row opens a programme straight at its seasons; Back then shows the rows.
         String showKey=in.getStringExtra("show");if(showKey!=null&&!showKey.isEmpty())stack.push(new Place(Kind.SHOW,"",null,showKey));
         if(search!=null&&!search.trim().isEmpty()){Place p=new Place(Kind.SEARCH,"Search",null,null);p.query=search.trim();stack.push(p);}
-        load();
+        load();readKey();
     }
+    /** A brief skeleton while the saved list is read: a row of empty glass tiles and Back (focus is never lost). */
+    private void opening(){
+        area.removeAllViews();
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setTag("skeleton");row.setPadding(px(8),px(14),0,px(20));
+        for(int i=0;i<6;i++){View tile=new View(this);GradientDrawable g=new GradientDrawable();g.setColor(0x1FFFFFFF);g.setCornerRadius(px(16));tile.setBackground(g);
+            tile.setFocusable(false);tile.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(tile,tileParams());}
+        box.addView(row);
+        Button back=pill("Back",this::finish);box.addView(back,new LinearLayout.LayoutParams(-2,-2));
+        area.addView(box);back.requestFocus();
+    }
+    /** For tests: whether the skeleton is showing. */
+    boolean skeleton(){return area!=null&&area.findViewWithTag("skeleton")!=null;}
     @Override protected void onRestart(){super.onRestart();if(cat!=null&&lib!=null&&lib.ready)again();}   // Continue Watching may have changed
     /** Back from "Wrong picture?" (a sidebar: this screen was only paused): the tiles and background ask for the chosen picture. */
     @Override protected void onResume(){super.onResume();
         if(fixing!=null&&cat!=null){fixing=null;handler.removeCallbacks(backdropLater);toBack(null,"");refreshPage();return;}
         // A key added (or changed) while this screen was away, perhaps by phone setup: every tile asks again. The key is in
         // the Keystore-backed Vault, so it is read on the worker, never on the main thread.
-        if(posters==null||lib==null)return;Posters p=posters;
+        if(posters==null||lib==null)return;
+        readKey();
+        // The job may have finished (or stopped) while this screen was away: its line is read again, never left as it was.
+        collectorChanged();
+    }
+    private void readKey(){
+        Posters p=posters;if(p==null)return;
         try{quick.execute(()->{boolean changed=p.refreshKey(),on=p.usable();handler.post(()->keyRead(changed,on));});}catch(RuntimeException ignored){/* closing */}
     }
     private void keyRead(boolean changed,boolean on){
@@ -216,7 +245,7 @@ public final class DlnaLibraryActivity extends Screen {
         if(isFinishing()||isDestroyed()||lib==null||!lib.ready)return;
         LibraryCollector.Status s=collector.status();
         if(firstLoad)loading(s.found);
-        else setStatus(s.busy(),s.busy()?s.line():s.stale&&s.phase!=LibraryCollector.Phase.IDLE?"Showing your saved list. Some folders didn't answer.":"");
+        else setStatus(s.moving(),s.busy()?s.line():s.stale&&s.phase!=LibraryCollector.Phase.IDLE?"Showing your saved list. Some folders didn't answer.":"");
         long now=android.os.SystemClock.uptimeMillis();
         if(s.scanning()&&s.found>0&&s.found!=shownFound&&(cat==null||now-rebuiltAt>=REBUILD_MS)){shownFound=s.found;rebuiltAt=now;rebuild(false);}
         if(!s.scanning()&&s.pass>finishedPass){finishedPass=s.pass;finished(s);}
@@ -237,7 +266,7 @@ public final class DlnaLibraryActivity extends Screen {
             LibraryCatalogue.Catalogue built=index.size()>0||last?build(index):null;
             handler.post(()->{if(mine!=generation||isFinishing()||built==null)return;
                 LibraryCatalogue.Catalogue old=cat;cat=built;
-                if(old==null||firstLoad){firstLoad=false;topBar();show();LibraryCollector.Status s=collector.status();setStatus(s.busy(),s.busy()?s.line():"");}
+                if(old==null||firstLoad){firstLoad=false;topBar();show();LibraryCollector.Status s=collector.status();setStatus(s.moving(),s.busy()?s.line():"");}
                 else if(changed(old,built)&&page()!=Kind.SEARCH)refreshPage();   // never under someone typing a search
             });});
     }

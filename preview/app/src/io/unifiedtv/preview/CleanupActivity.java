@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.widget.Button;
@@ -71,6 +73,8 @@ public final class CleanupActivity extends GlassScreen {
         + "turned off here. The apps Unified TV turned off earlier can still be turned back on below. " + UNKNOWN_ADVICE;
 
     private ExecutorService worker;
+    /** The whole-attempt limit (LinkSteps.FLOW_MS): whatever still waits then is stopped and the link closed. */
+    private final Handler watch = new Handler(Looper.getMainLooper());
     private volatile Cleanup.Shell shell;
     private volatile Closeable link, opening;
     /** Titles from the tested lists, parsed once (off the UI thread when a job needs them first). */
@@ -343,17 +347,20 @@ public final class CleanupActivity extends GlassScreen {
     private void work(boolean change, Job job) {
         // "changing" (Back refused) starts only once the link is open, so Back still works while the TV's prompt waits.
         busy = true; changing = false; int mine = ++generation;
+        watch.removeCallbacksAndMessages(null);
+        watch.postDelayed(() -> tooLong(mine), LinkSteps.FLOW_MS);
+        Context app = getApplicationContext();
         background(() -> {
             Runnable ui;
             try { if (titles == null) titles = titlesOf(CleanupLists.load(this)); ui = job.run(shell(mine, change)); }
-            catch (AdbException e) { closeLink(); ui = () -> problem(e.kind); }
-            catch (IllegalStateException e) { ui = () -> problem((AdbException.Kind) null); }
+            catch (AdbException e) { closeLink(); if (mine == generation) LinkSteps.failed(app, e); ui = () -> problem(e); }
+            catch (IllegalStateException e) { ui = () -> problem((AdbException) null); }
             catch (IllegalArgumentException e) { ui = () -> problem(CANT_CHANGE); }
-            catch (Exception e) { closeLink(); ui = () -> problem(AdbException.Kind.LOST); }
+            catch (Exception e) { closeLink(); ui = () -> problem(new AdbException(AdbException.Kind.LOST, "failed")); }
             Runnable show = ui;
             runOnUiThread(() -> {
                 boolean current = mine == generation;
-                if (current) { busy = false; changing = false; }
+                if (current) { busy = false; changing = false; watch.removeCallbacksAndMessages(null); }
                 // Left already: the link goes now, whichever job this was (a late "Allow" must not leave it open).
                 if (stopped || destroyed || isFinishing()) closeLink();
                 if (current && !isFinishing() && !destroyed) show.run();
@@ -364,21 +371,36 @@ public final class CleanupActivity extends GlassScreen {
     /** The owner has left this job's page or the screen: its link must not be kept. */
     private boolean gone(int mine) { return mine != generation || stopped || destroyed || isFinishing(); }
 
+    /**
+     * Two minutes and still waiting (the TV's Allow, or a command): stopped, the link closed, and said plainly. The worker
+     * is replaced, so Try again never queues behind a step that is still stuck.
+     */
+    private void tooLong(int mine) {
+        if (mine != generation || !busy || destroyed) return;
+        generation++; busy = false; changing = false;
+        closeLink();
+        ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();
+        LinkSteps.failed(getApplicationContext(), "Stopped after two minutes");
+        problem(LinkSteps.FLOW_TIMEOUT + " Nothing more was changed.");
+    }
+
     private Cleanup.Shell shell(int mine, boolean change) throws Exception {
         Cleanup.Shell s = shell;
         if (s == null) {
             Opener o = openerForTests;
             if (o == null) o = CleanupActivity::openLink;
+            LinkSteps.begin(this, TITLE);
             Opened opened = o.open(this, () -> runOnUiThread(() -> {
-                if (prompt != null) prompt.setText(PROMPT_WORDS);
-                if (progress != null) progress.setText("Waiting for you to allow it on the TV…");
+                if (prompt != null) prompt.setText(PROMPT_WORDS + " " + LinkSteps.BACK_CANCELS);
+                if (progress != null) progress.setText(LinkSteps.WAITING_ALLOW);
             }), c -> opening = c);
             opening = null;
+            settle(mine == generation, () -> stopped && !destroyed && !isFinishing() && mine == generation);
             if (gone(mine)) {   // e.g. "Allow" was pressed on the TV after the owner had left this page
                 try { opened.link.close(); } catch (IOException ignored) { /* already closed */ }
                 throw new AdbException(AdbException.Kind.LOST, "The page was left.");
             }
-            link = opened.link; shell = opened.shell; s = opened.shell;
+            link = opened.link; shell = LinkSteps.traced(this, opened.shell); s = shell;
             say("Connected. Reading…");
         }
         if (gone(mine)) throw new AdbException(AdbException.Kind.LOST, "The page was left.");
@@ -386,39 +408,60 @@ public final class CleanupActivity extends GlassScreen {
         return s;
     }
 
-    /** This TV's own ADB, checked to be this TV (the banner's device, then the fingerprint in Cleanup.check). */
+    /**
+     * This TV's own ADB, checked to be this TV: leniently by the banner (any of ro.product.device, .name or .model equal to
+     * this device's own, or none named: the Sony's banner need not match Build.DEVICE exactly), then decisively by the
+     * fingerprint the first command reads (Cleanup.check, HomeTakeover.check). Every step goes to LinkSteps.
+     */
     static Opened openLink(Context c, AdbLink.Prompt prompt, java.util.function.Consumer<Closeable> opening) throws Exception {
+        LinkSteps.step(c, "Getting Unified TV's own key");
         AdbKey key = AdbKeys.get(c);
-        AdbLink l = AdbLink.open(key, prompt, opening);
-        String device = l.bannerProperty("ro.product.device");
-        if (!device.isEmpty() && !device.equals(Build.DEVICE)) { l.close(); throw new AdbException(AdbException.Kind.NOT_THIS_TV, "Another device answered."); }
+        AdbLink l = AdbLink.open(key, prompt, opening, LinkSteps.trace(c));
+        if (!l.bannerDescribes(Build.DEVICE, Build.PRODUCT, Build.MODEL)) { l.close(); throw new AdbException(AdbException.Kind.NOT_THIS_TV, AdbLink.Step.CONNECTED, "Another device answered."); }
         return new Opened(l::shell, l);
+    }
+
+    /**
+     * Just after the link opened: the TV's own full-screen prompt may still be closing, so this page can be stopped for a
+     * moment although the owner never left (Sony). On a worker thread, wait up to three seconds for the page to come back
+     * before deciding it was left. Never waits on the main thread.
+     */
+    static void settle(boolean current, java.util.function.BooleanSupplier hidden) {
+        if (!current || Looper.myLooper() == Looper.getMainLooper()) return;
+        for (int i = 0; i < 30 && hidden.getAsBoolean(); i++) {
+            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+        }
     }
 
     /** Closes the link, and a connection still being opened (the TV's prompt waiting), so nothing stays open. */
     private void closeLink() {
         Closeable l = link, o = opening; link = null; shell = null; opening = null;
+        if (l != null) LinkSteps.step(getApplicationContext(), "Link closed");
         for (Closeable c : new Closeable[]{l, o}) if (c != null) try { c.close(); } catch (IOException ignored) { /* already closed */ }
     }
 
-    private void problem(AdbException.Kind kind) { problem(kind, null); }
+    private void problem(AdbException e) { problem(e, null); }
     private void problem(String words) { problem(null, words); }
-    private void problem(AdbException.Kind kind, String given) {
+    /** What failed, at which step, in plain words (LinkSteps.words), then what that means here; Try again or Cancel. */
+    private void problem(AdbException e, String given) {
         screen("Nothing more was changed", null, this::intro);
         card();
         String words;
         if (given != null) words = given;
-        else if (kind == null) words = "Something changed on the TV since the check (an app, or what answers Home), so nothing was changed. Run the check again.";
-        else switch (kind) {
-            case CLOSED: words = "Network debugging is off on this TV. To use the clean-up, turn on USB debugging in Settings > System > Developer options, then try again. Turn it off again when you're done."; break;
-            case NOT_ALLOWED: words = "The TV didn't allow Unified TV. Try again, and when the TV asks \"Allow USB debugging?\", tick \"Always allow from this computer\" and choose OK."; break;
-            case NOT_THIS_TV: words = "Something other than this TV answered, so nothing was read or changed."; break;
-            case PROTOCOL: words = "This TV's debugging answered in a way Unified TV doesn't understand (for example, wireless-debugging pairing only). Nothing was changed."; break;
-            default: words = "The TV stopped answering. Anything already changed is in the undo record, and can be turned back on here or in the TV's settings."; break;
+        else if (e == null) words = "Something changed on the TV since the check (an app, or what answers Home), so nothing was changed. Run the check again.";
+        else {
+            words = LinkSteps.words(e);
+            switch (e.kind) {
+                case CLOSED: words += " Turn it off again when you're done."; break;
+                case NOT_ALLOWED: case NOT_THIS_TV: break;
+                case PROTOCOL: words += " Nothing was changed."; break;
+                default: words += " Anything already changed is in the undo record, and can be turned back on here or in the TV's settings."; break;
+            }
         }
         text(words, 18);
+        text(LinkSteps.last(this), 15);
         button("Try again", this::intro).requestFocus();
-        button("Close", this::finish);
+        button("Cancel", this::finish);
     }
 
     private void say(String words) { runOnUiThread(() -> { if (progress != null) progress.setText(words); }); }
@@ -454,5 +497,5 @@ public final class CleanupActivity extends GlassScreen {
     @Override protected void onStart() { super.onStart(); stopped = false; }
     /** Leaving the screen closes the link (unless a step is still running: it closes when that step ends). */
     @Override protected void onStop() { super.onStop(); stopped = true; if (!busy) closeLink(); }
-    @Override protected void onDestroy() { destroyed = true; if (phone != null) { phone.stop(); phone = null; } closeLink(); worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed = true; watch.removeCallbacksAndMessages(null); if (phone != null) { phone.stop(); phone = null; } closeLink(); worker.shutdownNow(); super.onDestroy(); }
 }

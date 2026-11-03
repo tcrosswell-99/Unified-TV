@@ -10,6 +10,10 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **Remote button that opens Unified TV (OD-31, launcher, opt-in):** choose a button (the TV button suggested); it opens Unified TV, and wakes it from standby with the turn-on choice. Uses an accessibility service that only reacts to that one button. **Not tested** on a television.
+- **Dock and Apps:** OK on an empty place opens "Choose an app for this place"; Replace in the hold-OK menu; SmartTube keeps its own name and mark beside YouTube; Prime Video and Apple TV marks; apps without a mark show their banner or icon; one-card Apps tiles; the dock always fits the screen. **Live TV app** setting, so an IPTV app such as ReamSmartz is Live TV and goes through the VPN gate from any route. **Not tested** on a television.
+- **Doorbell, alarms & this TV rebuilt:** finds Ring's current event entities, chooses a single doorbell and camera automatically, plain wording, Test the doorbell and Test the alarm screen, one-panel pickers. **Not tested** with a real Ring.
+
 - **One choice for "When the TV turns on" (launcher):** Settings > Appearance & Home, and an optional setup-guide step: show the TV's own Home, open Unified TV (quick), or make Unified TV the TV's Home (instant, through the Home takeover with its way back). **Not tested** on a television.
 
 - **Unified TV's own NordVPN connection (OD-29):** after pasting a NordVPN access token once on the phone, OK on the shield connects or disconnects inside Unified TV, and holding OK picks the country. It uses NordVPN's WireGuard service (NordLynx) through the official WireGuard tunnel library (Apache-2.0). The home network stays reachable. NordVPN's server API is unofficial and may change. **Not tested** on a television.
@@ -79,6 +83,8 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **Library froze the remote while checking for new films (Sony):** screens read only published lists; disk and keystore work off the main thread; the checking line always clears. **Not tested** on a television.
+- **Home takeover hung on the Sony:** what's possible is decided before the debugging link; untested TVs get the gentle route only; every link step has a time limit and plain words. **Not tested** on a television.
 - **Unified TV's own VPN, security review:** Live TV now also needs Android to report the VPN up (a stale "connected" can no longer open it); "Connected" only after NordVPN answers; no freeze at start-up; Kids can't turn it on or off; a background reconnect waits for Home; unused GPL wireguard-tools binaries and non-ARM libraries left out of the app. **Not tested** on a television.
 - **Films & TV library lost after a day (owner's TCL, 3 November 2026):** the list was saved only at the end of a full scan, a later check replaced it with its own progress, a NAS going quiet emptied it, and a port change looked like a new server. Now it is saved as it goes, resumes where it stopped, refreshes only add and remove titles, and the same NAS is found again at a new address. **Not tested** on a television.
 - **Live TV opens whenever a VPN is connected (OD-26 amended by the owner):** no more "can't confirm it's NordVPN" loop; NordVPN's notice only adds the country. **Not tested** on a television.

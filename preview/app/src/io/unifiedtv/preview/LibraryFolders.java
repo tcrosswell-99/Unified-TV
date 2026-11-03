@@ -28,7 +28,8 @@ final class LibraryFolders {
         Store t=testStore;if(t!=null)return t;Vault v=new Vault(c);
         return new Store(){public JSONObject read(String id)throws Exception{return v.read(id);}public void save(String id,JSONObject value)throws Exception{v.save(id,value);}public void forget(String id){v.forget(id);}};
     }
-    static JSONObject read(Context c,String id){try{return store(c).read(id);}catch(Exception e){return new JSONObject();}}
+    /** The encrypted record (keystore and storage): never on the main thread (OffMain). */
+    static JSONObject read(Context c,String id){OffMain.check("Reading the library's folders");try{return store(c).read(id);}catch(Exception e){return new JSONObject();}}
 
     /** One chosen folder. */
     static final class Folder {

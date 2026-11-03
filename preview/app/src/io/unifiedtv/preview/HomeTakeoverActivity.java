@@ -31,6 +31,14 @@ import java.util.concurrent.Executors;
  * Then the link closes, the owner is guided to turn network debugging off (checked), and finally asked to press Home on
  * the remote: Home reports whether it came to the front within 20 seconds, and the way back is offered if not.
  *
+ * <p>Before the link (owner's Sony BRAVIA 4K UR2, Android TV 10, 3 November 2026): HomeTakeover.plan decides on this TV
+ * alone. A TV no tested list covers gets Android's own choice only, said up front (HomeTakeover.UNTESTED), with nothing
+ * ever turned off (HomeTakeover.gentleOnly); if it doesn't stick, the page says so plainly (HomeTakeover.KEEPS_OWN) and
+ * offers "Open Unified TV (quick)" on the When the TV turns on page. Every link wait is limited (AdbLink, and
+ * LinkSteps.FLOW_MS for the whole attempt): a failure says which step, in plain words, records it for Owner diagnostics
+ * and the event log, closes the link and offers Try again or Cancel. Back cancels while the TV waits for Allow, and is
+ * refused only while a change is actually being sent.
+ *
  * <p>Return: when this flow turned the TV's own Home off, the link turns it back on, sets it as Home and withdraws Unified
  * TV's Home entry. When network debugging is off, the page gives the TV-only route and the computer command instead.
  * Nothing on this page calls finish() on Home.
@@ -60,6 +68,10 @@ public final class HomeTakeoverActivity extends GlassScreen {
 
     private ExecutorService worker;
     private final Handler clock = new Handler(Looper.getMainLooper());
+    /** The whole-attempt limit (LinkSteps.FLOW_MS), apart from {@link #clock}, which each new page clears. */
+    private final Handler watch = new Handler(Looper.getMainLooper());
+    /** What this TV allows, decided before any link (HomeTakeover.plan). */
+    private HomeTakeover.Plan plan;
     private volatile Cleanup.Shell shell;
     private volatile Closeable link, opening;
     private volatile boolean busy, changing, stopped, destroyed;
@@ -92,10 +104,13 @@ public final class HomeTakeoverActivity extends GlassScreen {
     }
 
     // ------------------------------------------------------------------ take over
+    /** Decided before any link, from this TV alone: the tested route, the gentle route only, or "keeps its own Home". */
     void takeIntro() {
+        plan = HomeTakeover.plan(this, CleanupLists.load(this), fingerprint());
+        if (plan.route == HomeTakeover.Route.KEEPS_OWN) { keepsOwnHome(true); return; }
         screen(TAKE_TITLE, "Appearance & Home", null);
         card();
-        text(INTRO, 20);
+        text(plan.gentleOnly() ? HomeTakeover.UNTESTED : INTRO, 20);
         text(ADB_WORDS, 17);
         text(WAY_BACK, 17);
         text(REVIEW_BUILD_WORDS, 17);
@@ -103,14 +118,42 @@ public final class HomeTakeoverActivity extends GlassScreen {
         button("Not now", this::finish);
     }
 
-    /** Step a: the Home entry on; b: read Home; c: Android's own route. */
+    /**
+     * This TV keeps its own Home: said plainly, with "Open Unified TV (quick)" one press away. {@code before}: known from
+     * Android's own list before any link (nothing was opened or changed); otherwise Android's own choice was tried over
+     * the link and didn't stick, and the Home entry is handed back, so nothing changed.
+     */
+    private void keepsOwnHome(boolean before) {
+        if (!before) { closeLink(); handBackEntry(); EventLog.record(getApplicationContext(), EventLog.SETTINGS, "Home button: this TV keeps its own Home"); }
+        screen("This TV keeps its own Home", "Nothing was changed", null);
+        card();
+        if (before && plan != null && plan.ahead != null) text(HomeTakeover.ranksFirst(HomeTakeover.label(plan.ahead)), 18);
+        text(HomeTakeover.KEEPS_OWN, 18);
+        text("Nothing was changed.", 17);
+        button(HomeTakeover.USE_QUICK, this::useQuick).requestFocus();
+        if (before) button("Try anyway", this::takeNow);
+        button("Close", this::finish);
+    }
+
+    /** Option 2 on the When the TV turns on page (its own PIN and checks); an unused Home entry is handed back first. */
+    private void useQuick() {
+        if (!TurnOnChoice.holdsHome(this)) DefaultHome.withdraw(this);
+        TurnOnChoiceActivity.open(this, TurnOnChoice.Option.QUICK);
+        finish();
+    }
+
+    /** Step a: the Home entry on; b: read Home; c: Android's own route. On a TV no tested list covers, only that. */
     private void takeNow() {
+        if (plan == null) plan = HomeTakeover.plan(this, CleanupLists.load(this), fingerprint());
+        boolean gentleOnly = plan.gentleOnly();
         screen("Reading this TV", "Nothing is turned off at this step", this::takeIntro);
         card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
         String self = getPackageName();
         entryWasOn = DefaultHome.offered(this);
         getPackageManager().setComponentEnabledSetting(DefaultHome.entry(this), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
-        work(true, sh -> {
+        // Reading: Back still works. Only the set-home-activity command itself refuses Back while it is sent (see shell()).
+        work(false, link -> {
+            Cleanup.Shell sh = gentleOnly ? HomeTakeover.gentleOnly(link, self) : link;
             HomeTakeover.Check c = HomeTakeover.check(sh, CleanupLists.load(this), fingerprint(), self);
             if (!c.before.candidate(self)) { Thread.sleep(candidateWaitMs); c.before = HomeTakeover.read(sh); }   // the entry can take a moment to register
             if (c.before.ours(self)) return () -> { check = c; taken(true); };
@@ -119,6 +162,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
             HomeTakeover.Reading after = HomeTakeover.gentle(sh, c, self);
             c.before = after;
             if (after.ours(self)) return () -> { check = c; EventLog.record(getApplicationContext(), EventLog.SETTINGS, "Home button: Unified TV set as Home"); taken(true); };
+            if (gentleOnly) return () -> { check = c; keepsOwnHome(false); };
             String why = HomeTakeover.refusal(c, after, self);
             return () -> { check = c; if (why != null) refused(why); else explain(); };
         });
@@ -231,7 +275,11 @@ public final class HomeTakeoverActivity extends GlassScreen {
         screen("The Home button didn't open Unified TV", "Nothing more was changed", null);
         card();
         text("Unified TV didn't come to the front within 20 seconds of pressing Home.", 18);
-        button("Try again", this::pressHome).requestFocus();
+        boolean untested = plan != null && plan.gentleOnly();
+        if (untested) text(HomeTakeover.KEEPS_OWN, 18);
+        Button first = button("Try again", this::pressHome);
+        if (untested) first = button(HomeTakeover.USE_QUICK, this::useQuick);
+        first.requestFocus();
         button("Undo: " + RETURN_TITLE, this::returnIntro);
         button("Close", this::finish);
     }
@@ -361,17 +409,20 @@ public final class HomeTakeoverActivity extends GlassScreen {
 
     private void work(boolean change, Job job) {
         busy = true; changing = false; int mine = ++generation;
+        watch.removeCallbacksAndMessages(null);
+        watch.postDelayed(() -> tooLong(mine), LinkSteps.FLOW_MS);
+        Context app = getApplicationContext();
         background(() -> {
             Runnable ui;
             try { ui = job.run(shell(mine, change)); }
-            catch (AdbException e) { closeLink(); AdbException.Kind k = e.kind; ui = () -> problem(k); }
+            catch (AdbException e) { closeLink(); if (mine == generation) LinkSteps.failed(app, e); ui = () -> problem(e); }
             catch (HomeTakeover.Changed e) { String w = e.getMessage(); ui = () -> problem(w); }
             catch (IllegalStateException e) { ui = () -> problem((String) null); }
-            catch (Exception e) { closeLink(); ui = () -> problem(AdbException.Kind.LOST); }
+            catch (Exception e) { closeLink(); ui = () -> problem(new AdbException(AdbException.Kind.LOST, "failed")); }
             Runnable show = ui;
             runOnUiThread(() -> {
                 boolean current = mine == generation;
-                if (current) { busy = false; changing = false; }
+                if (current) { busy = false; changing = false; watch.removeCallbacksAndMessages(null); }
                 if (stopped || destroyed || isFinishing()) closeLink();
                 if (current && !isFinishing() && !destroyed) show.run();
             });
@@ -379,46 +430,66 @@ public final class HomeTakeoverActivity extends GlassScreen {
     }
     private boolean gone(int mine) { return mine != generation || stopped || destroyed || isFinishing(); }
 
+    /** Two minutes and still waiting: stopped, the link closed, said plainly; a fresh worker so Try again never queues. */
+    private void tooLong(int mine) {
+        if (mine != generation || !busy || destroyed) return;
+        generation++; busy = false; changing = false;
+        closeLink();
+        ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();
+        LinkSteps.failed(getApplicationContext(), "Stopped after two minutes");
+        problem(LinkSteps.FLOW_TIMEOUT + (HomeTakeover.turnedOff(this) == null ? " Nothing was turned off."
+            : " Anything already changed is in the undo record, and Return to the original TV interface puts it back."));
+    }
+
     private Cleanup.Shell shell(int mine, boolean change) throws Exception {
         Cleanup.Shell s = shell;
         if (s == null) {
             CleanupActivity.Opener o = CleanupActivity.openerForTests;
             if (o == null) o = CleanupActivity::openLink;   // the clean-up's own: this TV only, the same key and prompt
+            LinkSteps.begin(this, (take ? TAKE_TITLE : RETURN_TITLE) + (take && plan != null && plan.gentleOnly() ? " (untested TV: Android's own choice only)" : ""));
             CleanupActivity.Opened opened = o.open(this, () -> runOnUiThread(() -> {
-                if (prompt != null) prompt.setText(CleanupActivity.PROMPT_WORDS);
-                if (progress != null) progress.setText("Waiting for you to allow it on the TV…");
+                if (prompt != null) prompt.setText(CleanupActivity.PROMPT_WORDS + " " + LinkSteps.BACK_CANCELS);
+                if (progress != null) progress.setText(LinkSteps.WAITING_ALLOW);
             }), c -> opening = c);
             opening = null;
+            CleanupActivity.settle(mine == generation, () -> stopped && !destroyed && !isFinishing() && mine == generation);
             if (gone(mine)) {
                 try { opened.link.close(); } catch (IOException ignored) { /* already closed */ }
                 throw new AdbException(AdbException.Kind.LOST, "The page was left.");
             }
-            link = opened.link; shell = opened.shell; s = opened.shell;
+            link = opened.link; shell = LinkSteps.traced(this, opened.shell); s = shell;
             say("Connected. Reading…");
         }
         if (gone(mine)) throw new AdbException(AdbException.Kind.LOST, "The page was left.");
-        if (change) changing = true;
-        return s;
+        if (change) { changing = true; return s; }
+        // A reading job: Back is refused only while a change command is actually being sent.
+        Cleanup.Shell reading = s;
+        return command -> {
+            if (!io.unifiedtv.adb.AdbCommands.changes(command)) return reading.run(command);
+            changing = true;
+            try { return reading.run(command); } finally { changing = false; }
+        };
     }
 
     private void closeLink() {
         Closeable l = link, o = opening; link = null; shell = null; opening = null;
+        if (l != null) LinkSteps.step(getApplicationContext(), "Link closed");
         for (Closeable c : new Closeable[]{l, o}) if (c != null) try { c.close(); } catch (IOException ignored) { /* already closed */ }
     }
 
-    private void problem(AdbException.Kind kind) {
+    /** What failed, at which step, in plain words (LinkSteps.words), then what that means for the Home button. */
+    private void problem(AdbException e) {
+        AdbException.Kind kind = e.kind;
         String stock = HomeTakeover.turnedOff(this);
         if (stock == null && !take) stock = lost;
         // Handing Home back needs the link; without it, the TV-only route.
-        if (!take && stock != null && kind != AdbException.Kind.NOT_THIS_TV) { tvOnly(stock, null); return; }
+        if (!take && stock != null && kind != AdbException.Kind.NOT_THIS_TV) { tvOnly(stock, LinkSteps.words(e)); return; }
         if (stock != null && kind == AdbException.Kind.CLOSED) { tvOnly(stock, null); return; }
-        String words;
+        String words = LinkSteps.words(e);
         switch (kind) {
-            case CLOSED: words = "Network debugging is off on this TV. To continue, turn on USB debugging in Settings > System > Developer options, then try again. Nothing was turned off."; break;
-            case NOT_ALLOWED: words = "The TV didn't allow Unified TV. Try again, and when the TV asks \"Allow USB debugging?\", tick \"Always allow from this computer\" and choose OK."; break;
-            case NOT_THIS_TV: words = "Something other than this TV answered, so nothing was read or changed."; break;
-            case PROTOCOL: words = "This TV's debugging answered in a way Unified TV doesn't understand (for example, wireless-debugging pairing only). Nothing was turned off."; break;
-            default: words = "The TV stopped answering. Anything already changed is in the undo record, and Return to the original TV interface puts it back."; break;
+            case CLOSED: case PROTOCOL: words += " Nothing was turned off."; break;
+            case NOT_ALLOWED: case NOT_THIS_TV: break;
+            default: words += stock == null ? " Nothing was turned off." : " Anything already changed is in the undo record, and Return to the original TV interface puts it back."; break;
         }
         if (take && HomeTakeover.turnedOff(this) == null) handBackEntry();
         problemPage(words);
@@ -431,8 +502,9 @@ public final class HomeTakeoverActivity extends GlassScreen {
     private void problemPage(String words) {
         screen("Nothing more was changed", null, null);
         card(); text(words, 18);
+        text(LinkSteps.last(this), 15);
         button("Try again", take ? this::takeIntro : this::returnIntro).requestFocus();
-        button("Close", this::finish);
+        button("Cancel", this::finish);
     }
 
     private void say(String words) { runOnUiThread(() -> { if (progress != null) progress.setText(words); }); }
@@ -441,11 +513,12 @@ public final class HomeTakeoverActivity extends GlassScreen {
 
     @Override public void onBackPressed() {
         if (changing) { note("Please wait: the TV is being changed."); return; }
-        if (busy) { generation++; busy = false; closeLink(); }
+        // Still reading, or the TV still asking "Allow USB debugging?": stop, close, and hand an unused Home entry back.
+        if (busy) { generation++; busy = false; closeLink(); watch.removeCallbacksAndMessages(null); if (take && HomeTakeover.turnedOff(this) == null) handBackEntry(); }
         if (waitingSince > 0) { HomeTakeover.cancel(this); waitingSince = 0; }   // left the Home button check
         Runnable b = back; if (b != null) b.run(); else close();
     }
     @Override protected void onStart() { super.onStart(); stopped = false; }
     @Override protected void onStop() { super.onStop(); stopped = true; if (!busy) closeLink(); }
-    @Override protected void onDestroy() { destroyed = true; clock.removeCallbacksAndMessages(null); closeLink(); worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed = true; clock.removeCallbacksAndMessages(null); watch.removeCallbacksAndMessages(null); closeLink(); worker.shutdownNow(); super.onDestroy(); }
 }

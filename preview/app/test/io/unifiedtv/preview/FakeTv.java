@@ -15,6 +15,8 @@ import java.util.*;
 final class FakeTv implements Cleanup.Shell, Closeable {
     static final String OWNER = "TCL/BeyondTV6/BeyondTV4:11/RP1A.200622.001/AR10:user/release-keys";
     static final String SONY = "Sony/BRAVIA_VH2_EU/BRAVIA_VH2:12/STT1.230201.001/123:user/release-keys";
+    /** The owner's Sony BRAVIA 4K UR2 (Android TV 10, 3 November 2026): no tested list. */
+    static final String SONY_UR2 = "Sony/BRAVIA_UR2_4K_EU/BRAVIA_UR2_4K:10/QTG3.200305.006.S97/662301:user/release-keys";
     static final String HOME = "com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity";
 
     String fingerprint = OWNER, serial = "TESTSERIAL0001", androidId = "a1b2c3d4e5f60718", adbSecure = "1", home = HOME,

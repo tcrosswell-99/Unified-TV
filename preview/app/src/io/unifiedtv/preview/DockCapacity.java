@@ -19,7 +19,8 @@ import java.util.*;
  * profile that never chose one reads as 6, so the other profile's choice never leaks into it.
  *
  * Geometry: one centred glass dock either way. Eight places scale the six-place tile and spacing (SCALE_8), never eight
- * full-size tiles in a six-tile container; both stay inside the 5 % overscan safe area.
+ * full-size tiles in a six-tile container; both stay inside the 5 % overscan safe area of the part of the screen that is
+ * actually seen, at any resolution, density or aspect ratio (fit()).
  */
 final class DockCapacity {
     private DockCapacity(){}
@@ -55,6 +56,53 @@ final class DockCapacity {
     static float labelWidth(int capacity,boolean onlyOne){float s=scale(capacity);return (onlyOne?2*TILE+GAP:TILE+GAP)*s-10;}
     static int labelSize(int capacity){return capacity==EIGHT?24:27;}
 
+    /**
+     * The dock as it is really drawn (owner's Sony BRAVIA, run 106: the sixth tile ran off the right edge of the screen).
+     * Home draws in a 1920 x 1080 design space stretched to its view, so on a 16:9 view this is exactly the geometry
+     * above. It also holds when the view is not 16:9 (tiles stay square on the glass) and when part of the view is off the
+     * screen (visible(): a window larger than, or offset from, the display): the dock is centred on the part that is seen,
+     * with the 5 % safe margin either side of it. Tile, gap and padding scale down together, uniformly, whenever the
+     * places would not fit (maximum: the approved design size; there is no minimum that may overflow). Pure.
+     * All fields are in design units: x values in design-x, y values in design-y.
+     */
+    static final class Fit {
+        final int places;
+        /** Left edge of the glass, its width, a tile's width (design-x) and height (design-y), one place's step. */
+        final float left,width,tileW,tileH,step,padX;
+        /** The scale to apply to the six-place design: horizontally (design-x) and vertically (design-y). */
+        final float kx,ky;
+        Fit(int places,float left,float width,float tileW,float tileH,float step,float padX,float kx,float ky){
+            this.places=places;this.left=left;this.width=width;this.tileW=tileW;this.tileH=tileH;this.step=step;this.padX=padX;this.kx=kx;this.ky=ky;}
+        /** Left edge of place i. */
+        float slot(int i){return left+padX+i*step;}
+        /** The widest a label under a place may be (see labelWidth). */
+        float label(boolean onlyOne){return (onlyOne?2*TILE+GAP:TILE+GAP)*kx-10;}
+    }
+    /**
+     * Where the dock goes on a view {@code viewW} x {@code viewH} px of which [{@code visLeft}, {@code visRight}) px is on
+     * the screen.
+     */
+    static Fit fit(int capacity,float viewW,float viewH,float visLeft,float visRight){
+        int n=Math.max(1,capacity);
+        float sx=viewW>0?viewW/1920f:1,sy=viewH>0?viewH/1080f:1,square=sy/sx;   // px per design unit; design-x per design-y
+        if(!(visRight>visLeft)||viewW<=0){visLeft=0;visRight=viewW>0?viewW:1920;}
+        float vl=visLeft/sx,vr=visRight/sx,avail=(vr-vl)*(1-2*SAFE/1920f);
+        float k=scale(capacity),natural=(n*TILE+(n-1)*GAP+2*PAD)*k*square;
+        if(natural>avail)k*=avail/natural;
+        float kx=k*square,width=(n*TILE+(n-1)*GAP+2*PAD)*kx;
+        return new Fit(n,(vl+vr)/2-width/2,width,TILE*kx,TILE*k,(TILE+GAP)*kx,PAD*kx,kx,k);
+    }
+    /**
+     * Pure: the part of a view on the screen, as {left, right} px within the view, from where the view sits on the screen
+     * ({@code viewLeft}, its width) and the window's visible display frame. Unknown or implausible (less than half the
+     * view): the whole view.
+     */
+    static float[] visible(int viewLeft,int viewW,int frameLeft,int frameRight){
+        float l=Math.max(0,frameLeft-viewLeft),r=Math.min(viewW,frameRight-viewLeft);
+        if(viewW<=0||frameRight<=frameLeft||r-l<viewW/2f)return new float[]{0,Math.max(0,viewW)};
+        return new float[]{l,r};
+    }
+
     // --- Android
     /** This profile's dock size. */
     static int get(SharedPreferences p,String profile){
@@ -77,9 +125,15 @@ final class DockCapacity {
         return true;
     }
     private static String room(SharedPreferences p){return p.getString("room",android.os.Build.MANUFACTURER.toLowerCase(Locale.ROOT).contains("sony")?"sony":"tcl");}
+    /** Whether YouTube's own app is installed (SmartTube is then named SmartTube: DockLabels). */
+    static boolean youtube(Context c){
+        android.content.pm.PackageManager pm=c.getPackageManager();
+        for(String p:DockLabels.YOUTUBE_APPS)try{pm.getApplicationInfo(p,0);return true;}catch(Exception ignored){}
+        return false;
+    }
     /** A tile's name for a dialog: Unified TV's own names, else the installed app's label. */
     static String name(Context c,String id){
-        switch(id){case "smartutube":return DockLabels.name(id);case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC";case "live":return "Live TV";
+        switch(id){case "smartutube":return DockLabels.name(id,youtube(c));case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC";case "live":return "Live TV";
             case "music":return "Music";case "xbox":return "Xbox";case "tvplus":return "Samsung TV Plus";case DockPolicy.LIBRARY:return "Library";default:break;}
         try{android.content.pm.PackageManager pm=c.getPackageManager();return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(id,0)));}catch(Exception e){return id;}
     }

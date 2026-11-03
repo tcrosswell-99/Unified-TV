@@ -11,8 +11,8 @@ import java.util.*;
  * Composition rule (no label twice): the title above the dock shows the focused app's name only when no label is shown
  * under its tile (hidden), so a focused app is always identifiable, and never in two places at once.
  *
- * Tiles never show text or a full-colour app icon: each draws a simple original glyph (glyph(), drawn by DockGlyphs); an app
- * with no glyph of its own draws its installed icon in monochrome, small, on the same glass tile. With eight places
+ * Tiles never show a full-colour app icon: each draws a simple white glyph or brand mark (glyph(), drawn by DockGlyphs); an
+ * app with no mark of its own draws its own banner, else its icon (both monochrome, filling the tile sensibly), else its name. With eight places
  * (DockCapacity) and Always show, a long name is shortened with an ellipsis to its own place; the one focused label may
  * use two places' width.
  */
@@ -36,27 +36,38 @@ final class DockLabels {
     }
 
     /**
-     * Owner decision, 25 October 2026 (supersedes UX-ICON-07's separate SmartTube mark): the household uses SmartTube as its
-     * YouTube, so SmartTube's tile is named "YouTube" and draws the YouTube symbol. Detection is unchanged (DockPolicy's
-     * SmartTube package ids); only what the household sees changes. Unified TV's own tile names live here (name()).
+     * Owner decision, 25 October 2026 (supersedes UX-ICON-07's separate SmartTube mark), narrowed after the owner's Sony
+     * (run 106, two YouTube tiles side by side): the household uses SmartTube as its YouTube, so while YouTube's own app is
+     * NOT installed, SmartTube's tile is named "YouTube" and draws the YouTube symbol. When YouTube's own app is installed
+     * too (YOUTUBE_APPS), SmartTube is named "SmartTube" and draws its own mark ("smarttube"), so the two never look alike.
+     * Detection is unchanged (DockPolicy's SmartTube package ids); only what the household sees changes.
      */
-    static final String YOUTUBE="YouTube";
+    static final String YOUTUBE="YouTube",SMARTTUBE="SmartTube";
+    /** YouTube's own app: the Android TV build, and the phone build some TVs carry. */
+    static final String[] YOUTUBE_APPS={"com.google.android.youtube.tv","com.google.android.youtube"};
+    /** Whether YouTube's own app is among these installed packages. */
+    static boolean youtube(Collection<String> installed){if(installed!=null)for(String p:YOUTUBE_APPS)if(installed.contains(p))return true;return false;}
+    /** Unified TV's own name for one of its tiles with YouTube's own app absent (see youtube()). */
+    static String name(String id){return name(id,false);}
     /** Unified TV's own name for one of its tiles, as the household sees it; null for an ordinary installed app. */
-    static String name(String id){
+    static String name(String id,boolean youtubeInstalled){
         switch(DockPolicy.canonical(id==null?"":id)){
-            case "smartutube":return YOUTUBE;
+            case "smartutube":return youtubeInstalled?SMARTTUBE:YOUTUBE;
             default:return null;
         }
     }
+    /** The glyph with YouTube's own app absent (see youtube()). */
+    static String glyph(String id){return glyph(id,false);}
     /**
-     * The original glyph each tile draws (DockGlyphs), by tile id or package; "mono" for an app without one of its own.
-     * SmartTube and YouTube share the YouTube symbol (owner, 25 October 2026; see YOUTUBE above). Music services each get
-     * their own, so two on Home stay apart (SET-BUILD-10).
+     * The glyph each tile draws (DockGlyphs), by tile id or package; "mono" for an app without one of its own (DockGlyphs
+     * then draws the app's own banner or icon, or its name). SmartTube shares the YouTube symbol only while YouTube's own
+     * app is absent (see YOUTUBE above). Music services each get their own, so two on Home stay apart (SET-BUILD-10).
+     * White brand marks (OD-20): YouTube, Netflix, Disney+, BBC iPlayer, Prime Video and Apple TV.
      */
-    static String glyph(String id){
-        switch(DockPolicy.canonical(id)){
-            case "smartutube":
-            case "com.google.android.youtube.tv":case "com.google.android.youtube.tvkids":return "play";
+    static String glyph(String id,boolean youtubeInstalled){
+        switch(DockPolicy.canonical(id==null?"":id)){
+            case "smartutube":return youtubeInstalled?"smarttube":"play";
+            case "com.google.android.youtube.tv":case "com.google.android.youtube":case "com.google.android.youtube.tvkids":return "play";
             case "netflix":return "n";
             case "disney":return "arcplus";
             case "bbc":return "blocks";
@@ -66,12 +77,15 @@ final class DockLabels {
             case "com.apple.android.music":return "singlenote";
             case "com.google.android.youtube.tvmusic":return "vinyl";
             case "xbox":return "controller";
-            case "tvplus":case "com.apple.atve.androidtv.appletv":return "screen";
-            case "com.amazon.amazonvideo.livingroom":return "playcircle";
+            case "tvplus":return "screen";
+            case "com.apple.atve.androidtv.appletv":return "appletv";
+            case "com.amazon.amazonvideo.livingroom":return "prime";
             case "com.plexapp.android":return "chevron";
             case DockPolicy.LIBRARY:return "shelf";
             default:return "mono";
         }
     }
-    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","n","arcplus","blocks","tvset","note","singlenote","eq","vinyl","controller","screen","playcircle","chevron","shelf","cast","photos","house","mono")));
+    /** An empty dock place while it has focus: OK chooses an app for it (DockPicker). */
+    static final String ADD="plus",ADD_LABEL="Add an app";
+    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","smarttube","n","arcplus","blocks","tvset","note","singlenote","eq","vinyl","controller","screen","appletv","prime","playcircle","chevron","shelf","cast","photos","house","plus","mono")));
 }

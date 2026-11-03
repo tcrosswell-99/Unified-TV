@@ -70,6 +70,8 @@ final class Comeback {
         catch (RuntimeException e) { return Result.WAITING; }
     }
     private static boolean isAny() { return ownerless; }
+    /** The Unified TV screen in front now (resumed), or null: OD-31's remote button never closes a film playing there. */
+    static Activity front() { return front.get(); }
     private static boolean ownerless;
     /** A Unified TV screen is showing: the waiting step runs if it is this trip's screen. */
     static void resumed(Activity a) {

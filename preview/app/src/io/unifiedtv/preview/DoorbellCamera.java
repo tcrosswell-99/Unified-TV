@@ -6,7 +6,7 @@ package io.unifiedtv.preview;
  * allows overlays, or a full-screen card. A press while the card is open extends its time. This is not the separate
  * "a doorbell queued during an alarm is still worth showing" window (AlertPolicy.RING_STILL_RELEVANT), which stays 45 s.
  *
- * SET-054: test events (household setup's "Test: someone rings the doorbell" and "Test: a person at the door") are
+ * SET-054: test events (household setup's "Test the doorbell" and "Test the motion notice") are
  * labelled TEST on the card and the toast, so a test can never be mistaken for a real visitor.
  */
 final class DoorbellCamera {
@@ -24,6 +24,8 @@ final class DoorbellCamera {
     static String title(String name,boolean test){String n=name==null||name.trim().isEmpty()?"Doorbell":name.trim();return test?"TEST · "+n:n;}
     /** The person toast's words. */
     static String person(String name,boolean test){return (test?"TEST · ":"")+"Person at "+(name==null||name.trim().isEmpty()?"Doorbell":name.trim());}
+    /** The movement notice's words, for motion from the sensor chosen in "Motion at the door (optional)". */
+    static String movement(String name,boolean test){return (test?"TEST · ":"")+"Movement at "+(name==null||name.trim().isEmpty()?"the door":name.trim());}
     /** The hint at the foot of the card. */
     static String hint(String saved){return MANUAL.equals(close(saved))?"Back to close":"Back to close · closes by itself";}
 }

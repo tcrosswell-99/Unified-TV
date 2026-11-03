@@ -286,7 +286,7 @@ public final class BuildMyTvActivity extends GlassScreen {
         }
         LinearLayout dock=new LinearLayout(this);column.addView(dock);
         for(int i=0;i<capacity;i++){final int at=i;String id=i<shown.size()?shown.get(i):null;
-            Button slot=card(id==null?"mono":DockLabels.glyph(id),id==null?null:icon(id),id==null?"Empty":DockCapacity.name(this,id),at==picked?"Moving":String.valueOf(at+1),()->swap(at,shown.size()));
+            Button slot=card(id==null?"mono":DockLabels.glyph(id,DockLabels.youtube(launchable.keySet())),id==null?null:icon(id),id==null?"Empty":DockCapacity.name(this,id),at==picked?"Moving":String.valueOf(at+1),()->swap(at,shown.size()));
             if(id==null)slot.setAlpha(.55f);slot.setTextSize(capacity==DockCapacity.EIGHT?13:15);dock.addView(slot,weighted());if(at==picked||(picked<0&&at==0&&left.isEmpty()))focusOn(slot);}
         button("Save to Home",this::saveHome);
         button("All categories",()->show(HubBuilder.OVERVIEW));
@@ -329,7 +329,7 @@ public final class BuildMyTvActivity extends GlassScreen {
         return b;
     }
     private String glyphOf(AppCatalogue.Entry e){
-        String installed=AppCatalogue.dockId(e,launchable);if(installed!=null&&!"mono".equals(DockLabels.glyph(installed)))return DockLabels.glyph(installed);
+        String installed=AppCatalogue.dockId(e,launchable);boolean yt=DockLabels.youtube(launchable.keySet());if(installed!=null&&!"mono".equals(DockLabels.glyph(installed,yt)))return DockLabels.glyph(installed,yt);
         if(e.packages.length>0&&!"mono".equals(DockLabels.glyph(e.packages[0])))return DockLabels.glyph(e.packages[0]);
         AppCatalogue.Category c=AppCatalogue.category(e.category);return installed==null&&c!=null?c.glyph:"mono";
     }

@@ -177,6 +177,8 @@ public class TurnOnChoiceTest {
             assertEquals(HomeTakeoverActivity.TAKE, started.getStringExtra(HomeTakeoverActivity.MODE));
             assertNull("nothing changed by choosing", ShadowAlertDialog.getLatestAlertDialog());
         }
+        // A TV a tested list covers (the owner's TCL): the whole flow's words. An untested TV says so instead (HomeTakeoverJourneyTest).
+        CleanupLists.forTests = FakeTv.lists(); CleanupActivity.fingerprintForTests = FakeTv.OWNER;
         try (ActivityController<HomeTakeoverActivity> c = Robolectric.buildActivity(HomeTakeoverActivity.class, started).setup()) {
             idle();
             AlertDialog pin = ShadowAlertDialog.getLatestAlertDialog();
@@ -187,7 +189,7 @@ public class TurnOnChoiceTest {
             assertTrue("what changes, before anything", said.contains(HomeTakeoverActivity.INTRO));
             assertTrue("the TV's debugging prompt", said.contains("Allow USB debugging?"));
             assertTrue(said.contains(HomeTakeoverActivity.REVIEW_BUILD_WORDS));
-        }
+        } finally { CleanupLists.forTests = null; CleanupActivity.fingerprintForTests = null; }
     }
 
     @Test public void ownHomeOrQuickWhileUnifiedTvHoldsHomeOffersReturnFirst() {

@@ -96,7 +96,9 @@ public final class UnifiedPreviewActivity extends Activity {
         homeCheck(intent.hasCategory(Intent.CATEGORY_HOME));   // OD-28: the Home button check after taking over Home
         // As the chosen Home: the Home button lands on the main screen with the same app still in focus (spec 28.3).
         // OD-23: brought forward when the TV turned on: the same main screen as the Home button (TurnOn).
-        if ((intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra(TurnOn.EXTRA, false)) && surface != null) surface.home(); }
+        if ((intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra(TurnOn.EXTRA, false)) && surface != null) surface.home();
+        // The Live TV app was just chosen from a Live TV route (AppPickerActivity): carry on into Live TV, through the one gate.
+        if (intent.getBooleanExtra(AppPickerActivity.OPEN_LIVE, false) && surface != null) { intent.removeExtra(AppPickerActivity.OPEN_LIVE); surface.openLive(); } }
     // (A return from the Kids app guard arrives here too and is explained in onResume.)
     @Override protected void onPause() { idleHandler.removeCallbacks(gallery); if(surface!=null)surface.pause(); super.onPause(); }
 
@@ -155,6 +157,8 @@ public final class UnifiedPreviewActivity extends Activity {
         final String id, name, pkg;
         final int top, bottom;
         final Drawable icon;
+        /** For a dock tile without a mark of its own (DockGlyphs.app): its Android TV banner, else a high-density icon. */
+        Drawable banner, crisp;
         Item(String id, String name, String pkg, int top, int bottom, Drawable icon) {
             this.id = id; this.name = name; this.pkg = pkg;
             this.top = top; this.bottom = bottom; this.icon = icon;
@@ -181,6 +185,39 @@ public final class UnifiedPreviewActivity extends Activity {
         private List<Item> beforeMove;
         private Bitmap coast;
         private int index = -1, appIndex = 0, menuIndex = 0, lifted = -1;
+        /**
+         * Focus is on the first empty dock place (owner's Sony, run 106): the "+" tile, "Add an app"; OK chooses an app for
+         * that place (AppPickerActivity). Only the first empty place takes focus, as places fill from the left; {@code index}
+         * stays on the last tile meanwhile.
+         */
+        private boolean blank = false;
+        /** The part of this view that is on the screen, in px (DockCapacity.visible); measured on layout, never per frame. */
+        private float visLeft = 0, visRight = -1;
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            android.graphics.Rect frame = new android.graphics.Rect(); int[] at = new int[2];
+            try { getWindowVisibleDisplayFrame(frame); getLocationOnScreen(at); } catch (RuntimeException e) { frame.setEmpty(); }
+            float[] v = DockCapacity.visible(at[0], getWidth(), frame.left, frame.right); visLeft = v[0]; visRight = v[1];
+        }
+        /** Where the dock's places go on this view (DockCapacity.fit): inside the screen at any size, density or shape. */
+        DockCapacity.Fit dockFit(int places) {
+            float right = visRight < 0 ? getWidth() : visRight;
+            DockCapacity.Fit f = fitNow;   // worked out again only when the size, the visible part or the places change, never per frame
+            if (f == null || f.places != places || fitW != getWidth() || fitH != getHeight() || fitL != visLeft || fitR != right) {
+                fitNow = f = DockCapacity.fit(places, getWidth(), getHeight(), visLeft, right); fitW = getWidth(); fitH = getHeight(); fitL = visLeft; fitR = right;
+            }
+            return f;
+        }
+        private DockCapacity.Fit fitNow; private int fitW, fitH; private float fitL, fitR;
+        /** Whether there is an empty place for focus to land on. */
+        private boolean roomForMore() { return dock.size() < capacity; }
+        /** The focused dock place: a tile, or the first empty place. */
+        private int focusedPlace() { return blank ? dock.size() : index; }
+        /** Focus from a saved place: the first empty place when that is what was saved and it is still empty. */
+        private void focusFrom(int saved) {
+            blank = !dock.isEmpty() && saved == dock.size() && roomForMore();
+            index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size() - 1, saved));
+        }
         private boolean apps = false, menu = false, moving = false;
         /**
          * The utility pill (owner, 25 October 2026; v3.4.4 UX-UTILITY, NAV-02): a single Up from the dock focuses its first
@@ -238,7 +275,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private long titleAt = 0;
         private boolean titleHidden = false;
         // Spec 4.6: Down raises a row of the household's own titles within Home; Up/Back return to the same app.
-        private boolean shelf = false, postersLoading = false, libraryReady = false;
+        private boolean shelf = false, postersLoading = false, libraryReady = false, libraryKnown = false;
         private long shelfAt = 0, postersAt = 0;
         private int posterIndex = 0;
         private List<HomeShelf.Poster> posters = new ArrayList<>();
@@ -279,7 +316,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (okDown && !held) {
                 held = true;
                 if (header) { if (onShield()) VpnActivity.open(activity); return; }   // OD-29: hold OK on the shield: the VPN page
-                if (index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menuNow = menuFor(dock.get(index)); menu = true; menuIndex = 0; invalidate(); }); }
+                if (!blank && index >= 0 && index < dock.size()) { EditLock.ask(activity, () -> { menuNow = menuFor(dock.get(index)); menu = true; menuIndex = 0; invalidate(); }); }
             }
         };
         private final Runnable clockTick = new Runnable() {
@@ -297,8 +334,9 @@ public final class UnifiedPreviewActivity extends Activity {
             if (shelf) {
                 if (shelfHint) commitScene("neutral", Posters.ROW_HINT);
                 else if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); askBackdrop(p); }
-                else commitScene("neutral", libraryReady ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
-            } else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
+                else commitScene("neutral", libraryReady || !libraryKnown ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
+            } else if (blank) commitScene("neutral", DockLabels.ADD_LABEL);
+            else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
             else commitScene("neutral", "");
         };
 
@@ -326,6 +364,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (am == null || !am.isEnabled() || title == null || title.isEmpty()) return;
             String words = title;
             if (header && headerIndex >= 0 && headerIndex < pill.size()) words = HomeUtilities.label(pill.get(headerIndex), OwnVpn.shieldWords(), AirPlayReceiver.ready, AirPlayReceiver.checking()) + (onShield() ? ". Press OK to connect or disconnect; hold OK for the VPN page." : ". Press OK.");
+            else if (!shelf && blank) words = DockLabels.ADD_LABEL + ", empty place " + (dock.size() + 1) + " of " + capacity + ". Press OK to choose an app.";
             else if (!shelf && index >= 0 && index < dock.size()) words = title + ", " + (index + 1) + " of " + dock.size() + ". Hold OK to edit.";
             else if (shelf) words = title + (posterIndex < posters.size() ? ", " + (posterIndex + 1) + " of " + posters.size() : "");
             if (words.equals(spoken)) return;
@@ -397,8 +436,8 @@ public final class UnifiedPreviewActivity extends Activity {
                 MaterialScene.wallpaper(coast);
             } catch (Exception ignored) { /* Original illustrated gradient is the safe offline fallback. */ }
             int saved = prefs.getInt("focus", 0);
-            index = dock.isEmpty() ? -1 : Math.max(0, Math.min(dock.size()-1,saved));
-            if(index>=0){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
+            focusFrom(saved);
+            if(index>=0&&!blank){scene=dock.get(index).id;sceneTitle=dock.get(index).name;}
             prefs.edit().putString("scene",lightKey(scene)).apply();
             offerOnce();
             setContentDescription("Unified TV Home. Left and Right choose apps. Up reaches the utilities and Settings. Down reveals your films and TV. Hold OK to edit.");
@@ -411,8 +450,8 @@ public final class UnifiedPreviewActivity extends Activity {
             fixtureFetched=0;fixture();
             if(moving)goBack();
             installed.clear();dock.clear();scanInstalled();loadDock();household();utilities();
-            index=dock.isEmpty()?-1:Math.max(0,Math.min(dock.size()-1,prefs.getInt("focus",0)));
-            if(!shelf){scene=index<0?"neutral":dock.get(index).id;sceneTitle=index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
+            focusFrom(prefs.getInt("focus",0));
+            if(!shelf){scene=index<0||blank?"neutral":dock.get(index).id;sceneTitle=blank?DockLabels.ADD_LABEL:index<0?"":dock.get(index).name;titleHidden=false;titleAt=0;}
             aim(scene,false);
             // Back from elsewhere: the job may have moved on (or finished) while Home was away and not listening.
             LibraryCollector.get(activity).listen(libraryJob);libraryJobChanged();
@@ -450,7 +489,8 @@ public final class UnifiedPreviewActivity extends Activity {
             dock.clear(); loadDock();
             int at = -1; for (int i = 0; i < dock.size(); i++) if (dock.get(i).id.equals(focused)) at = i;
             index = dock.isEmpty() ? -1 : at >= 0 ? at : Math.max(0, Math.min(dock.size() - 1, index));
-            if (at < 0 && !shelf) { scene = index < 0 ? "neutral" : dock.get(index).id; sceneTitle = index < 0 ? "" : dock.get(index).name; aim(scene, false); }
+            if (blank && (at >= 0 || !roomForMore())) blank = false;   // the empty place was filled (or the dock shrank)
+            if (at < 0 && !shelf && !blank) { scene = index < 0 ? "neutral" : dock.get(index).id; sceneTitle = index < 0 ? "" : dock.get(index).name; aim(scene, false); }
         }
         /** True while Home writes its own dock, so its listener doesn't reload what it has just saved. */
         private boolean savingDock;
@@ -479,7 +519,7 @@ public final class UnifiedPreviewActivity extends Activity {
             handler.removeCallbacks(clockTick);handler.removeCallbacks(commitFocus);handler.removeCallbacks(airPlayCheck);
             handler.removeCallbacks(hold); okDown=false;held=false;
             if(moving) goBack();
-            prefs.edit().putInt("focus",Math.max(0,index)).apply();
+            prefs.edit().putInt("focus",Math.max(0,focusedPlace())).apply();
         }
         void close() {
             fixtureWorker.shutdownNow();shelfWorker.shutdownNow();LibraryCollector.get(activity).unlisten(libraryJob);
@@ -538,7 +578,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private Item defaultItem(String id) {
             switch (id) {
                 // Owner, 25 October 2026: SmartTube is the household's YouTube, so its tile is named and drawn as YouTube.
-                case "smartutube": return favourite(id, DockLabels.name("smartutube"),
+                // Run 106 (owner's Sony): named SmartTube, with its own mark, when YouTube's own app is installed too.
+                case "smartutube": return favourite(id, DockLabels.name("smartutube", youtube()),
                         DockPolicy.packages("smartutube"), "smarttube",
                         0xFF45434A, 0xFF1E1E27);
                 case "netflix": return favourite(id, "Netflix",
@@ -568,11 +609,35 @@ public final class UnifiedPreviewActivity extends Activity {
             if(saved==null){Set<String> pkgs=new HashSet<>();for(Item x:installed)if(x.pkg!=null)pkgs.add(x.pkg);suggested=DockPolicy.suggest(room,pkgs,!LiveTvProtection.livePackage(activity).isEmpty());}
             // UX-DOCK-08: this profile's 6 or 8 places; tiles past them (the other profile's larger dock, or an earlier
             // install's longer list) stay saved in order but off this Home, and are written back unchanged by saveDock.
-            capacity=DockCapacity.get(prefs,Profiles.current(prefs));overflow.clear();
+            capacity=DockCapacity.get(prefs,Profiles.current(prefs));overflow.clear();youtubeHere=youtube();
             for(String id:DockPolicy.order(room,saved,suggested)) {
                 if(dock.size()>=capacity){overflow.add(id);continue;}
-                Item item=defaultItem(id);if(item!=null)dock.add(item);
+                Item item=defaultItem(id);if(item!=null){dock.add(item);art(item);}
             }
+        }
+        /** Whether YouTube's own app is installed (SmartTube is then named and drawn as itself: DockLabels). */
+        private boolean youtube() { for (Item x : installed) for (String p : DockLabels.YOUTUBE_APPS) if (p.equals(x.pkg)) return true; return false; }
+        /** youtube() as of the last dock load: read per frame, so never worked out per frame. */
+        private boolean youtubeHere;
+        /** The tile's mark (DockLabels.glyph). */
+        private String glyphOf(Item item) {
+            boolean yt = youtubeHere;
+            String g = DockLabels.glyph(item.pkg != null && !DockPolicy.canonical(item.pkg).equals(item.id) ? item.pkg : item.id, yt);
+            return "mono".equals(g) && item.pkg != null ? DockLabels.glyph(item.pkg, yt) : g;
+        }
+        /**
+         * A dock tile without a mark of its own fills its tile (owner's Sony: a 35 %-wide icon was too small): its Android TV
+         * banner, else its icon fetched at a high density so it stays sharp when drawn large (DockGlyphs.app). Only for the
+         * few tiles on the dock, once per load, never per frame.
+         */
+        private void art(Item item) {
+            if (item.pkg == null || item.banner != null || item.crisp != null || !"mono".equals(glyphOf(item))) return;
+            PackageManager pm = activity.getPackageManager();
+            try { Intent e = pm.getLeanbackLaunchIntentForPackage(item.pkg); if (e != null && e.getComponent() != null) item.banner = pm.getActivityBanner(e.getComponent()); } catch (Exception ignored) {}
+            try { if (item.banner == null) item.banner = pm.getApplicationBanner(item.pkg); } catch (Exception ignored) {}
+            if (item.banner != null) return;
+            try { android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(item.pkg, 0);
+                if (ai.icon != 0) item.crisp = pm.getResourcesForApplication(ai).getDrawableForDensity(ai.icon, android.util.DisplayMetrics.DENSITY_XXXHIGH, null); } catch (Exception ignored) {}
         }
 
         private void saveDock() {
@@ -652,9 +717,14 @@ public final class UnifiedPreviewActivity extends Activity {
             else if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (!dock.isEmpty()) {
                     int delta = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
-                    index = index < 0 ? 0 : Math.max(0, Math.min(dock.size() - 1, index + delta));
-                    announceForAccessibility(dock.get(index).name);
-                    moved();
+                    // Right from the last tile reaches the first empty place, if there is one; Left from it, the last tile.
+                    if (blank) { if (delta < 0) { blank = false; index = dock.size() - 1; announceForAccessibility(dock.get(index).name); moved(); } }
+                    else if (delta > 0 && index == dock.size() - 1 && roomForMore()) { blank = true; announceForAccessibility(DockLabels.ADD_LABEL); moved(); }
+                    else {
+                        index = index < 0 ? 0 : Math.max(0, Math.min(dock.size() - 1, index + delta));
+                        announceForAccessibility(dock.get(index).name);
+                        moved();
+                    }
                 }
             }
             invalidate();
@@ -670,17 +740,22 @@ public final class UnifiedPreviewActivity extends Activity {
                 int pick = menuNow == MUSIC_MENU ? menuIndex - 1 : menuIndex;
                 if (pick < 0) { String pkg = AmazonMusic.installed(activity); String why = pkg == null ? "Amazon Music isn't installed on this TV" : Launch.open(activity, pkg, AmazonMusic.NAME); if (why != null && !why.isEmpty()) info(why); }
                 else if (pick == 0) { moving = true; beforeMove = new ArrayList<>(dock); lifted = index; }
-                else if (pick == 1 && index >= 0 && index < dock.size()) {
+                // Replace with another app: the same picker as an empty place; the choice takes this tile's place.
+                else if (pick == 1 && index >= 0 && index < dock.size()) AppPickerActivity.place(activity, index, dock.get(index).id);
+                else if (pick == 2 && index >= 0 && index < dock.size()) {
                     // Removing never uninstalls; the app stays in Apps and can be added back.
                     String name = dock.get(index).name; dock.remove(index); saveDock();
                     index = dock.isEmpty() ? -1 : Math.min(index, dock.size() - 1); moved(); info(name + " removed from Home");
-                } else if (pick == 2 && index >= 0 && index < dock.size()) {
+                } else if (pick == 3 && index >= 0 && index < dock.size()) {
                     Item item = dock.get(index); if (item.pkg != null) Launch.info(activity, item.pkg); else info(item.name + " is a Unified TV shortcut");
                 }
 
             } else if (moving) {
                 moving = false; lifted = -1; beforeMove = null; saveDock(); info("Home layout saved");
 
+            } else if (blank || dock.isEmpty()) {
+                // An empty place: choose an app for exactly this place (adult PIN in Kids, as every Home edit).
+                int place = dock.size(); EditLock.ask(activity, () -> AppPickerActivity.place(activity, place, null));
             } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
             else info("Add apps to Home from Settings > Apps & Shortcuts");
             invalidate();
@@ -719,7 +794,7 @@ public final class UnifiedPreviewActivity extends Activity {
          * is still the Home button's), one short line saying how to reach the TV's own Home.
          */
         private void stayHome() {
-            if (!dock.isEmpty() && index != 0) { index = 0; announceForAccessibility(dock.get(0).name); moved(); }
+            if (!dock.isEmpty() && (index != 0 || blank)) { index = 0; blank = false; announceForAccessibility(dock.get(0).name); moved(); }
             if (prefs.getBoolean(BACK_HINT, false) || DefaultHome.isDefault(activity)) return;
             prefs.edit().putBoolean(BACK_HINT, true).apply(); info(STAYS_OPEN, 6000L);
         }
@@ -769,12 +844,14 @@ public final class UnifiedPreviewActivity extends Activity {
                 }}
             if ("xbox".equals(item.id) || "tvplus".equals(item.id)) { String no = Launch.kidsRefusal(activity, item.id, item.name); if (no != null) { info(no); return; } HouseholdActivity.action(activity, item.id); return; }
             // Live TV and every other app go through one gate (Launch.open): protection, not appearance (docs/VPN_PROTECTION.md).
+            // Live TV with no app chosen or recognised: "Choose your Live TV app" and the picker (Launch.live), never a dead end.
             boolean live = "live".equals(item.id);
-            String pkg = live && item.pkg == null ? LiveTvProtection.livePackage(activity) : item.pkg;
-            String why = Launch.open(activity, pkg, live ? "Live TV" : item.name);
+            String why = live && item.pkg == null ? Launch.live(activity) : Launch.open(activity, item.pkg, live ? "Live TV" : item.name);
             if (why != null && !why.isEmpty()) info(why);
         }
 
+        /** The Live TV app was just chosen from a Live TV route: Live TV now, through the one gate. */
+        void openLive() { home(); String why = Launch.live(activity); if (why != null && !why.isEmpty()) info(why); }
         private void info(String text) { info(text, 3500L); }
         /** A notice for {@code ms}; a longer one stays long enough to read. */
         private void info(String text, long ms) {
@@ -874,7 +951,7 @@ public final class UnifiedPreviewActivity extends Activity {
         private void drawTitle(Canvas c, long now, float reveal) {
             if (titleHidden || sceneTitle.isEmpty() || menu || moving || header) return;
             // No label twice (DockLabels): on the dock, the name sits above it only when tiles show no label of their own.
-            if (!shelf && app(scene) && !DockLabels.titleAbove(labels())) return;
+            if (!shelf && (app(scene) || blank) && !DockLabels.titleAbove(labels())) return;
             int alpha = titleAt <= now - TITLE_MS ? 255 : titleAt > now ? 0 : Math.round(255 * (now - titleAt) / (float) TITLE_MS);
             if (alpha <= 0) { postInvalidateDelayed(16); return; }
             float y = 714 - 60 * reveal;
@@ -1099,19 +1176,35 @@ public final class UnifiedPreviewActivity extends Activity {
                 return;
             }
             final int places = capacity;   // loadDock keeps the list within it
-            final float s = DockCapacity.scale(places), cell = DockCapacity.TILE * s, cy = 858;
-            float full = DockCapacity.width(places), left = (W - full) / 2;
+            // Run 106 (owner's Sony): the places are laid out from the view's real size and the part of it on the screen
+            // (DockCapacity.fit), so the dock always fits with its side margins; on a 16:9 view this is the approved geometry.
+            final DockCapacity.Fit fit = dockFit(places);
+            final float s = fit.ky, cell = fit.tileW, cy = 858;
+            float full = fit.width, left = fit.left;
             glass(c, left, cy - 111 * s, left + full, 1005, 37, 0x54465669, 0x20FFFFFF);
             String mode = labels(); int labelSize = Math.round(DockCapacity.labelSize(places) * Accessibility.scale(prefs));   // SET-073 Text size
+            int labelled = header || shelf ? -1 : focusedPlace();   // the place whose label shows (Focused only)
             for (int i = 0; i < places; i++) {
-                float x = DockCapacity.slotLeft(places, i, W), mid = x + cell / 2;
+                float x = fit.slot(i), mid = x + cell / 2;
                 float tileTop = cy - 80 * s, tileBottom = cy + 81 * s, r = 27 * s;
-                if (i >= count) {   // an empty place: a faint well, never focusable, never filled for the household
+                if (i == count && blank && !header) {   // the first empty place, focused: "+", "Add an app" (OK chooses one)
+                    card(c, x, tileTop, x + cell, tileBottom, r, 0x40FFFFFF, 0x1FFFFFFF);
+                    c.save(); c.scale(fit.kx, s, mid, cy); DockGlyphs.draw(c, DockLabels.ADD, mid, cy, icon, glyph, rect, null); c.restore();
+                    boolean strong = prefs.getBoolean("highContrast",false);
+                    outline.setColor(strong ? 0xFFFFFFFF : 0xD9F4F1F2); outline.setStrokeWidth(strong ? 4 : 3);
+                    c.drawRoundRect(x - 5 * s, tileTop - 5 * s, x + cell + 5 * s, tileBottom + 5 * s, 31 * s, 31 * s, outline); outline.setStrokeWidth(2);
+                    if (DockLabels.shows(mode, i, labelled)) {
+                        type.setTextSize(labelSize); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+                        text(c, DockLabels.fit(DockLabels.ADD_LABEL, fit.label(true), measure), mid, 982, labelSize, WHITE, false, Paint.Align.CENTER);
+                    }
+                    continue;
+                }
+                if (i >= count) {   // an empty place: a faint well; only the first one takes focus (above), never filled for the household
                     rect.set(x, tileTop, x + cell, tileBottom); paint.setShader(null); paint.setColor(0x12FFFFFF); c.drawRoundRect(rect, r, r, paint);
                     outline.setColor(0x26FFFFFF); outline.setStrokeWidth(1.5f); c.drawRoundRect(rect, r, r, outline); outline.setStrokeWidth(2);
                     continue;
                 }
-                boolean selected = i == index && !header;   // one focus at a time: in the top row the tile rests
+                boolean selected = i == index && !blank && !header;   // one focus at a time: in the top row the tile rests
                 float scale = selected ? 1.07f : 1;
                 if (selected && focusAt > 0 && !prefs.getBoolean("reduceMotion",false) && !prefs.getBoolean("lightweight",false)) {
                     float t = shelf ? 1 : Math.min(1, (now - focusAt) / (float) TILE_MS);
@@ -1133,7 +1226,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 // UX-ICON-01..03: one neutral glass tile for every app, a simple white glyph on it; never text or a full-colour icon.
                 card(c, x, tileTop, x + cell, tileBottom, r, 0x40FFFFFF, 0x1FFFFFFF);
                 if(selected)glass(c,x,tileTop,x+cell,tileBottom,r,0,0);
-                c.save(); c.scale(s, s, mid, cy); tileGlyph(c, item, mid, cy); c.restore();
+                c.save(); c.scale(fit.kx, s, mid, cy); tileGlyph(c, item, mid, cy); c.restore();
                 if (selected) {
                     // A crisp, luminous outline on the focused tile, brighter still with high contrast.
                     boolean strong = prefs.getBoolean("highContrast",false);
@@ -1144,9 +1237,9 @@ public final class UnifiedPreviewActivity extends Activity {
                 c.restore();
                 // UX-ICON-05: labels outside the tiles, as the profile chose (Focused only by default); the tiles never move.
                 // Long names end in an ellipsis within their own place (Always show) or two places (the one focused label).
-                if (DockLabels.shows(mode, i, header || shelf ? -1 : index)) {
+                if (DockLabels.shows(mode, i, labelled)) {
                     type.setTextSize(labelSize); type.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                    text(c, DockLabels.fit(item.name, DockCapacity.labelWidth(places, !DockLabels.ALWAYS.equals(mode)), measure), mid, 982, labelSize, WHITE, false, Paint.Align.CENTER);
+                    text(c, DockLabels.fit(item.name, fit.label(!DockLabels.ALWAYS.equals(mode)), measure), mid, 982, labelSize, WHITE, false, Paint.Align.CENTER);
                 }
             }
             if (!resting) return;
@@ -1159,9 +1252,10 @@ public final class UnifiedPreviewActivity extends Activity {
 
         /** The tile's glyph (DockLabels.glyph, drawn by DockGlyphs): original, simple vector symbols; no brand artwork is copied. */
         private void tileGlyph(Canvas c, Item item, float cx, float cy) {
-            String g = DockLabels.glyph(item.pkg != null && !DockPolicy.canonical(item.pkg).equals(item.id) ? item.pkg : item.id);
-            if ("mono".equals(g) && item.pkg != null) g = DockLabels.glyph(item.pkg);
-            DockGlyphs.draw(c, g, cx, cy, icon, glyph, rect, item.icon);
+            String g = glyphOf(item);
+            // No mark of its own: its banner, else its (sharp) icon filling the tile, else its name (DockGlyphs.app).
+            if ("mono".equals(g)) DockGlyphs.app(c, cx, cy, item.banner, item.crisp != null ? item.crisp : item.icon, item.name, icon, glyph, rect);
+            else DockGlyphs.draw(c, g, cx, cy, icon, glyph, rect, item.icon);
         }
 
         private final Path cardClip = new Path();
@@ -1189,7 +1283,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (i < posters.size()) poster(c, posters.get(i), x, top, w, h);
                 else {
                     glass(c, x, top, x + w, top + h, 22, 0, 0);
-                    text(c, libraryReady ? "View All" : Profiles.kids(prefs) ? "Ask an adult" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
+                    text(c, libraryReady || !libraryKnown ? "View All" : Profiles.kids(prefs) ? "Ask an adult" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
                     text(c, "Films & TV", x + w / 2, top + h / 2 + 32, 24, MUTED, false, Paint.Align.CENTER);
                 }
                 if (!selected && shelf) { paint.setShader(null); paint.setColor(0x52000000); rect.set(x, top, x + w, top + h); c.drawRoundRect(rect, 22, 22, paint); }
@@ -1260,7 +1354,8 @@ public final class UnifiedPreviewActivity extends Activity {
         private void openShelf() {
             if (menu || moving) return;
             shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis(); shelfMoved = false;
-            libraryReady = HomeShelf.configured(activity);   // once per opening, never per frame (it reads the encrypted store)
+            // Whether a library is set up comes from the encrypted store: read with the row on the worker (loadPosters),
+            // never on the main thread (owner's Sony, build run 106: the remote stopped answering while the library was checked).
             posterIndex = landingPoster(); shelfHint = false;
             moved(); loadPosters(false); invalidate();
         }
@@ -1276,16 +1371,16 @@ public final class UnifiedPreviewActivity extends Activity {
          */
         private void loadPosters(boolean force) {
             long now = SystemClock.uptimeMillis();
-            if (postersLoading || (!force && !posters.isEmpty() && now - postersAt < 10 * 60_000L)) return;
+            if (postersLoading || (!force && !posters.isEmpty() && now - postersAt < 10 * 60_000L && libraryKnown)) return;
             postersLoading = true; shelfReloadAt = now; invalidate();
             boolean kids = Profiles.kids(prefs);
             try { shelfWorker.execute(() -> {
                 List<HomeShelf.Poster> found;
                 try { found = HomeShelf.load(activity); } catch (Exception e) { found = new ArrayList<>(); }
                 // The key and the server's id come from the encrypted store: read here, never on the main thread.
-                boolean on = Posters.get(activity).usable(); String udn = LibraryFolders.library(activity).udn();
+                boolean on = Posters.get(activity).usable(); String udn = LibraryFolders.library(activity).udn(); boolean configured = HomeShelf.configured(activity);
                 final List<HomeShelf.Poster> ready = found;
-                handler.post(() -> { HomeShelf.Poster focused = posterIndex < posters.size() ? posters.get(posterIndex) : null; boolean onLibraryCard = !posters.isEmpty() && posterIndex >= posters.size();
+                handler.post(() -> { libraryReady = configured; libraryKnown = true; HomeShelf.Poster focused = posterIndex < posters.size() ? posters.get(posterIndex) : null; boolean onLibraryCard = !posters.isEmpty() && posterIndex >= posters.size();
                     posters = ready; tileLayouts.clear(); postersLoading = false; postersAt = SystemClock.uptimeMillis(); postersOn = on; shelfUdn = udn;
                     shelfLine = HomeShelf.line(LibraryCollector.get(activity).status(), kids, !ready.isEmpty(), on); if (!keyLineShown()) shelfHint = false;
                     posterIndex = keptFocus(focused, onLibraryCard); if (shelf) { handler.removeCallbacks(commitFocus); handler.post(commitFocus); } invalidate();
@@ -1372,8 +1467,8 @@ public final class UnifiedPreviewActivity extends Activity {
             catch (RuntimeException e) { info("Unable to open Films & TV"); }
         }
 
-        private static final String[] MENU = {"Move", "Remove from Home", "App information", "Cancel"},
-                MUSIC_MENU = {"Open Amazon Music app", "Move", "Remove from Home", "App information", "Cancel"};
+        private static final String[] MENU = {"Move", "Replace with another app", "Remove from Home", "App information", "Cancel"},
+                MUSIC_MENU = {"Open Amazon Music app", "Move", "Replace with another app", "Remove from Home", "App information", "Cancel"};
         /** The hold menu as it opened: the Music tile adds the Amazon Music app first when it is installed (OD-27). */
         private String[] menuNow = MENU;
         private String[] menuFor(Item item) { return "music".equals(item.id) && AmazonMusic.installed(activity) != null ? MUSIC_MENU : MENU; }

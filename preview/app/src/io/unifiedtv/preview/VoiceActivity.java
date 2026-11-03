@@ -228,7 +228,7 @@ public final class VoiceActivity extends Activity {
         switch (command) {
             case "live": {
                 // The same gate as the dock and Apps (OD-26's rule, then the Kids list): voice is never a way round it.
-                String why = Launch.open(this, LiveTvProtection.livePackage(this), "Live TV");
+                String why = Launch.live(this);   // no Live TV app yet: "Choose your Live TV app" and the picker
                 if (why == null) close(); else show("“" + text + "”", why.isEmpty() ? LiveTvProtection.message(LiveTvProtection.now(this)) : why);
                 return; }
             case "profile": Profiles.choose(this); return;

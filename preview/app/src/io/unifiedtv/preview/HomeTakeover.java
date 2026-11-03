@@ -31,6 +31,12 @@ import java.util.*;
  * </ol>
  * Never: accessibility key interception, reading or reassigning keys, root, uninstalling, or turning off any other package.
  * The general clean-up keeps refusing every Home app (CleanupPolicy); only this flow can touch the TV's own Home.
+ *
+ * <p>Before any of this, {@link #plan} decides on this TV alone, with no link (owner's Sony BRAVIA 4K UR2, Android TV 10,
+ * 3 November 2026: no tested list, and the page waited after the TV's prompt): a TV no tested list covers gets the gentle
+ * route only ({@link #gentleOnly}: set-home-activity naming Unified TV's own Home entry, never anything turned off), said
+ * up front ({@link #UNTESTED}); and when Android reports that the TV's own Home ranks above other Home screens, Android's
+ * own choice can't win, so the page says so ({@link #KEEPS_OWN}) before opening anything.
  */
 final class HomeTakeover {
     private HomeTakeover() {}
@@ -45,6 +51,11 @@ final class HomeTakeover {
     static final String CHOOSER_NOW = "Android has no Home screen set, so nothing was turned off. Press Home on your remote and choose Unified TV.";
     static final String RECORD_SAYS_OFF = "The undo record says the TV's own Home was already off before, so Unified TV can't record a safe way back. Nothing was turned off.";
     static final String UNINSTALL_WORDS = "Before uninstalling or replacing this build, choose Return to the original TV interface.";
+    static final String UNTESTED = "This TV hasn't been tested yet. Unified TV can ask Android to use it as Home without turning anything off. If the TV's own Home still wins, it will say so and change nothing.";
+    static final String KEEPS_OWN = "This TV keeps its own Home. Use '" + TurnOnChoice.Option.QUICK.title + "' instead.";
+    static final String USE_QUICK = "Use " + TurnOnChoice.Option.QUICK.title;
+    /** Android reports the TV's own Home called {@code label} ranks above other Home screens. */
+    static String ranksFirst(String label) { return "The TV's own Home, " + label + ", puts itself ahead of other Home screens, so Android's own choice can't change what the Home button opens."; }
     /** The TV-only route back, for the TV's own Home called {@code label} in its Settings. */
     static String tvOnlySteps(String label) { return "On the TV: Settings > Apps > See all apps > Show system apps > " + label + " > Enable."; }
     /** The computer's way back. */
@@ -58,6 +69,60 @@ final class HomeTakeover {
         if ("com.google.android.leanbacklauncher".equals(pkg)) return "Android TV Launcher";
         if ("com.tcl.tvlauncher".equals(pkg)) return "TCL Home";
         return pkg;
+    }
+
+    // --- before the link: this TV alone (its fingerprint and the Home apps Android lists), nothing opened
+    enum Route {
+        /** A tested list covers this TV: the whole flow, the TV's own Home turned off only after the owner confirms. */
+        TESTED,
+        /** No tested list: Android's own choice only (set-home-activity), nothing ever turned off. */
+        GENTLE,
+        /** No tested list, and the TV's own Home ranks above other Home screens: Android's own choice can't win. */
+        KEEPS_OWN
+    }
+    static final class Plan {
+        final Route route; final String ahead;
+        Plan(Route route, String ahead) { this.route = route; this.ahead = ahead; }
+        boolean gentleOnly() { return route != Route.TESTED; }
+    }
+    /**
+     * Pure: {@code tested}, a tested list covers this firmware; {@code others}, every other Home app Android lists (package
+     * to its Home priority); {@code ours}, the priority of Unified TV's Home entry (0: an app that isn't part of the TV's
+     * system can't rank its Home higher). Android picks the highest priority outright, before any choice of Home.
+     */
+    static Plan plan(boolean tested, Map<String, Integer> others, int ours) {
+        if (tested) return new Plan(Route.TESTED, null);
+        String ahead = null; int best = Integer.MIN_VALUE;
+        if (others != null) for (Map.Entry<String, Integer> e : others.entrySet()) if (e.getValue() != null && e.getValue() > best) { best = e.getValue(); ahead = e.getKey(); }
+        return ahead != null && best > ours ? new Plan(Route.KEEPS_OWN, ahead) : new Plan(Route.GENTLE, null);
+    }
+    /** On this TV: Build.FINGERPRINT (or the test's) against the tested lists, and the Home apps PackageManager lists. */
+    static Plan plan(Context c, String lists, String fingerprint) {
+        boolean tested = CleanupLists.match(lists, fingerprint).known();
+        Map<String, Integer> others = new LinkedHashMap<>();
+        try {
+            for (ResolveInfo r : c.getPackageManager().queryIntentActivities(DefaultHome.homeIntent(), 0)) {
+                if (r.activityInfo == null) continue;
+                android.content.ComponentName n = new android.content.ComponentName(r.activityInfo.packageName, r.activityInfo.name);
+                if (!DefaultHome.candidate(c.getPackageName(), n)) continue;
+                Integer had = others.get(n.getPackageName());
+                if (had == null || r.priority > had) others.put(n.getPackageName(), r.priority);
+            }
+        } catch (RuntimeException ignored) { /* nothing listed: the gentle route still says what happened */ }
+        return plan(tested, others, 0);
+    }
+
+    /**
+     * The gentle route's shell: reads, and one change only, set-home-activity naming Unified TV's own Home entry. Any other
+     * change (turning an app off, above all) is refused unsent, whoever asks: on a TV no tested list covers, nothing is
+     * ever turned off.
+     */
+    static Cleanup.Shell gentleOnly(Cleanup.Shell sh, String self) {
+        String mine = AdbCommands.homeTarget(entry(self)) ? AdbCommands.setHome(entry(self)) : null;   // none in the preview app
+        return command -> {
+            if (AdbCommands.changes(command) && (mine == null || !command.equals(mine))) throw new Changed(UNKNOWN_TV);
+            return sh.run(command);
+        };
     }
 
     /** Unified TV's own Home entry on this TV, as the TV prints it. */

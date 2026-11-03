@@ -110,7 +110,8 @@ public class ReturnJourneyTest {
             ViewGroup root=v.findViewById(android.R.id.content);EditText field=field(root);field.setText("What's the weather tomorrow?");v.ask();
             assertTrue(v.answerText(),v.answerText().contains("General questions aren't connected yet"));
             assertNull(Shadows.shadowOf(v).getNextStartedActivity());assertFalse(v.isFinishing());
-            field.setText("Open Live TV");v.ask();assertTrue("voice goes through the same gate: no Live TV app here",v.answerText().contains("Live TV is not installed on this TV"));
+            field.setText("Open Live TV");v.ask();assertTrue("voice goes through the same gate: no Live TV app here, so it asks which",v.answerText().contains(Launch.CHOOSE_LIVE));
+            Intent next=Shadows.shadowOf(v).getNextStartedActivity();assertNotNull(next);assertEquals("only the picker opens",AppPickerActivity.class.getName(),next.getComponent().getClassName());
             assertNull(Shadows.shadowOf(v).getNextStartedActivity());
         }
     }

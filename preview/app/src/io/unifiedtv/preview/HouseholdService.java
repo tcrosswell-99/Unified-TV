@@ -58,7 +58,7 @@ public final class HouseholdService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&"stop".equals(intent.getAction()))return START_STICKY;   // an old notification's Stop: ignored (the PIN is needed)
         if(intent!=null&&"dismiss".equals(intent.getAction())){dismiss();return START_STICKY;}
-        if(intent!=null&&"simulate".equals(intent.getAction())){simulationOnly=true;simulate(intent);if(socket==null)connect();return START_STICKY;}
+        if(intent!=null&&"simulate".equals(intent.getAction())){simulationOnly=true;if(socket==null)connect();simulate(intent);return START_STICKY;}
         getSharedPreferences("unified-tv-preview",0).edit().putBoolean(AlarmWatch.STOPPED,false).apply();   // started on purpose: alerts are on
         if(intent!=null&&"camera".equals(intent.getAction())){
             if(authorised){long now=System.currentTimeMillis();if(policy.acceptRing("manual:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}}
@@ -117,6 +117,7 @@ public final class HouseholdService extends Service {
                 if(alarms()){statesPending=true;send(ws,new JSONObject().put("id",STATES).put("type","get_states"));}
                 else if(policy.forgetDetectors()!=AlertPolicy.NONE)render(false);   // alarms switched off in household settings
                 update("Authorised · waiting for subscription confirmation");
+                if(streamWanted)stream();
                 long asked=pendingCamera;pendingCamera=0;
                 if(asked>0&&System.currentTimeMillis()-asked<CAMERA_REQUEST_MS){long now=System.currentTimeMillis();if(policy.acceptRing("manual:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show();}}
             }else if(type.equals("result")){
@@ -145,16 +146,25 @@ public final class HouseholdService extends Service {
         if(type.equals("state_changed")){
             JSONObject before=data.optJSONObject("old_state"),after=data.optJSONObject("new_state");if(before==null||after==null)return;
             String entity=data.optString("entity_id");
-            int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"));
-            if(kind!=AlertPolicy.RING_NONE)lastEvent(kind==AlertPolicy.RING_PRESS?"doorbell press":"person",now);
-            if(kind==AlertPolicy.RING_PRESS){
-                String id=entity+":"+after.optString("last_changed");if(policy.acceptRing(id,now)){EventLog.record(this,EventLog.DOORBELL,policy.emergency()?"Doorbell pressed during an alarm: camera held back":"Doorbell pressed: camera shown");if(policy.emergency()){policy.queueRing(now);render(false);}else show();}
-            }else if(kind==AlertPolicy.RING_PERSON&&policy.acceptPerson(entity,now))person();
+            // A Ring ding is an event entity whose state is the event's time: one replayed from before is not a visit.
+            int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"),now);
+            if(kind!=AlertPolicy.RING_NONE)lastEvent(kind==AlertPolicy.RING_PRESS?"doorbell press":kind==AlertPolicy.RING_PERSON?"person":"motion",now);
+            if(kind==AlertPolicy.RING_PRESS)doorbell(entity+":"+after.optString("state")+":"+after.optString("last_changed"),false,now);
+            else if(kind!=AlertPolicy.RING_NONE&&policy.acceptPerson(entity,now))person(false,kind==AlertPolicy.RING_MOTION);
         }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
             if(policy.emergency())return;   // spec 4.10: reminders arriving during an emergency are dropped, not held
             if(policy.ringing(now))policy.defer(data.optString("text"),fired);else if(policy.reminderAllowed(fired,now))reminder(data.optString("text"));
         }
+    }
+    /**
+     * One doorbell press, real or the household's own test (SET-054 "Test the doorbell"): the same duplicate rule, the same
+     * emergency rule (held back during an alarm, RING-04) and the same card with the chosen camera's live picture.
+     */
+    private void doorbell(String id,boolean test,long now){
+        if(!policy.acceptRing(id,now))return;
+        if(!test)EventLog.record(this,EventLog.DOORBELL,policy.emergency()?"Doorbell pressed during an alarm: camera held back":"Doorbell pressed: camera shown");
+        if(policy.emergency()){policy.queueRing(now);render(false);}else show(test);
     }
     /** For Owner diagnostics: the kind and time of the last doorbell event that reached this TV. No entity, name or address. */
     private void lastEvent(String kind,long at){getSharedPreferences("unified-tv-preview",0).edit().putString("householdLastEvent",kind).putLong("householdLastEventAt",at).apply();}
@@ -167,7 +177,7 @@ public final class HouseholdService extends Service {
     /** SET-051: the household's auto-close (30 s by default, 60 s, or only with Back); 0 means the card waits for Back. */
     private long closeMs(){android.content.SharedPreferences p=getSharedPreferences("unified-tv-preview",0);return Accessibility.time(p,DoorbellCamera.closeMs(p.getString(DoorbellCamera.CLOSE,"")));}   // SET-073 longer times
     private void closeLater(){main.removeCallbacks(timeout);long ms=closeMs();if(ms>0)main.postDelayed(timeout,ms);}
-    /** SET-054: whether the visit on screen is a test (household setup's "Test: someone rings the doorbell"). */
+    /** SET-054: whether the visit on screen is a test (household setup's "Test the doorbell"). */
     private boolean testVisit;
     private void show(){show(false);}
     private void show(boolean test){if(cameraOverlay!=null){if(!test)testVisit=false;closeLater();}else{testVisit=test;ring();}}
@@ -199,10 +209,17 @@ public final class HouseholdService extends Service {
         WindowManager.LayoutParams at=full?params(-1,-1,true):params(width+28,height+28,true);
         if(full){at.gravity=Gravity.CENTER;at.x=0;at.y=0;frame.setCornerRadius(0);}else{at.gravity=Gravity.BOTTOM|Gravity.RIGHT;at.x=48;at.y=48;}
         cameraOverlay=card;windows.addView(card,at);card.requestFocus();
-        streamId=++command;
-        try{if(socket==null)throw new IllegalStateException();send(socket,new JSONObject().put("id",streamId).put("type","camera/stream").put("entity_id",house.getString("camera")).put("format","hls"));main.postDelayed(noPicture,NO_PICTURE_MS);}
-        catch(Exception e){unavailable();}
+        // A test can open the card while the connection is still signing in: the picture is asked for once it has.
+        if(socket!=null&&!authorised&&house!=null&&!house.optString("camera").isEmpty()){streamWanted=true;main.postDelayed(noPicture,NO_PICTURE_MS);}
+        else stream();
         closeLater();
+    }
+    /** The card is open and waiting for Home Assistant's sign-in before it can ask for the live picture. */
+    private boolean streamWanted;
+    private void stream(){
+        streamWanted=false;if(cameraOverlay==null)return;streamId=++command;main.removeCallbacks(noPicture);
+        try{if(socket==null||!authorised)throw new IllegalStateException();send(socket,new JSONObject().put("id",streamId).put("type","camera/stream").put("entity_id",house.getString("camera")).put("format","hls"));main.postDelayed(noPicture,NO_PICTURE_MS);}
+        catch(Exception e){unavailable();}
     }
     private android.widget.FrameLayout cameraScreen;private TextView cameraClock,cameraNote;
     /** RING-03 fallback: no live picture within this time (or no camera set up) says so plainly; the card still shows who rang. */
@@ -220,17 +237,16 @@ public final class HouseholdService extends Service {
      * RING-02: a confirmed person gets a small toast naming the doorbell, for 5 seconds. It never opens the camera, never
      * takes focus or sound, and never appears during an emergency or over an open doorbell card.
      */
-    private void person(){person(false);}
-    private void person(boolean test){
+    private void person(boolean test,boolean motion){
         if(stopped||policy.emergency()||cameraOverlay!=null||!Settings.canDrawOverlays(this))return;
         android.content.SharedPreferences prefs=getSharedPreferences("unified-tv-preview",0);
-        String who=test?"Test: person at the door":"Person at the door";
+        String who=(test?"Test: ":"")+(motion?"movement at the door":"person at the door");who=Character.toUpperCase(who.charAt(0))+who.substring(1);
         if(!AlertPolicy.personToastAllowed(Profiles.kids(prefs),prefs.getBoolean(AlertPolicy.KIDS_PERSON_PREF,true))){EventLog.record(this,EventLog.PERSON,who+": not shown while Kids is watching");return;}
         // SET-052: quiet hours hold back person toasts only; doorbell presses and smoke or carbon monoxide alarms never ask.
         if(!QuietHours.personAllowed(prefs,HouseholdSettings.zone(this),System.currentTimeMillis())){EventLog.record(this,EventLog.PERSON,who+": not shown in quiet hours");return;}
         EventLog.record(this,EventLog.PERSON,who+": shown");
         removeView(personToast,()->personToast=null);
-        TextView toast=new TextView(this);toast.setText(DoorbellCamera.person(cameraName(),test));toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(28,18,28,18);
+        TextView toast=new TextView(this);toast.setText(motion?DoorbellCamera.movement(cameraName(),test):DoorbellCamera.person(cameraName(),test));toast.setTextSize(22);toast.setTextColor(-1);toast.setPadding(28,18,28,18);
         android.graphics.drawable.GradientDrawable g=new android.graphics.drawable.GradientDrawable();g.setCornerRadius(28);g.setColor(0xE620293B);g.setStroke(2,0x40FFFFFF);toast.setBackground(g);
         WindowManager.LayoutParams p=params(-2,-2,false);p.flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         personToast=toast;windows.addView(toast,p);
@@ -394,8 +410,8 @@ public final class HouseholdService extends Service {
     private void simulate(Intent intent){
         String kind=intent.getStringExtra("kind"),state=intent.getStringExtra("state"),name=intent.getStringExtra("name");long now=System.currentTimeMillis();
         if("end".equals(kind)){policy.endSimulation();render(false);return;}
-        if("door".equals(kind)){if(policy.acceptRing("test:"+now,now)){if(policy.emergency()){policy.queueRing(now);render(false);}else show(true);}return;}
-        if("person".equals(kind)){if(policy.acceptPerson("test:"+now,now))person(true);return;}
+        if("door".equals(kind)){doorbell("test:"+now,true,now);return;}
+        if("person".equals(kind)){if(policy.acceptPerson("test:"+now,now))person(true,"motion".equals(state));return;}
         if(!"smoke".equals(kind)&&!"carbon_monoxide".equals(kind))return;
         int result=policy.update("simulated."+kind+("on".equals(state)?"":"_"+state),kind,name==null?"":name,state,now,true);
         if(result!=AlertPolicy.NONE)render(result==AlertPolicy.NEW_ALARM);
@@ -410,7 +426,7 @@ public final class HouseholdService extends Service {
     private void dismiss(){
         main.removeCallbacks(timeout);testVisit=false;
         if(cameraOverlay!=null&&getSharedPreferences("unified-tv-preview",0).getString("room","").equals("frame"))HouseholdActivity.backgroundAction(this,"ringExit");
-        streamId=0;policy.dismiss();dismissViews();
+        streamId=0;streamWanted=false;policy.dismiss();dismissViews();
         String later=policy.release(System.currentTimeMillis());if(later!=null&&!stopped)reminder(later);
     }
     @Override public void onDestroy(){stopped=true;main.removeCallbacksAndMessages(null);if(socket!=null)socket.cancel();dismiss();removeAlarmScreen();removeView(alarmBanner,()->alarmBanner=null);removeView(warningToast,()->warningToast=null);removeView(personToast,()->personToast=null);if(client!=null)client.dispatcher().executorService().shutdown();super.onDestroy();}

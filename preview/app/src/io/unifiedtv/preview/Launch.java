@@ -27,6 +27,17 @@ final class Launch {
      * LiveTvProtection's one rule (OD-26 as amended: a VPN connected, NordVPN installed), and then the safety net (LiveTvGuard) watches it.
      */
     static String open(Activity a,String pkg,String label){return open(a,pkg,label,false);}
+    /**
+     * Live TV from any route (the Live TV tile, Apps, voice): the household's Live TV app through the one gate. With no
+     * Live TV app chosen or recognised (owner's Sony: ReamSmartz installed, but not identified), never a dead end: "Choose
+     * your Live TV app", and the app picker opens (adult PIN in Kids); after a choice Home carries on into Live TV through
+     * this same gate (AppPickerActivity). Returns what open() returns, or that sentence.
+     */
+    static final String CHOOSE_LIVE="Choose your Live TV app";
+    static String live(Activity a){
+        String pkg=LiveTvProtection.livePackage(a);if(!pkg.isEmpty())return open(a,pkg,"Live TV");
+        EditLock.ask(a,()->AppPickerActivity.live(a,true));return CHOOSE_LIVE;
+    }
     /** A short visit to a utility app (AirPin, NordVPN) that the household comes straight back from: see the class notes. */
     static String visit(Activity a,String pkg,String label){return open(a,pkg,label,true);}
     private static String open(Activity a,String pkg,String label,boolean visit){
@@ -144,7 +155,10 @@ final class Launch {
      */
     static void library(Activity a){
         Intent next;
-        if(HomeShelf.configured(a))next=new Intent(a,LibraryActivity.class);
+        // Folders chosen on this TV (the usual case): straight to Films & TV, which reads the encrypted folders off the main
+        // thread and says itself when nothing is set up (owner's Sony, build run 106). Otherwise as before.
+        if(MediaSources.FOLDERS.equals(a.getSharedPreferences(HouseholdSettings.PREFS,0).getString(MediaSources.PREFERRED,"")))next=new Intent(a,DlnaLibraryActivity.class);
+        else if(HomeShelf.configured(a))next=new Intent(a,LibraryActivity.class);
         else next=Profiles.kids(a)?new Intent(a,DlnaLibraryActivity.class):new Intent(a,DlnaLibraryActivity.class).putExtra("setup",true);
         try{a.startActivity(next);a.overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
         catch(RuntimeException e){android.widget.Toast.makeText(a,"Unable to open Films & TV",android.widget.Toast.LENGTH_LONG).show();}

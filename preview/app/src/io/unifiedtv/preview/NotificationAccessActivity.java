@@ -4,6 +4,8 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.widget.Button;
 import android.widget.TextView;
@@ -48,6 +50,8 @@ public final class NotificationAccessActivity extends GlassScreen {
     static boolean available(Context c) { return AdbCommands.LISTENER_APPS.contains(c.getPackageName()); }
 
     private ExecutorService worker;
+    /** The whole-attempt limit (LinkSteps.FLOW_MS). */
+    private final Handler watch = new Handler(Looper.getMainLooper());
     private volatile Closeable link, opening;
     private volatile boolean busy, stopped, destroyed;
     private volatile int generation;
@@ -83,6 +87,9 @@ public final class NotificationAccessActivity extends GlassScreen {
         String command;
         try { command = AdbCommands.allowListener(getPackageName()); } catch (IllegalArgumentException e) { intro(); return; }
         busy = true; int mine = ++generation;
+        watch.removeCallbacksAndMessages(null);
+        watch.postDelayed(() -> tooLong(mine), LinkSteps.FLOW_MS);
+        Context app = getApplicationContext();
         background(() -> {
             Runnable ui;
             try {
@@ -92,11 +99,11 @@ public final class NotificationAccessActivity extends GlassScreen {
                 boolean on = MediaWatch.granted(getApplicationContext());
                 ui = () -> finishPage(on);
             }
-            catch (AdbException e) { AdbException.Kind k = e.kind; ui = () -> problem(k); }
-            catch (Exception e) { ui = () -> problem(AdbException.Kind.LOST); }
+            catch (AdbException e) { if (mine == generation) LinkSteps.failed(app, e); ui = () -> problem(e); }
+            catch (Exception e) { ui = () -> problem(new AdbException(AdbException.Kind.LOST, "failed")); }
             Runnable show = ui;
             runOnUiThread(() -> {
-                boolean current = mine == generation; if (current) busy = false;
+                boolean current = mine == generation; if (current) { busy = false; watch.removeCallbacksAndMessages(null); }
                 closeLink();   // one command: the link never stays open
                 if (current && !isFinishing() && !destroyed) show.run();
             });
@@ -106,17 +113,29 @@ public final class NotificationAccessActivity extends GlassScreen {
     private Cleanup.Shell shell(int mine) throws Exception {
         CleanupActivity.Opener o = CleanupActivity.openerForTests;
         if (o == null) o = CleanupActivity::openLink;   // the clean-up's own: this TV only, the same key and prompt
+        LinkSteps.begin(this, TITLE);
         CleanupActivity.Opened opened = o.open(this, () -> runOnUiThread(() -> {
-            if (prompt != null) prompt.setText(CleanupActivity.PROMPT_WORDS);
-            if (progress != null) progress.setText("Waiting for you to allow it on the TV…");
+            if (prompt != null) prompt.setText(CleanupActivity.PROMPT_WORDS + " " + LinkSteps.BACK_CANCELS);
+            if (progress != null) progress.setText(LinkSteps.WAITING_ALLOW);
         }), c -> opening = c);
         opening = null;
+        CleanupActivity.settle(mine == generation, () -> stopped && !destroyed && !isFinishing() && mine == generation);
         if (mine != generation || stopped || destroyed || isFinishing()) {
             try { opened.link.close(); } catch (IOException ignored) { /* already closed */ }
             throw new AdbException(AdbException.Kind.LOST, "The page was left.");
         }
         link = opened.link;
-        return opened.shell;
+        return LinkSteps.traced(this, opened.shell);
+    }
+
+    /** Two minutes and still waiting: stopped, the link closed, said plainly; a fresh worker so Try again never queues. */
+    private void tooLong(int mine) {
+        if (mine != generation || !busy || destroyed) return;
+        generation++; busy = false;
+        closeLink();
+        ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();
+        LinkSteps.failed(getApplicationContext(), "Stopped after two minutes");
+        problemPage(LinkSteps.FLOW_TIMEOUT + " Nothing was changed.");
     }
 
     /** The link is closed; the owner is guided to turn network debugging off and to check it is off. */
@@ -153,23 +172,27 @@ public final class NotificationAccessActivity extends GlassScreen {
                 : "Still on: port " + AdbLink.PORT + " answers. Turn off USB debugging in Developer options, then check again."); }); });
     }
 
-    private void problem(AdbException.Kind kind) {
-        String words;
-        switch (kind) {
-            case CLOSED: words = "Network debugging is off on this TV. Turn on USB debugging in Settings > System > Developer options, then try again; or, from a computer: " + MediaWatch.pcCommand(this); break;
-            case NOT_ALLOWED: words = "The TV didn't allow Unified TV. Try again, and when the TV asks \"Allow USB debugging?\", tick \"Always allow from this computer\" and choose OK."; break;
-            case NOT_THIS_TV: words = "Something other than this TV answered, so nothing was changed."; break;
-            case PROTOCOL: words = "This TV's debugging answered in a way Unified TV doesn't understand (for example, wireless-debugging pairing only). Nothing was changed. From a computer: " + MediaWatch.pcCommand(this); break;
-            default: words = "The TV stopped answering. Nothing was changed. Try again."; break;
+    /** What failed, at which step, in plain words (LinkSteps.words), and the computer route. */
+    private void problem(AdbException e) {
+        String words = LinkSteps.words(e);
+        switch (e.kind) {
+            case CLOSED: words += " Or, from a computer: " + MediaWatch.pcCommand(this); break;
+            case NOT_ALLOWED: case NOT_THIS_TV: break;
+            default: words += " Nothing was changed. From a computer: " + MediaWatch.pcCommand(this); break;
         }
+        problemPage(words);
+    }
+    private void problemPage(String words) {
         page("Notification access is still off", null);
         card(); text(words, 18);
+        text(LinkSteps.last(this), 15);
         button("Try again", this::intro).requestFocus();
-        button("Close", this::finish);
+        button("Cancel", this::finish);
     }
 
     private void closeLink() {
         Closeable l = link, o = opening; link = null; opening = null;
+        if (l != null) LinkSteps.step(getApplicationContext(), "Link closed");
         for (Closeable c : new Closeable[]{l, o}) if (c != null) try { c.close(); } catch (IOException ignored) { /* already closed */ }
     }
     private void say(String words) { runOnUiThread(() -> { if (progress != null) progress.setText(words); }); }
@@ -178,5 +201,5 @@ public final class NotificationAccessActivity extends GlassScreen {
     @Override public void onBackPressed() { if (busy) { generation++; busy = false; closeLink(); } super.onBackPressed(); }
     @Override protected void onStart() { super.onStart(); stopped = false; }
     @Override protected void onStop() { super.onStop(); stopped = true; if (!busy) closeLink(); }
-    @Override protected void onDestroy() { destroyed = true; closeLink(); worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed = true; watch.removeCallbacksAndMessages(null); closeLink(); worker.shutdownNow(); super.onDestroy(); }
 }

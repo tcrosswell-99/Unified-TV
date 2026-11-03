@@ -60,7 +60,9 @@ public class HaEntitiesTest {
     @Test public void parsesFriendlyNamesAndSkipsGhostsAndBadIds()throws Exception{
         List<HaEntities.Entity> all=entities();
         List<String> seen=new ArrayList<>();for(HaEntities.Entity e:all)seen.add(e.id);
-        assertFalse("restored entities no longer exist in the integration",seen.contains("binary_sensor.old_porch_ding"));
+        assertTrue("restored entities are kept, marked, to say when an integration isn't loaded",seen.contains("binary_sensor.old_porch_ding"));
+        for(HaEntities.Entity e:all)if(e.id.equals("binary_sensor.old_porch_ding")){assertTrue(e.restored);assertFalse(e.responding());}
+        for(String role:new String[]{"door","person","camera"})assertNull("but never offered",HaEntities.choices(role,all,"").find("binary_sensor.old_porch_ding"));
         assertFalse(seen.contains("Bad.Entity"));
         for(HaEntities.Entity e:all)if(e.id.equals("calendar.uk_holidays"))assertEquals("Uk holidays",e.name);
         for(HaEntities.Entity e:all)if(e.id.equals("binary_sensor.front_door_ding"))assertEquals("Front Door Ding",e.name);
@@ -107,7 +109,8 @@ public class HaEntitiesTest {
         assertTrue(ids(person.other).contains("binary_sensor.front_door_motion"));
         assertTrue(ids(person.other).contains("binary_sensor.hallway_motion_occupancy"));
         assertFalse("a doorbell press is not a person",ids(person.other).contains("binary_sensor.front_door_ding"));
-        assertTrue(person.otherHeading.contains("motion alone never shows anything"));
+        assertEquals("Other sensors",person.otherHeading);
+        assertNull("motion at the door is optional: never chosen by itself",HaEntities.choices("person",List.of(entities().get(10)),"").auto());
         // Beside the chosen doorbell first.
         assertEquals("binary_sensor.front_door_motion",person.other.get(0).id);
     }
@@ -133,7 +136,7 @@ public class HaEntitiesTest {
         String[][] expected={{"xbox","script.xbox_on_hdmi_3"},{"tvplus","script.samsung_tv_plus"},{"art","script.frame_art_mode"},
             {"ringEnter","script.frame_ring_entry"},{"ringExit","script.frame_ring_return"}};
         for(String[] e:expected){HaEntities.Choices c=HaEntities.choices(e[0],all,"",false);assertEquals(e[0],List.of(e[1]),ids(c.strong));assertEquals(e[1],c.auto().id);
-            assertTrue("'morning' is not 'ring'",ids(c.other).contains("script.good_morning"));assertEquals("Other Home Assistant actions",c.otherHeading);}
+            assertTrue("'morning' is not 'ring'",ids(c.other).contains("script.good_morning"));assertEquals(e[0].equals("xbox")?"Other scripts, scenes and buttons":"Other Home Assistant actions",c.otherHeading);}
     }
 
     @Test public void anEntryAndReturnScriptInOneIsNotAClearAnswer()throws Exception{

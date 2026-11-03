@@ -54,6 +54,8 @@
     <activity android:name=".ConnectionsActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".QuickConnectActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <activity android:name=".AppsActivity" android:exported="false" android:screenOrientation="landscape"/>
+    <!-- "Choose an app" (DockPicker): an empty dock place, Replace with another app, and the Live TV app. Not exported. -->
+    <activity android:name=".AppPickerActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Build My TV (v3.4.5/3.4.6): optional setup, opened from the guided setup or Settings. Not exported. -->
     <activity android:name=".BuildMyTvActivity" android:exported="false" android:screenOrientation="landscape" android:theme="@style/SettingsGlassTheme"/>
     <!-- Guided setup (SET-010): opens once over Home on a fresh install in Adults, and again from Settings. Not exported. -->

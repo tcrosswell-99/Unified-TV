@@ -82,6 +82,10 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
         group("Music");card();TextView music=text("Checking…",17);
         worker.execute(()->post(music,AmazonMusic.diagnosis(getApplicationContext())+"\n"+Echoes.diagnosis(getApplicationContext())));
 
+        // The session link to the TV's own debugging (clean-up, Home button, notification access): the last attempt's steps.
+        group("Debugging link");card();
+        text(LinkSteps.diagnosis(this),16);
+
         group("This app");card();
         text(app(),17);
 

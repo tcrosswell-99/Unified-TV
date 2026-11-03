@@ -117,13 +117,36 @@ public class CleanupJourneyTest {
     }
 
     @Test public void anUnknownTvGetsReadOnlyGuidance() {
-        CleanupActivity.fingerprintForTests = FakeTv.SONY;
+        for (String fp : new String[]{FakeTv.SONY, FakeTv.SONY_UR2}) {   // and the owner's Sony BRAVIA 4K UR2 (3 November 2026)
+            CleanupActivity.fingerprintForTests = fp;
+            try (ActivityController<CleanupActivity> c = open()) {
+                CleanupActivity a = c.get();
+                assertTrue(words(root(a)).contains("isn't one the clean-up lists were tested on"));
+                assertNull("no way to change anything", find(root(a), "Start the read-only check"));
+            }
+        }
+        assertEquals("the TV's debugging isn't even used: decided before any link", 0, opens);
+    }
+
+    /** Every link wait is limited: a command that takes too long says so, closes the link and is recorded for Owner diagnostics. */
+    @Test public void aCommandThatTakesTooLongIsSaidPlainlyAndClosesTheLink() {
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { opens++; return new CleanupActivity.Opened(command -> {
+            if (command.equals(io.unifiedtv.adb.AdbCommands.PACKAGES)) throw new AdbException(AdbException.Kind.TIMED_OUT, io.unifiedtv.adb.AdbLink.Step.COMMAND, "slow");
+            return tv.run(command); }, tv); };
         try (ActivityController<CleanupActivity> c = open()) {
             CleanupActivity a = c.get();
-            assertTrue(words(root(a)).contains("isn't one the clean-up lists were tested on"));
-            assertNull("no way to change anything", find(root(a), "Start the read-only check"));
+            press(a, "Start the read-only check");
+            String said = words(root(a));
+            assertTrue(said, said.contains(LinkSteps.COMMAND_TIMEOUT));
+            assertTrue("which step, for the owner", said.contains(LinkSteps.LAST + "Stopped (no answer in time) at: Running a command"));
+            assertNotNull(find(root(a), "Try again")); assertNotNull(find(root(a), "Cancel"));
+            assertTrue("the link is closed", tv.closed);
+            assertTrue("nothing changed", tv.changes().isEmpty());
         }
-        assertEquals("the TV's debugging isn't even used", 0, opens);
+        boolean logged = false; for (EventLog.Event e : EventLog.recent(app)) logged |= e.words.startsWith("Debugging link: Stopped (no answer in time) at: Running a command");
+        assertTrue("in the event log, the step only", logged);
+        boolean traced = false; for (LinkSteps.Entry e : LinkSteps.history(app)) traced |= e.words.equals("Command: " + io.unifiedtv.adb.AdbCommands.PACKAGES);
+        assertTrue("each command is a step", traced);
     }
 
     @Test public void checkChooseConfirmVerifyUndoAndClose() {

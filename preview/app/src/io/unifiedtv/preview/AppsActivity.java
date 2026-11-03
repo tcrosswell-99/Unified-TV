@@ -6,10 +6,12 @@ import android.os.*;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
+import android.graphics.drawable.Drawable;
 import java.util.*;
 
 /**
- * P05-03: every installed app, in a compact grid. Hold OK for Open, Add to / Remove from Home and App information.
+ * P05-03: every installed app, in a compact grid of one tile per app (its banner, or its icon and name in one card:
+ * appTile()). Hold OK for Open, Add to / Remove from Home and App information.
  * Unified TV's own entries come first (Library, and Live TV, Xbox or TV Plus where the room has them), so a removed one
  * can always be put back. In Kids only the apps an adult approved are listed; opening is still checked by Launch, because
  * a hidden tile is not a lock.
@@ -35,7 +37,7 @@ public final class AppsActivity extends Screen {
         PackageManager pm=getPackageManager();Map<String,ResolveInfo> apps=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=String.valueOf(r.loadLabel(pm));if(!apps.containsKey(label+"\u0000"+r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r);}
-        List<String> home=onHome();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;Button target=null;
+        List<String> home=onHome();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;View target=null;
         // Unified TV's own shortcuts (no app of their own) come first, so a removed one can always be put back.
         List<String> own=DockPolicy.shortcuts(room);
         for(String id:own){String label=SHORTCUTS.getOrDefault(id,id);
@@ -45,16 +47,40 @@ public final class AppsActivity extends Screen {
             open.setContentDescription(label+(onHome?", on Home":"")+". Hold OK for options.");row.addView(open,new LinearLayout.LayoutParams(0,-2,1));if(id.equals(focus)||(target==null&&n==1))target=open;}
         for(Map.Entry<String,ResolveInfo> e:apps.entrySet()){String pkg=e.getValue().activityInfo.packageName;if(!seen.add(pkg)||(kids&&!approved.contains(pkg)))continue;String label=e.getKey().substring(0,e.getKey().indexOf('\u0000'));
             if(n++%5==0){row=new LinearLayout(this);column.addView(row);}
-            LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(6),dp(6),dp(6),dp(6));
-            ImageView icon=new ImageView(this);try{icon.setImageDrawable(pm.getApplicationIcon(pkg));}catch(Exception ignored){}icon.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);card.addView(icon,new LinearLayout.LayoutParams(-1,dp(56)));
-            boolean onHome=home.contains(DockPolicy.canonical(pkg));
-            Button open=styled(label+(onHome?"  ·  On Home":""),()->launch(pkg,label));open.setTextSize(16);open.setOnLongClickListener(v->{menu(pkg,label);return true;});
-            open.setContentDescription(label+(onHome?", on Home":"")+". Hold OK for options.");card.addView(open,new LinearLayout.LayoutParams(-1,-2));
-            row.addView(card,new LinearLayout.LayoutParams(0,-2,1));if(pkg.equals(focus))target=open;else if(target==null&&n==1)target=open;
+            boolean onHome=home.contains(DockPolicy.canonical(pkg));Drawable banner=null,icon=null;
+            try{banner=e.getValue().activityInfo.loadBanner(pm);}catch(RuntimeException ignored){}
+            if(banner==null)try{icon=pm.getApplicationIcon(pkg);}catch(Exception ignored){}
+            View tile=appTile(pkg,label,banner,icon,onHome);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-1,1);lp.setMargins(dp(6),dp(6),dp(6),dp(6));
+            row.addView(tile,lp);if(pkg.equals(focus))target=tile;else if(target==null&&n==1)target=tile;
         }
         if(apps.isEmpty())text("No apps found.",20);
         button("Back to Home",this::finish);if(target!=null)target.requestFocus();
         stage();
+    }
+    /**
+     * One app, one tile (owner's Sony: an icon floating above a separate name button read as two unrelated things): its
+     * own Android TV banner (16:9) if it has one, else its icon centred, on one dark glass card with its name below inside
+     * the same card (two lines at most, then an ellipsis). The whole tile takes focus: it lifts a little and brightens.
+     * OK opens the app; Hold OK opens the management sidebar.
+     */
+    View appTile(String pkg,String label,Drawable banner,Drawable icon,boolean onHome){
+        LinearLayout tile=new LinearLayout(this);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        tile.setPadding(dp(10),dp(10),dp(10),dp(8));tile.setFocusable(true);tile.setFocusableInTouchMode(true);tile.setClickable(true);tile.setLongClickable(true);
+        android.graphics.drawable.StateListDrawable bg=new android.graphics.drawable.StateListDrawable();
+        android.graphics.drawable.GradientDrawable lit=new android.graphics.drawable.GradientDrawable();lit.setColor(0x4DFFFFFF);lit.setCornerRadius(dp(14));lit.setStroke(dp(3),prefs.getBoolean("highContrast",false)?0xFFFFFFFF:0xD9F4F1F2);
+        android.graphics.drawable.GradientDrawable rest=new android.graphics.drawable.GradientDrawable();rest.setColor(0xCC1B2333);rest.setCornerRadius(dp(14));rest.setStroke(Math.max(1,dp(1)),0x40FFFFFF);
+        bg.addState(new int[]{android.R.attr.state_focused},lit);bg.addState(new int[]{android.R.attr.state_pressed},lit);bg.addState(new int[]{},rest);tile.setBackground(bg);
+        ImageView art=new ImageView(this);art.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);art.setScaleType(ImageView.ScaleType.FIT_CENTER);art.setDuplicateParentStateEnabled(true);
+        if(banner!=null){art.setImageDrawable(banner);tile.addView(art,new LinearLayout.LayoutParams(-1,dp(72)));}
+        else{art.setImageDrawable(icon);LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(56),dp(56));ip.topMargin=dp(8);ip.bottomMargin=dp(8);tile.addView(art,ip);}
+        TextView name=new TextView(this);name.setText(label+(onHome?"  ·  On Home":""));name.setTextColor(0xFFFAFAFC);name.setTextSize(15);name.setGravity(android.view.Gravity.CENTER);
+        name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);name.setDuplicateParentStateEnabled(true);
+        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,-2);np.topMargin=dp(6);tile.addView(name,np);
+        tile.setContentDescription(label+(onHome?", on Home":"")+". Hold OK for options.");
+        tile.setOnClickListener(v->launch(pkg,label));tile.setOnLongClickListener(v->{menu(pkg,label);return true;});
+        tile.setOnFocusChangeListener((v,f)->{float to=f?1.06f:1f;if(calm()){v.setScaleX(to);v.setScaleY(to);}else v.animate().scaleX(to).scaleY(to).setDuration(SettingsOverlay.FOCUS_MS).start();});
+        return tile;
     }
     // --- The management sidebar (OD-19)
     private FrameLayout stage;private View grid,side;private LinearLayout rows;private String sideFor;
@@ -101,7 +127,7 @@ public final class AppsActivity extends Screen {
     static{SHORTCUTS.put(DockPolicy.LIBRARY,"Library");SHORTCUTS.put("live","Live TV");SHORTCUTS.put("xbox","Xbox");SHORTCUTS.put("tvplus","Samsung TV Plus");}
     private void shortcut(String id){
         if(id.equals(DockPolicy.LIBRARY)){Launch.library(this);return;}
-        if(id.equals("live")){launch(LiveTvProtection.livePackage(this),"Live TV");return;}
+        if(id.equals("live")){String why=Launch.live(this);if(why!=null&&!why.isEmpty())note(why);return;}
         String no=Launch.kidsRefusal(this,id,SHORTCUTS.getOrDefault(id,id));if(no!=null){note(no);return;}
         HouseholdActivity.action(this,id);
     }

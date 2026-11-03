@@ -57,13 +57,15 @@ public class RemoteJourneyTest {
     }
     // Spec 3.3 / v2.3: Home is owner-editable. Removing saves the owner's choice; Cancel changes nothing.
     @Test public void removeFromHomeIsSavedAndNeverUninstalls()throws Exception{
-        hold();press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        // Hold OK: Move, Replace with another app, Remove from Home, App information, Cancel.
+        hold();press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
         assertEquals(5,((java.util.List<?>)field("dock")).size());
         assertEquals("netflix,disney,bbc,live,music",activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));
         assertNull("removing never opens or uninstalls anything",Shadows.shadowOf(activity).getNextStartedActivity());
     }
     @Test public void cancelInTheEditMenuChangesNothing()throws Exception{
-        hold();for(int i=0;i<3;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        hold();for(int i=0;i<4;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        assertNull("Cancel opens nothing",Shadows.shadowOf(activity).getNextStartedActivity());
         assertEquals(SEEDED,activity.getSharedPreferences("unified-tv-preview",0).getString("dock",""));assertEquals(6,((java.util.List<?>)field("dock")).size());
     }
     // Owner, 25 October 2026 and v3.4.4 UX-UTILITY-03: a single Up focuses the utility pill directly; no menu opens.
@@ -122,6 +124,9 @@ public class RemoteJourneyTest {
     }
     @Test public void liveTvRemainsBlockedAfterNavigation()throws Exception{
         for(int i=0;i<4;i++)press(KeyEvent.KEYCODE_DPAD_RIGHT);press(KeyEvent.KEYCODE_DPAD_CENTER);
+        // No Live TV app here: nothing opens but "Choose your Live TV app" (the picker); choosing still goes through the gate.
+        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();
+        assertNotNull(started);assertEquals(AppPickerActivity.class.getName(),started.getComponent().getClassName());
         assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
     }
     @Test public void menuOpensAllAppsDirectly()throws Exception{

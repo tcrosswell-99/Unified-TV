@@ -29,8 +29,8 @@ public final class HouseholdActivity extends android.app.Activity {
         java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();executor.execute(()->{
             boolean ok=false;
             try{JSONObject config=new Vault(activity).read("ha"),house=new Vault(activity).read("household");String entity=house.optString(name);
-                if(!entity.matches("script\\.[a-z0-9_]+"))throw new IllegalArgumentException();
-                LocalApi.post(config,"/api/services/script/turn_on",new JSONObject().put("entity_id",entity));ok=true;
+                String service=HaEntities.service(entity);if(service==null)throw new IllegalArgumentException();
+                LocalApi.post(config,service,new JSONObject().put("entity_id",entity));ok=true;
             }catch(Exception ignored){}
             final boolean sent=ok;activity.runOnUiThread(()->Toast.makeText(activity,sent?"Asked Home Assistant. Check the TV responds.":"That isn't set up yet. An adult can choose it in Settings > Smart Home.",Toast.LENGTH_LONG).show());executor.shutdown();
         });

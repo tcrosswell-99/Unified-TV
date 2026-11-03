@@ -3,6 +3,7 @@ package io.unifiedtv.adb;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -111,7 +112,143 @@ public class AdbLinkTest {
     @Test public void anUnansweredPromptTimesOut() throws Exception {
         adbd.silentOnPrompt = true;
         try { AdbLink.connect(adbd.port(), key, null, 300).close(); fail("timed out"); }
+        catch (AdbException e) { assertEquals(AdbException.Kind.TIMED_OUT, e.kind); assertEquals("at the owner's Allow", AdbLink.Step.ALLOW, e.step); }
+        Thread.sleep(500);
+        assertFalse("nothing is sent while the TV's prompt waits", adbd.sentWhileWaiting);
+        assertEquals("never a second connection after a timeout", 1, adbd.connections.get());
+    }
+
+    // ---------------------------------------------------------------- the owner's Sony BRAVIA (Android TV 10, 3 November 2026)
+    private static final AdbLink.Timeouts QUICK = new AdbLink.Timeouts(2000, 400, 5000, 400, 200);
+
+    @Test public void aSecondTokenAfterThePublicKeyIsSigned() throws Exception {
+        adbd.tokenAfterKey = true;
+        int[] prompts = {0};
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, () -> prompts[0]++, 5000)) { assertTrue(link.isOpen()); }
+        assertEquals("one prompt", 1, prompts[0]);
+        assertEquals("CNXN, signature, key, then the new token signed", Arrays.asList("CNXN", "AUTH2", "AUTH3", "AUTH2"), adbd.seen.subList(0, 4));
+        assertEquals(1, adbd.connections.get());
+    }
+
+    @Test public void aTvThatDropsTheLinkAfterAllowIsJoinedAgainWithoutASecondPrompt() throws Exception {
+        adbd.dropAfterAllow = true;
+        int[] prompts = {0};
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, () -> prompts[0]++, 5000)) {
+            assertTrue(link.isOpen());
+            adbd.answers.put("getprop ro.build.fingerprint", Collections.singletonList("Sony/BRAVIA_UR2_4K_EU/BRAVIA_UR2_4K:10/\n"));
+            assertEquals("Sony/BRAVIA_UR2_4K_EU/BRAVIA_UR2_4K:10/\n", link.shell(AdbCommands.FINGERPRINT));
+        }
+        assertEquals("one prompt only", 1, prompts[0]);
+        assertEquals("one reconnect", 2, adbd.connections.get());
+        assertEquals("the key is offered once, never again", 1, Collections.frequency(adbd.seen, "AUTH3"));
+    }
+
+    @Test public void aRefusedPromptIsNeverOfferedTwice() throws Exception {
+        adbd.allowOnPrompt = false;
+        int[] prompts = {0};
+        try { AdbLink.connect(adbd.port(), key, () -> prompts[0]++, 5000).close(); fail("refused"); }
         catch (AdbException e) { assertEquals(AdbException.Kind.NOT_ALLOWED, e.kind); }
+        assertEquals(1, prompts[0]);
+        assertEquals("the key is offered once", 1, Collections.frequency(adbd.seen, "AUTH3"));
+    }
+
+    @Test public void closingWhileThePromptWaitsStopsAtOnceWithoutReconnecting() throws Exception {
+        adbd.silentOnPrompt = true;
+        Closeable[] opening = new Closeable[1];
+        long start = System.nanoTime();
+        try {
+            AdbLink.connect(adbd.port(), key, () -> new Thread(() -> { try { Thread.sleep(100); opening[0].close(); } catch (Exception ignored) { /* closed */ } }).start(),
+                AdbLink.Timeouts.DEFAULT, c -> opening[0] = c, null).close();
+            fail("Back while the TV asks");
+        } catch (AdbException e) { assertEquals(AdbException.Kind.LOST, e.kind); assertEquals(AdbLink.Step.ALLOW, e.step); }
+        assertTrue("at once, not after the minute", (System.nanoTime() - start) / 1_000_000 < 3000);
+        assertEquals("no second connection", 1, adbd.connections.get());
+    }
+
+    @Test public void aTvThatNeverAnswersTheLinkTimesOutAtHello() throws Exception {
+        adbd.silentHello = true;
+        try { AdbLink.connect(adbd.port(), key, null, QUICK, null, null).close(); fail("no answer"); }
+        catch (AdbException e) { assertEquals(AdbException.Kind.TIMED_OUT, e.kind); assertEquals(AdbLink.Step.HELLO, e.step); }
+    }
+
+    @Test public void aTvThatClosesBeforeSignInSaysWhere() throws Exception {
+        adbd.closeHello = true;
+        try { AdbLink.connect(adbd.port(), key, null, QUICK, null, null).close(); fail("closed"); }
+        catch (AdbException e) { assertEquals(AdbException.Kind.LOST, e.kind); assertEquals(AdbLink.Step.HELLO, e.step); }
+    }
+
+    @Test public void aCommandThatNeverEndsTimesOutAndClosesTheLink() throws Exception {
+        adbd.known.add(((RSAPublicKey) pair.getPublic()).getModulus());
+        adbd.silentShell = true;
+        AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null);
+        long start = System.nanoTime();
+        try { link.shell(AdbCommands.HOME); fail("never ends"); }
+        catch (AdbException e) { assertEquals(AdbException.Kind.TIMED_OUT, e.kind); assertEquals(AdbLink.Step.COMMAND, e.step); }
+        assertTrue("the whole command's limit, not more", (System.nanoTime() - start) / 1_000_000 < 2000);
+        assertFalse("closed", link.isOpen());
+    }
+
+    @Test public void theCommandLimitIsForTheWholeCommandNotEachMessage() throws Exception {
+        adbd.known.add(((RSAPublicKey) pair.getPublic()).getModulus());
+        adbd.noClse = true;   // a newer adbd that never ends the stream: a timeout, never a cut-short answer
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null)) {
+            adbd.answers.put("pm list packages", Arrays.asList("package:a.b\n", "package:c.d\n"));
+            try { link.shell(AdbCommands.PACKAGES); fail("never ends"); } catch (AdbException e) { assertEquals(AdbException.Kind.TIMED_OUT, e.kind); }
+        }
+    }
+
+    @Test public void anOldAdbdThatLeavesAFinishedStreamOpenEndsAfterAQuietPause() throws Exception {
+        adbd.known.add(((RSAPublicKey) pair.getPublic()).getModulus());
+        adbd.version = AdbLink.VERSION_OLD; adbd.noClse = true;
+        adbd.answers.put("pm list packages", Arrays.asList("package:a.b\n", "package:c.d\n"));
+        adbd.answers.put("getprop ro.build.fingerprint", Collections.singletonList("x/y/z:9/\n"));
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, new AdbLink.Timeouts(2000, 2000, 5000, 3000, 200), null, null)) {
+            assertEquals("every chunk", "package:a.b\npackage:c.d\n", link.shell(AdbCommands.PACKAGES));
+            assertEquals("and the next command still works", "x/y/z:9/\n", link.shell(AdbCommands.FINGERPRINT));
+        }
+        for (int i = 0; i < 50 && Collections.frequency(adbd.seen, "CLSE") < 2; i++) Thread.sleep(20);   // the fake reads on its own thread
+        assertEquals("the client closed each stream itself", 2, Collections.frequency(adbd.seen, "CLSE"));
+    }
+
+    @Test public void theTvsMaxdataCapsWhatIsSent() throws Exception {
+        adbd.known.add(((RSAPublicKey) pair.getPublic()).getModulus());
+        adbd.maxData = 4096;
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null)) {
+            assertEquals(4096, link.maxData());
+            assertEquals("", link.shell(AdbCommands.HOME));
+        }
+        adbd.maxData = 0;   // an adbd that names none: the protocol's original 4096
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null)) { assertEquals(4096, link.maxData()); }
+        adbd.maxData = 1024 * 1024;   // Android 10's own: never more than ours
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null)) { assertEquals(AdbLink.MAX_DATA, link.maxData()); }
+    }
+
+    @Test public void theBannerIsReadLeniently() throws Exception {
+        String sony = "device::ro.product.name=BRAVIA_UR2_4K_EU;ro.product.model=BRAVIA 4K UR2;ro.product.device=BRAVIA_UR2_4K;features=shell_v2,cmd,stat_v2";
+        assertEquals("BRAVIA_UR2_4K", AdbLink.property(sony, "ro.product.device"));
+        assertEquals("no trailing ';'", "shell_v2,cmd,stat_v2", AdbLink.property(sony, "features"));
+        assertTrue(AdbLink.describes(sony, "BRAVIA_UR2_4K", "BRAVIA_UR2_4K_EU", "BRAVIA 4K UR2"));
+        assertTrue("Build.DEVICE differs, the model matches", AdbLink.describes(sony, "bravia_ur2", "other", "bravia 4k ur2"));
+        assertTrue("the product name matches", AdbLink.describes(sony, null, "BRAVIA_UR2_4K_EU", ""));
+        assertTrue("a banner that names nothing: the fingerprint decides", AdbLink.describes("device::", "anything"));
+        assertTrue(AdbLink.describes("device::features=cmd", "anything"));
+        assertEquals("a serial between the colons", "BeyondTV4", AdbLink.property("device:ABC123:ro.product.device=BeyondTV4;", "ro.product.device"));
+        assertFalse("another device named outright", AdbLink.describes(sony, "BeyondTV4", "BeyondTV6", "Smart TV Pro"));
+        adbd.banner = sony + "\0";
+        adbd.known.add(((RSAPublicKey) pair.getPublic()).getModulus());
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, QUICK, null, null)) {
+            assertEquals("BRAVIA 4K UR2", link.bannerProperty("ro.product.model"));
+            assertTrue(link.bannerDescribes("BRAVIA_UR2_4K"));
+        }
+    }
+
+    @Test public void eachStepIsTracedWithoutSecrets() throws Exception {
+        List<String> steps = new CopyOnWriteArrayList<>();
+        try (AdbLink link = AdbLink.connect(adbd.port(), key, null, AdbLink.Timeouts.DEFAULT, null, (step, detail) -> steps.add(step.name() + ":" + detail))) { assertTrue(link.isOpen()); }
+        List<String> names = new ArrayList<>(); for (String s : steps) names.add(s.substring(0, s.indexOf(':')));
+        assertEquals(Arrays.asList("CONNECT", "HELLO", "SIGN_IN", "ALLOW", "CONNECTED"), names);
+        String key64 = key.publicKeyLine().substring(0, 40);
+        for (String s : steps) assertFalse("no key in a step: " + s, s.contains(key64) || s.contains(AdbKey.NAME));
     }
 
     @Test public void pairingOnlyTlsIsNotSpoken() throws Exception {
@@ -222,6 +359,13 @@ public class AdbLinkTest {
         final List<String> seen = new CopyOnWriteArrayList<>(), opened = new CopyOnWriteArrayList<>();
         final Map<String, List<String>> answers = new ConcurrentHashMap<>();
         volatile boolean allowOnPrompt = true, silentOnPrompt, stls, refuseOpen;
+        /** Behaviours seen on real adbd builds (owner's Sony BRAVIA, Android TV 10, 3 November 2026; see AdbLink). */
+        volatile boolean tokenAfterKey, dropAfterAllow, silentHello, closeHello, silentShell, noClse;
+        volatile String banner = "device::ro.product.name=BeyondTV6;ro.product.model=Smart TV Pro;ro.product.device=BeyondTV4;\0";
+        volatile int version = AdbLink.VERSION, maxData = 1024 * 1024;
+        /** Connections accepted, and whether the client sent anything while the TV's prompt was waiting. */
+        final java.util.concurrent.atomic.AtomicInteger connections = new java.util.concurrent.atomic.AtomicInteger();
+        volatile boolean sentWhileWaiting;
         volatile String hostBanner;
         volatile int wrtes, acks;
         /** An assertion that failed inside the fake (checked after each test). */
@@ -242,9 +386,12 @@ public class AdbLinkTest {
         private void serve(Socket s) throws Exception {
             s.setSoTimeout(10_000);
             DataInputStream in = new DataInputStream(s.getInputStream()); OutputStream out = s.getOutputStream();
+            connections.incrementAndGet();
             int[] m = read(in); byte[] data = last;
             assertEquals("the first message is CNXN", AdbLink.CNXN, m[0]);
             hostBanner = new String(data, StandardCharsets.UTF_8);
+            if (closeHello) return;                                   // drops the link before any sign-in
+            if (silentHello) { Thread.sleep(3000); return; }          // never answers the link
             if (stls) { write(out, AdbLink.STLS, 0x01000000, 0, new byte[0]); return; }
             byte[] token = new byte[20]; new SecureRandom().nextBytes(token);
             write(out, AdbLink.AUTH, AdbLink.AUTH_TOKEN, 0, token);
@@ -263,12 +410,19 @@ public class AdbLinkTest {
                     assertTrue(line.endsWith(" " + AdbKey.NAME));
                     ByteBuffer b = ByteBuffer.wrap(Base64.getDecoder().decode(line.substring(0, line.indexOf(' ')))).order(ByteOrder.LITTLE_ENDIAN);
                     b.getInt(); b.getInt(); BigInteger n = words(b);
-                    if (silentOnPrompt) { Thread.sleep(3000); return; }
+                    if (silentOnPrompt) {   // the prompt waits: the client must send nothing more meanwhile
+                        s.setSoTimeout(2000);
+                        try { read(in); sentWhileWaiting = true; } catch (java.net.SocketTimeoutException quiet) { /* nothing sent */ } catch (IOException closed) { /* the client gave up */ }
+                        return;
+                    }
                     if (!allowOnPrompt) return;   // refused: the connection drops
-                    known.add(n); break;
+                    known.add(n);
+                    if (dropAfterAllow) return;   // some builds drop the link once the key is allowed, expecting a new one
+                    if (tokenAfterKey) { new SecureRandom().nextBytes(token); write(out, AdbLink.AUTH, AdbLink.AUTH_TOKEN, 0, token); continue; }
+                    break;
                 } else fail("unexpected AUTH type " + m[1]);
             }
-            write(out, AdbLink.CNXN, 0x01000000, 4096, "device::ro.product.name=BeyondTV6;ro.product.model=Smart TV Pro;ro.product.device=BeyondTV4;\0".getBytes(StandardCharsets.UTF_8));
+            write(out, AdbLink.CNXN, version, maxData, banner.getBytes(StandardCharsets.UTF_8));
             int nextRemote = 100;
             while (true) {
                 try { m = read(in); } catch (IOException e) { return; }
@@ -282,6 +436,7 @@ public class AdbLinkTest {
                 if (refuseOpen) { write(out, AdbLink.CLSE, 0, local, new byte[0]); continue; }
                 int remote = nextRemote++;
                 write(out, AdbLink.OKAY, remote, local, new byte[0]);
+                if (silentShell) continue;   // the stream starts and never ends
                 for (String chunk : answers.getOrDefault(service.substring("shell:".length()), Collections.singletonList(""))) {
                     if (chunk.isEmpty()) continue;
                     write(out, AdbLink.WRTE, remote, local, chunk.getBytes(StandardCharsets.UTF_8)); wrtes++;
@@ -289,7 +444,7 @@ public class AdbLinkTest {
                     assertEquals("each WRTE is acknowledged before the next", AdbLink.OKAY, ack[0]);
                     assertEquals(local, ack[1]); assertEquals(remote, ack[2]); acks++;
                 }
-                write(out, AdbLink.CLSE, remote, local, new byte[0]);
+                if (!noClse) write(out, AdbLink.CLSE, remote, local, new byte[0]);
             }
         }
 
@@ -300,7 +455,7 @@ public class AdbLinkTest {
             ByteBuffer b = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN);
             int cmd = b.getInt(), a0 = b.getInt(), a1 = b.getInt(), len = b.getInt(), sum = b.getInt(), magic = b.getInt();
             assertEquals("magic", ~cmd, magic);
-            assertTrue("length", len >= 0 && len <= AdbLink.MAX_DATA);
+            assertTrue("never more than the TV's maxdata (4096 when it names none)", len >= 0 && len <= (maxData > 0 ? Math.min(AdbLink.MAX_DATA, maxData) : 4096));
             last = new byte[len]; in.readFully(last);
             assertEquals("checksum", AdbLink.checksum(last), sum);
             String n = name(cmd); seen.add(cmd == AdbLink.AUTH ? n + a0 : n);

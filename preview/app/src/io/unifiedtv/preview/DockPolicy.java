@@ -44,13 +44,21 @@ final class DockPolicy {
         if("frame".equals(room))d.add("tvplus");
         return d;
     }
-    /** Up to six suggestions from what is installed, in the heuristic's order; possibly none. */
+    /**
+     * Up to six suggestions from what is installed, in the heuristic's order; possibly none. Never two that look the same
+     * (owner's Sony, run 106: two YouTube tiles): an app whose mark (DockLabels.glyph, as this TV would draw it) is
+     * already suggested is left out; apps without a mark of their own show their own icon, so they never collide.
+     */
     static List<String> suggest(String room,Collection<String> installed,boolean liveTv){
         List<String> out=new ArrayList<>();Set<String> have=installed==null?Collections.emptySet():new HashSet<>(installed);
+        boolean youtube=DockLabels.youtube(have);Set<String> looks=new HashSet<>();
         for(String id:SUGGESTION_ORDER){
             if(out.size()>=SLOTS)break;
             boolean present=id.equals("live")?liveTv:PACKAGES.containsKey(id)?anyOf(packages(id),have):have.contains(id);
-            if(present&&valid(room,id)&&!out.contains(id))out.add(id);
+            if(!present||!valid(room,id)||out.contains(id))continue;
+            String look=DockLabels.glyph(id,youtube);
+            if(!"mono".equals(look)&&!looks.add(look))continue;
+            out.add(id);
         }
         return out;
     }

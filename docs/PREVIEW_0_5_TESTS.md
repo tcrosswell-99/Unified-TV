@@ -164,7 +164,7 @@ These checks cover only what the status *says*. They are not a protection test. 
    - **Pass:** no slow zoom; the clock stays readable.
 8. Leave the Wallpaper for 30 minutes. (WP-14, OLED)
    - **Pass:** the clock dims; it has moved between pictures.
-9. During the Wallpaper, run **Test: someone rings the doorbell** and **Test: smoke alarm** from household setup (use a phone timer and a second remote press, or start them first and wait). (WP-15, SAFE-02)
+9. During the Wallpaper, run **Test the doorbell** and **Test the alarm screen** from Doorbell, alarms & this TV (use a phone timer and a second remote press, or start them first and wait). (WP-15, SAFE-02)
    - **Pass:** the alarm screen shows over the Wallpaper; afterwards the remote still works.
 10. Use **Open original TV interface** after leaving the Wallpaper. (WP-16)
 
@@ -258,19 +258,19 @@ Depth clock (WP-04, WP-05): not testable yet; no picture has a prepared mask. My
 
 No detectors are connected yet, so start with the built-in test. Household alerts need overlay permission (**Settings → Notifications → Doorbell, reminders & room setup → Grant optional alert overlay permission**). The test buttons are in the same screen, under **Test the alarm screen**. Every test entry is labelled TEST.
 
-1. **Test: smoke alarm in the kitchen**, while Home is showing. (SAFE-01)
+1. **Test the alarm screen** (a smoke alarm in the kitchen), while Home is showing. (SAFE-01)
    - **Pass:** a full red screen shows "TEST · SMOKE ALARM — Kitchen", "Since HH:mm", "Get everyone out, stay out, and call the fire service." and an **Acknowledge** button with focus.
 2. Press Back. (SAFE-09)
    - **Pass:** nothing is acknowledged; focus returns to Acknowledge.
-3. **Test: carbon monoxide alarm in the hallway** without acknowledging the first. (SAFE-04)
+3. **Test a carbon monoxide alarm as well** (the hallway) without acknowledging the first. (SAFE-04)
    - **Pass:** two separate entries, oldest first, each with its own Acknowledge.
 4. Acknowledge the smoke entry only.
    - **Pass:** the carbon monoxide entry stays, with its Acknowledge.
 5. Acknowledge the carbon monoxide entry.
    - **Pass:** the full screen goes; a red banner at the top stays: "… still active". It never takes focus.
-6. **Test: someone rings the doorbell** while the banner shows. (SAFE-03)
+6. **Test the doorbell** while the banner shows. (SAFE-03)
    - **Pass:** no camera card. The banner adds "Doorbell rang at HH:mm: shown when the alarm ends".
-7. **Test: a smoke detector goes offline**. (SAFE-05)
+7. **Test a detector going offline**. (SAFE-05)
    - **Pass:** a separate amber notice "TEST · Smoke detector offline: Landing", never styled as an alarm.
 8. **End the alarm test**.
    - **Pass:** banner and screen go. If the doorbell test was under 45 seconds ago the doorbell card appears; otherwise a note "Doorbell rang at HH:mm during the alarm."

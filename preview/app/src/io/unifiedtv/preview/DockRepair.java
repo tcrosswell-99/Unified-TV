@@ -29,7 +29,7 @@ final class DockRepair {
     }
     /** A tile's name in words: Unified TV's own names, else the installed label, else the package id. */
     static String name(String id,Map<String,String> launchable){
-        switch(id){case "smartutube":return DockLabels.name("smartutube");case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC iPlayer";
+        switch(id){case "smartutube":return DockLabels.name("smartutube",DockLabels.youtube(launchable.keySet()));case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC iPlayer";
             case "music":return "Music";case "live":return "Live TV";case "xbox":return "Xbox";case "tvplus":return "Samsung TV Plus";case DockPolicy.LIBRARY:return "Library";default:break;}
         String l=launchable.get(id);return l==null||l.trim().isEmpty()?id:l;
     }

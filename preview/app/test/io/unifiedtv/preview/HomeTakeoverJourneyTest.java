@@ -11,6 +11,7 @@ import android.widget.Button;
 import android.widget.TextView;
 import io.unifiedtv.adb.AdbCommands;
 import io.unifiedtv.adb.AdbException;
+import io.unifiedtv.adb.AdbLink;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.robolectric.*;
@@ -38,6 +39,11 @@ public class HomeTakeoverJourneyTest {
     private FakeTv tv;
     private FakeHome homes;
     private AdbException refuse;
+    /** Links opened; a command that fails with {@link #failWith}; the stock Home's priority as Android lists it to this app. */
+    private int opens;
+    private String failOn;
+    private AdbException failWith;
+    private int stockPriority;
 
     private boolean launcher() { return DefaultHome.available(app); }
     private static void idle() { Shadows.shadowOf(Looper.getMainLooper()).idle(); }
@@ -63,6 +69,8 @@ public class HomeTakeoverJourneyTest {
         app.getSharedPreferences(HouseholdSettings.PREFS, 0).edit().clear().commit();
         app.getSharedPreferences("unified-tv-preview", 0).edit().clear().putString("dock", RemoteJourneyTest.SEEDED).commit();
         app.getSharedPreferences(EventLog.PREFS, 0).edit().clear().commit();
+        app.getSharedPreferences(LinkSteps.PREFS, 0).edit().clear().commit();
+        opens = 0; failOn = null; failWith = null; stockPriority = 0;
         HomeTakeover.cancel(app); HomeSafety.reset(app);
         tv = new FakeTv(); homes = new FakeHome(app.getPackageName()); tv.homes = homes;
         homes.ours = () -> launcher() && DefaultHome.offered(app);
@@ -72,11 +80,11 @@ public class HomeTakeoverJourneyTest {
         CleanupActivity.backgroundForTests = Runnable::run;
         // The TV as Android shows it to this app follows the simulated TV: tvlauncher on (a Home) or off (none).
         stockHome(true);
-        Cleanup.Shell mirrored = command -> { String out = tv.run(command);
+        Cleanup.Shell mirrored = command -> { if (command.equals(failOn)) throw failWith; String out = tv.run(command);
             if (command.equals(AdbCommands.enable(STOCK))) stockHome(!tv.disabled.contains(STOCK));
             if (command.equals(AdbCommands.disable(STOCK))) stockHome(!tv.disabled.contains(STOCK));
             return out; };
-        CleanupActivity.openerForTests = (c, prompt, opening) -> { if (refuse != null) throw refuse; prompt.showing(); tv.closed = false; return new CleanupActivity.Opened(mirrored, tv); };
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { opens++; if (refuse != null) throw refuse; prompt.showing(); tv.closed = false; return new CleanupActivity.Opened(mirrored, tv); };
         HomeTakeoverActivity.candidateWaitMs = 0;
         if (record().exists()) assertTrue(record().delete());
     }
@@ -94,7 +102,7 @@ public class HomeTakeoverJourneyTest {
         app.getPackageManager().setApplicationEnabledSetting(STOCK, on ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER, 0);
         pm.removeResolveInfosForIntent(DefaultHome.homeIntent(), STOCK);
         if (on) { android.content.pm.ResolveInfo r = new android.content.pm.ResolveInfo(); r.activityInfo = new android.content.pm.ActivityInfo();
-            r.activityInfo.packageName = STOCK; r.activityInfo.name = STOCK + ".MainActivity"; r.activityInfo.applicationInfo = info.applicationInfo;
+            r.activityInfo.packageName = STOCK; r.activityInfo.name = STOCK + ".MainActivity"; r.activityInfo.applicationInfo = info.applicationInfo; r.priority = stockPriority;
             pm.addResolveInfoForIntent(DefaultHome.homeIntent(), r); }
     }
 
@@ -143,6 +151,9 @@ public class HomeTakeoverJourneyTest {
             assertTrue(words(root(a)).contains(HomeTakeover.WORKED));
             boolean logged = false; for (EventLog.Event e : EventLog.recent(app)) logged |= e.words.equals("Home button: turned off " + STOCK);
             assertTrue("in the event log, package name only", logged);
+            List<LinkSteps.Entry> steps = LinkSteps.history(app);
+            assertFalse(steps.isEmpty());
+            for (LinkSteps.Entry e : steps) assertFalse("never what the TV printed: " + e.words, e.words.contains(tv.serial) || e.words.contains(tv.androidId) || e.words.contains("BeyondTV6/"));
         }
     }
 
@@ -164,18 +175,208 @@ public class HomeTakeoverJourneyTest {
         }
     }
 
-    @Test public void unknownFirmwareIsRefusedAndTheEntryHandedBack() {
+    // --- the owner's Sony BRAVIA 4K UR2 (Android TV 10, QTG3.200305.006.S97, 3 November 2026): no tested list
+    private void sony() { CleanupActivity.fingerprintForTests = FakeTv.SONY_UR2; tv.fingerprint = FakeTv.SONY_UR2; }
+
+    @Test public void anUntestedTvIsToldFirstAndOnlyAndroidsOwnChoiceIsTried() {
         Assume.assumeTrue("launcher app only", launcher());
-        CleanupActivity.fingerprintForTests = FakeTv.SONY; tv.fingerprint = FakeTv.SONY;
+        sony();
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            HomeTakeoverActivity a = c.get();
+            String said = words(root(a));
+            assertTrue(said, said.contains(HomeTakeover.UNTESTED));
+            assertFalse("not the tested TV's words", said.contains(HomeTakeoverActivity.INTRO));
+            assertEquals("no link before the explanation", 0, opens);
+            assertTrue(tv.commands.isEmpty());
+            assertFalse("nothing switched on yet", DefaultHome.offered(app));
+            press(a, "Start");
+            assertEquals(1, opens);
+            assertEquals("Android's own route only", Collections.singletonList(AdbCommands.setHome(HomeTakeover.entry(app.getPackageName()))), tv.changes());
+            for (String sent : tv.commands) assertFalse("never turned off: " + sent, sent.startsWith("pm disable-user"));
+            said = words(root(a));
+            assertTrue(said, said.contains(HomeTakeover.KEEPS_OWN));
+            assertEquals("This TV keeps its own Home. Use 'Open Unified TV (quick)' instead.", HomeTakeover.KEEPS_OWN);
+            assertNull("nothing to confirm", find(root(a), "Turn off Android TV Home and use Unified TV"));
+            assertFalse("the Home entry is handed back: nothing changed", DefaultHome.offered(app));
+            assertFalse(record().exists());
+            assertTrue("the link is closed", tv.closed);
+            press(a, HomeTakeover.USE_QUICK);
+            Intent next = Shadows.shadowOf(a).getNextStartedActivity();
+            assertEquals(TurnOnChoiceActivity.class.getName(), next.getComponent().getClassName());
+            assertEquals(TurnOnChoice.Option.QUICK.name(), next.getStringExtra(TurnOnChoiceActivity.CHOOSE));
+            assertTrue(a.isFinishing());
+            try (ActivityController<TurnOnChoiceActivity> page = Robolectric.buildActivity(TurnOnChoiceActivity.class, next).setup()) {
+                idle();
+                assertTrue("option 2 is chosen on the When the TV turns on page", TurnOn.enabled(app));
+                assertNull("once only", page.get().getIntent().getStringExtra(TurnOnChoiceActivity.CHOOSE));
+            }
+        }
+    }
+
+    @Test public void anUntestedTvWhoseOwnHomeRanksFirstIsToldWithoutOpeningTheLink() {
+        Assume.assumeTrue("launcher app only", launcher());
+        sony(); stockPriority = 2; stockHome(true);   // Android lists Android TV Home at priority 2, as the TCL's
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            HomeTakeoverActivity a = c.get();
+            String said = words(root(a));
+            assertTrue(said, said.contains(HomeTakeover.ranksFirst("Android TV Home")));
+            assertTrue(said.contains(HomeTakeover.KEEPS_OWN));
+            assertEquals("decided before any link", 0, opens);
+            assertTrue(tv.commands.isEmpty());
+            assertFalse(DefaultHome.offered(app));
+            assertNotNull(find(root(a), HomeTakeover.USE_QUICK));
+            press(a, "Try anyway");
+            assertEquals(1, opens);
+            assertTrue(words(root(a)).contains(HomeTakeover.KEEPS_OWN));
+            for (String sent : tv.changes()) assertTrue("Android's own route only: " + sent, sent.startsWith("cmd package set-home-activity"));
+        }
+    }
+
+    @Test public void onAnUntestedTvAndroidsOwnChoiceCanWinAndNothingIsTurnedOff() {
+        Assume.assumeTrue("launcher app only", launcher());
+        sony(); homes.priority.put(FakeTv.HOME, 0);   // a TV whose own Home doesn't rank itself first
         try (ActivityController<HomeTakeoverActivity> c = open(true)) {
             HomeTakeoverActivity a = c.get();
             press(a, "Start");
-            assertTrue(words(root(a)).contains(HomeTakeover.UNKNOWN_TV));
-            assertTrue(tv.disabled.isEmpty() || !tv.disabled.contains(STOCK));
-            for (String sent : tv.changes()) assertFalse("never turned off: " + sent, sent.startsWith("pm disable-user"));
-            assertFalse("not chosen: the Home entry is off again", DefaultHome.offered(app));
+            assertTrue(words(root(a)).contains("Android now opens Unified TV when you press Home. Nothing was turned off."));
+            assertEquals(Collections.singletonList(AdbCommands.setHome(HomeTakeover.entry(app.getPackageName()))), tv.changes());
             assertFalse(record().exists());
-            assertTrue(tv.closed);
+            press(a, "Next"); press(a, "Next: try the Home button");
+            idle(HomeTakeover.CONFIRM_MS + 1000);   // the TV's own Home came up instead
+            String said = words(root(a));
+            assertTrue(said, said.contains(HomeTakeover.KEEPS_OWN));
+            assertNotNull(find(root(a), HomeTakeover.USE_QUICK));
+            assertNotNull(find(root(a), "Undo: " + HomeTakeoverActivity.RETURN_TITLE));
+        }
+    }
+
+    @Test public void theGentleRouteRefusesEveryOtherChangeUnsent() throws Exception {
+        String self = app.getPackageName();
+        tv.fingerprint = FakeTv.SONY_UR2; tv.homes = homes;
+        Cleanup.Shell g = HomeTakeover.gentleOnly(tv, self);
+        for (String change : new String[]{AdbCommands.disable(STOCK), AdbCommands.enable(STOCK), AdbCommands.setHome(FakeTv.HOME), AdbCommands.allowListener(self)}) {
+            try { g.run(change); fail("sent: " + change); } catch (HomeTakeover.Changed e) { assertEquals(HomeTakeover.UNKNOWN_TV, e.getMessage()); }
+        }
+        assertTrue("nothing reached the TV", tv.commands.isEmpty());
+        assertEquals(FakeTv.SONY_UR2 + "\n", g.run(AdbCommands.FINGERPRINT));
+        HomeTakeover.Check c = HomeTakeover.check(g, FakeTv.lists(), FakeTv.SONY_UR2, self);
+        assertEquals("no tested list: refused", HomeTakeover.UNKNOWN_TV, HomeTakeover.refusal(c, c.before, self));
+        try { HomeTakeover.takeOver(g, record(), c, self, "2026-11-03T12:00:00+0000"); fail("never on an untested TV"); } catch (HomeTakeover.Changed expected) { /* refused */ }
+        for (String sent : tv.commands) assertFalse("never turned off: " + sent, AdbCommands.changes(sent) && sent.startsWith("pm "));
+        assertFalse(record().exists());
+    }
+
+    @Test public void theRouteIsDecidedFromThisTvAlone() {
+        Map<String, Integer> tcl = Collections.singletonMap(STOCK, 2), plain = Collections.singletonMap(STOCK, 0);
+        assertEquals(HomeTakeover.Route.TESTED, HomeTakeover.plan(true, tcl, 0).route);
+        assertEquals(HomeTakeover.Route.KEEPS_OWN, HomeTakeover.plan(false, tcl, 0).route);
+        assertEquals(STOCK, HomeTakeover.plan(false, tcl, 0).ahead);
+        assertEquals(HomeTakeover.Route.GENTLE, HomeTakeover.plan(false, plain, 0).route);
+        assertEquals("nothing listed: the gentle route says what happens", HomeTakeover.Route.GENTLE, HomeTakeover.plan(false, Collections.emptyMap(), 0).route);
+        assertTrue(HomeTakeover.plan(false, plain, 0).gentleOnly());
+        assertFalse(HomeTakeover.plan(true, plain, 0).gentleOnly());
+        assertEquals("the owner's TCL", HomeTakeover.Route.TESTED, HomeTakeover.plan(app, FakeTv.lists(), FakeTv.OWNER).route);
+        assertEquals("the owner's Sony", HomeTakeover.Route.GENTLE, HomeTakeover.plan(app, FakeTv.lists(), FakeTv.SONY_UR2).route);
+    }
+
+    // --- never waiting without end: each failed step said plainly, the link closed, recorded
+    @Test public void eachLinkFailureSaysWhichStepClosesTheLinkAndIsRecorded() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        sony();
+        Object[][] cases = {
+            {new AdbException(AdbException.Kind.TIMED_OUT, AdbLink.Step.HELLO, "x"), LinkSteps.NO_ANSWER, "Stopped (no answer in time) at: " + AdbLink.Step.HELLO.words},
+            {new AdbException(AdbException.Kind.TIMED_OUT, AdbLink.Step.ALLOW, "x"), LinkSteps.ALLOW_TIMEOUT, "Stopped (no answer in time) at: " + AdbLink.Step.ALLOW.words},
+            {new AdbException(AdbException.Kind.CLOSED, AdbLink.Step.CONNECT, "x"), LinkSteps.CONNECT_REFUSED, "Stopped (debugging service closed) at: " + AdbLink.Step.CONNECT.words},
+            {new AdbException(AdbException.Kind.LOST, AdbLink.Step.SIGN_IN, "x"), LinkSteps.CLOSED_EARLY, "Stopped at: " + AdbLink.Step.SIGN_IN.words},
+        };
+        for (Object[] k : cases) {
+            refuse = (AdbException) k[0];
+            try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+                HomeTakeoverActivity a = c.get();
+                press(a, "Start");
+                String said = words(root(a));
+                assertTrue(said, said.contains((String) k[1]));
+                assertTrue(said, said.contains(LinkSteps.LAST + k[2]));
+                assertNotNull(find(root(a), "Try again")); assertNotNull(find(root(a), "Cancel"));
+                assertFalse("nothing chosen: the Home entry is handed back", DefaultHome.offered(app));
+            }
+            boolean logged = false; for (EventLog.Event e : EventLog.recent(app)) logged |= e.words.equals(("Debugging link: " + k[2]).substring(0, Math.min(80, ("Debugging link: " + k[2]).length())));
+            assertTrue("in the event log: " + k[2], logged);
+        }
+        // A command the TV takes too long to answer: said plainly, and the link closed.
+        refuse = null; failOn = AdbCommands.HOME; failWith = new AdbException(AdbException.Kind.TIMED_OUT, AdbLink.Step.COMMAND, "x");
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            HomeTakeoverActivity a = c.get();
+            press(a, "Start");
+            assertTrue(words(root(a)).contains(LinkSteps.COMMAND_TIMEOUT));
+            assertTrue("the link is closed", tv.closed);
+            assertTrue(tv.changes().isEmpty());
+        }
+        // Owner diagnostics: the last step, and the last attempt's steps.
+        try (ActivityController<OwnerDiagnosticsActivity> d = Robolectric.buildActivity(OwnerDiagnosticsActivity.class).setup()) {
+            idle();
+            String said = words(root(d.get()));
+            assertTrue(said, said.contains(LinkSteps.LAST + "Stopped (no answer in time) at: " + AdbLink.Step.COMMAND.words));
+            assertTrue(said.contains("Command: " + AdbCommands.FINGERPRINT));
+            assertTrue(said.contains("Started: " + HomeTakeoverActivity.TAKE_TITLE));
+        }
+    }
+
+    /** A link that waits (the TV's Allow) on a real worker thread, released only when the page closes what it is opening. */
+    private CleanupActivity.Opener waitsForAllow(boolean[] closed) {
+        return (c, prompt, opening) -> {
+            opens++;
+            java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+            opening.accept(() -> { closed[0] = true; released.countDown(); });
+            prompt.showing();
+            released.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            throw new AdbException(AdbException.Kind.LOST, AdbLink.Step.ALLOW, "Stopped.");
+        };
+    }
+    private static void until(android.app.Activity a, String shown) throws InterruptedException {
+        for (int i = 0; i < 300 && !words(root(a)).contains(shown); i++) { idle(); Thread.sleep(10); }
+        assertTrue("'" + shown + "' on: " + words(root(a)), words(root(a)).contains(shown));
+    }
+
+    @Test public void backCancelsWhileTheTvWaitsForAllow() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        sony(); CleanupActivity.backgroundForTests = null;   // the page's own worker thread: the UI never waits
+        boolean[] closed = {false};
+        CleanupActivity.openerForTests = waitsForAllow(closed);
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            HomeTakeoverActivity a = c.get();
+            press(a, "Start");
+            until(a, LinkSteps.WAITING_ALLOW);
+            assertTrue(words(root(a)).contains(LinkSteps.BACK_CANCELS));
+            org.robolectric.shadows.ShadowToast.reset();
+            a.onBackPressed(); idle();
+            assertTrue("the connection being opened is closed", closed[0]);
+            assertNull("Back isn't refused", org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+            Thread.sleep(200); idle();   // the worker ends; its late answer doesn't replace the page
+            assertTrue("back on the explanation", words(root(a)).contains(HomeTakeover.UNTESTED));
+            assertTrue(tv.commands.isEmpty());
+            assertFalse("the unused Home entry is handed back", DefaultHome.offered(app));
+        }
+    }
+
+    @Test public void aWholeAttemptStopsAfterTwoMinutes() throws Exception {
+        Assume.assumeTrue("launcher app only", launcher());
+        sony(); CleanupActivity.backgroundForTests = null;
+        boolean[] closed = {false};
+        CleanupActivity.openerForTests = waitsForAllow(closed);
+        try (ActivityController<HomeTakeoverActivity> c = open(true)) {
+            HomeTakeoverActivity a = c.get();
+            press(a, "Start");
+            until(a, LinkSteps.WAITING_ALLOW);
+            idle(LinkSteps.FLOW_MS + 1000);
+            assertTrue("the link being opened is closed", closed[0]);
+            String said = words(root(a));
+            assertTrue(said, said.contains(LinkSteps.FLOW_TIMEOUT));
+            assertTrue(said.contains(LinkSteps.LAST + "Stopped after two minutes"));
+            assertNotNull(find(root(a), "Try again")); assertNotNull(find(root(a), "Cancel"));
+            assertFalse(DefaultHome.offered(app));
+            Thread.sleep(200); idle();
+            assertTrue("a late answer doesn't replace the page", words(root(a)).contains(LinkSteps.FLOW_TIMEOUT));
         }
     }
 

@@ -34,16 +34,37 @@ final class AlertPolicy {
     }
 
     // Ring rules RING-01..03 (owner, 25 October 2026): a doorbell press opens the live camera; a confirmed person gets a
-    // discreet toast only; ordinary motion does nothing at all.
-    static final int RING_NONE=0,RING_PRESS=1,RING_PERSON=2;
+    // discreet toast only; ordinary motion does nothing at all. Owner, 3 November 2026 (Sony run 106): "Motion at the door
+    // (optional)" is the household's own choice, so motion from the sensor they chose there gets the same small notice,
+    // worded as movement (RING_MOTION). Motion from anything not chosen still does nothing.
+    static final int RING_NONE=0,RING_PRESS=1,RING_PERSON=2,RING_MOTION=3;
     static final long PERSON_REPEAT=60000,PERSON_TOAST_MS=5000;
     private static final Set<String> PERSON_WORDS=new HashSet<>(Arrays.asList("person","human","people","pedestrian"));
-    /** What one state change means for the doorbell: a press, a confirmed person, or nothing. */
+    /** What one state change means for the doorbell: a press, a confirmed person, movement, or nothing. */
     static int ringKind(String entity,String door,String person,String oldState,String next,JSONObject attributes){
         if(entity==null||entity.isEmpty())return RING_NONE;
-        if(entity.equals(door))return edge(entity,oldState,next)?RING_PRESS:RING_NONE;
-        if(entity.equals(person))return edge(entity,oldState,next)&&personConfirmed(entity,attributes)?RING_PERSON:RING_NONE;
+        if(entity.equals(door))return edge(entity,oldState,next)&&pressType(entity,attributes)?RING_PRESS:RING_NONE;
+        if(entity.equals(person)){if(!edge(entity,oldState,next))return RING_NONE;return personConfirmed(entity,attributes)?RING_PERSON:RING_MOTION;}
         return RING_NONE;
+    }
+    /**
+     * The same, at {@code now}: an event entity's state is the time of its event, so one that happened more than half a
+     * minute ago (Home Assistant replaying an old ding as it reconnects or reloads Ring) is never a new visit.
+     */
+    static int ringKind(String entity,String door,String person,String oldState,String next,JSONObject attributes,long now){
+        int kind=ringKind(entity,door,person,oldState,next,attributes);
+        if(kind!=RING_NONE&&entity.startsWith("event.")){long at=time(next);if(at==0||at>now+SKEW||now-at>RELEVANT)return RING_NONE;}
+        return kind;
+    }
+    /**
+     * An event entity chosen as the doorbell button: only a press counts. Ring says "ding" (Home Assistant up to 2026.4) or
+     * the standard "ring" (2026.5 on); others say doorbell or press. Its motion or intercom events are not presses. With no
+     * event type at all (an older integration), any new event counts, as before.
+     */
+    static boolean pressType(String entity,JSONObject a){
+        if(!entity.startsWith("event."))return true;
+        String t=a==null?"":a.optString("event_type","").toLowerCase(Locale.ROOT);
+        return t.isEmpty()||t.equals("ding")||t.equals("ring")||t.contains("doorbell")||t.contains("press")||t.equals("chime")||t.equals("visitor");
     }
     /**
      * RING-01/02: only a confirmed person counts. Confirmation is what the integration itself says: an event type or

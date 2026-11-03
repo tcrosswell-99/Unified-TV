@@ -47,8 +47,8 @@ final class LibraryIndex {
     static final long FRESH_MS=30*60_000L;
     /** A walk in progress shows what it has found after the first titles, then about this often. */
     static final int LIVE_STEP=200;static final long LIVE_MS=1500;
-    /** A walk in progress is saved about this often (and after each chosen folder); tests shorten it. */
-    static volatile long saveMs=8000;
+    /** A first walk in progress is saved about this often (and after each chosen folder); tests shorten it. */
+    static volatile long saveMs=15_000;
     private static final Set<String> VIRTUAL=new HashSet<>(Arrays.asList("recently added","recently played","last played","recently watched","recently viewed",
         "genre","genres","actor","actors","artist","artists","director","directors","year","years","date","by date","by genre","by year","by actor","by director",
         "by rating","rating","ratings","album","albums","playlist","playlists","favourites","favorites","keyword","keywords","series view"));
@@ -294,33 +294,46 @@ final class LibraryIndex {
         catch(Exception e){throw new IllegalStateException(e);}
     }
 
-    /** One walk at a time for the whole app (WALK); reading the saved list never waits for a walk (MEMORY). */
-    private static final Object WALK=new Object(),MEMORY=new Object();
-    private static String memoryKey;private static Index memory;
-    /** Moves on with every {@link #clear}; a walk that started before one never writes its list back. Guarded by MEMORY. */
+    /**
+     * Locks (owner's Sony BRAVIA, build run 106, 3 November 2026: the library "locked the TV" while it was being checked).
+     * WALK: one walk at a time. DISK: one read-and-parse or write-and-sync of the file at a time. MEMORY: only the moment a
+     * new list is published (a reference swap and the rename that goes with it) and a clear; never held across reading,
+     * parsing, writing or syncing. The main thread takes none of them for longer than that swap, and reads only the
+     * published lists ({@link #loaded}, {@link #partial}): it never touches the file or the network.
+     */
+    private static final Object WALK=new Object(),DISK=new Object(),MEMORY=new Object();
+    /** A list as published: the file it belongs to and the list itself. Never changed once made. */
+    private static final class Loaded{final String key;final Index index;Loaded(String key,Index index){this.key=key;this.index=index;}}
+    /** The saved list held in memory (the last one read or saved). */
+    private static volatile Loaded loaded;
+    /** Moves on with every {@link #clear}; a walk that started before one never writes its list back. Changed under MEMORY. */
     private static volatile int clears;
     /** Titles found so far by a walk in progress anywhere in the app (Home's row and the library share one walk). */
     static volatile int walking=-1;
 
-    /** What a walk in progress has found so far (the folders done, the one being walked, earlier lists for the rest). */
-    private static final class Partial{final String key;final Index index;Partial(String key,Index index){this.key=key;this.index=index;}}
-    private static volatile Partial partial;
+    /** What a first walk has found so far (the folders done, the one being walked, earlier lists for the rest). */
+    private static volatile Loaded partial;
     /**
-     * The newest list there is, without touching the network: while a walk is under way (LibraryCollector), the titles it
-     * has found so far (a first walk) or the saved list (a check); otherwise the saved list. Cheap: Home's row and the
-     * library read it as often as they like.
+     * The newest list there is, without touching the network: while a first walk is under way (LibraryCollector), the
+     * titles it has found so far; otherwise the saved list (a check shows the saved list until a folder has been read to
+     * the end). Off the main thread: the first call after a restart reads the file.
      */
     static Index latest(Context c,LibraryFolders.Library lib){
-        Partial p=partial;
+        Loaded p=partial;
         if(p!=null&&p.key.equals(file(c,lib.source).getPath()))return keep(p.index,lib);
         return cached(c,lib);
     }
-    /** The saved list for this library, without touching the network; empty when there is none yet. */
-    static Index cached(Context c,LibraryFolders.Library lib){
-        File f=file(c,lib.source);
-        synchronized(MEMORY){
-            if(f.getPath().equals(memoryKey)&&memory!=null)return keep(memory,lib);
-            migrate(c,lib.source,f);Index i=read(f);memoryKey=f.getPath();memory=i;return keep(i,lib);
+    /** The saved list for this library, without touching the network; empty when there is none yet. Off the main thread. */
+    static Index cached(Context c,LibraryFolders.Library lib){File f=file(c,lib.source);return keep(full(c,lib.source,f),lib);}
+    /** Every folder's list for this server: from memory, else read and parsed (outside MEMORY) and published. */
+    private static Index full(Context c,JSONObject source,File f){
+        String key=f.getPath();Loaded m=loaded;if(m!=null&&m.key.equals(key))return m.index;
+        OffMain.check("Reading the saved library list");
+        synchronized(DISK){
+            m=loaded;if(m!=null&&m.key.equals(key))return m.index;   // read meanwhile by another screen
+            int at=clears;migrate(c,source,f);Index i=read(f);
+            synchronized(MEMORY){if(clears==at){m=loaded;if(m!=null&&m.key.equals(key))return m.index;loaded=new Loaded(key,i);}}
+            return i;
         }
     }
     /** Only the folders chosen now (a removed folder's titles leave at once). */
@@ -334,17 +347,30 @@ final class LibraryIndex {
         try(InputStream in=new FileInputStream(f)){ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return parse(out.toString("UTF-8"));}
         catch(Exception e){return new Index();}
     }
-    /** Whole or not at all: a temporary file, synced to storage, then renamed over the old list. */
-    private static void write(File f,Index index)throws Exception{
+    /** Writes the list to a temporary file and syncs it to storage; the caller renames it over the old list. */
+    private static File writeTemp(File f,Index index)throws Exception{
         File dir=f.getParentFile();if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("no folder");
         File tmp=new File(dir,f.getName()+".tmp");
         try(FileOutputStream fo=new FileOutputStream(tmp)){
             Writer w=new BufferedWriter(new OutputStreamWriter(fo,StandardCharsets.UTF_8),65536);json(index,w);w.flush();fo.getFD().sync();}
-        if(!tmp.renameTo(f)){if(!tmp.delete())tmp.deleteOnExit();throw new IOException("cannot save");}
+        return tmp;
     }
-    /** Saves (unless the list was cleared meanwhile) and makes it the list in memory. */
+    /**
+     * Saves whole or not at all (a temporary file, synced, renamed over the old list) and publishes it as the list in
+     * memory. Writing and syncing hold only DISK; MEMORY is held just for the rename and the swap, so nothing that reads
+     * the list waits on storage. Nothing is written once the list has been cleared (Privacy, a reset, a forgotten server).
+     */
     private static void save(File f,Index index,int at){
-        synchronized(MEMORY){if(clears!=at)return;try{write(f,index);}catch(Exception ignored){/* still shown; saved at the next step */}memoryKey=f.getPath();memory=index;}
+        OffMain.check("Saving the library list");
+        synchronized(DISK){
+            if(clears!=at)return;
+            File tmp=null;try{tmp=writeTemp(f,index);}catch(Exception ignored){/* still shown; saved at the next step */}
+            synchronized(MEMORY){
+                if(clears!=at){if(tmp!=null&&!tmp.delete())tmp.deleteOnExit();return;}
+                if(tmp!=null&&!tmp.renameTo(f)&&!tmp.delete())tmp.deleteOnExit();
+                loaded=new Loaded(f.getPath(),index);
+            }
+        }
     }
     /** True when a chosen folder has never been read to the end, was walked part-way, or was walked too long ago. */
     static boolean due(Index index,LibraryFolders.Library lib,long now){
@@ -386,8 +412,7 @@ final class LibraryIndex {
     static Index refresh(Context c,LibraryFolders.Library lib,boolean force,Progress progress)throws Exception{
         File f=file(c,lib.source);String key=f.getPath();
         synchronized(WALK){
-            Index all;int at;
-            synchronized(MEMORY){at=clears;if(key.equals(memoryKey)&&memory!=null)all=memory;else{migrate(c,lib.source,f);all=read(f);}}
+            int at=clears;Index all=full(c,lib.source,f);
             long now=System.currentTimeMillis();Set<String> kept=kept(c,lib);
             if(!force&&!due(all,lib,now)){
                 if(kept.containsAll(all.roots.keySet()))return keep(all,lib);
@@ -403,9 +428,13 @@ final class LibraryIndex {
                     Root committed=old!=null&&old.at>0?old:null;Walk resume=force||old==null?null:old.walk;
                     Set<String> others=new HashSet<>(chosen);others.remove(folder.id);
                     int base=before[0];walking=base;
+                    // A first walk: shown as it goes and saved every saveMs, so a stopped app keeps it. A check: the saved list
+                    // is already shown and kept, so nothing is copied or written until the folder has been read to the end
+                    // (owner's Sony, build run 106: rewriting the whole list every few seconds while checking it).
                     Found found=(sofar,urgent)->{
-                        if(clears!=at)return;
-                        next.roots.put(folder.id,inProgress(folder.id,committed,sofar));Index shown=copy(next);partial=new Partial(key,shown);
+                        if(clears!=at||(committed!=null&&!urgent))return;
+                        next.roots.put(folder.id,inProgress(folder.id,committed,sofar));Index shown=copy(next);
+                        if(committed==null)partial=new Loaded(key,shown);
                         long clock=System.currentTimeMillis();
                         if(urgent||savedAt[0]==0||clock-savedAt[0]>=saveMs){save(f,shown,at);savedAt[0]=clock;}
                     };
@@ -413,7 +442,7 @@ final class LibraryIndex {
                         Root r=walk(lib.source,folder.id,others,committed,resume,(t,n)->{walking=base+t;if(progress!=null)progress.found(base+t,n);},now,found);
                         next.roots.put(folder.id,r);before[0]+=r.entries.size();
                         // Kept as soon as the folder has been read to the end: its new titles in, its missing ones out.
-                        Index done=copy(next);partial=new Partial(key,done);save(f,done,at);savedAt[0]=System.currentTimeMillis();
+                        Index done=copy(next);if(partial!=null)partial=new Loaded(key,done);save(f,done,at);savedAt[0]=System.currentTimeMillis();
                     }
                     catch(InterruptedIOException e){throw e;}
                     catch(Exception e){
@@ -424,9 +453,9 @@ final class LibraryIndex {
                     }
                 }
                 if(failure!=null&&keep(next,lib).size()==0)throw failure;
-                synchronized(MEMORY){
-                    if(clears!=at)throw new InterruptedIOException("cleared");   // Privacy, a reset or a forgotten server meanwhile
-                    try{write(f,next);}catch(Exception ignored){/* Still shown this time. */}memoryKey=key;memory=next;}
+                if(clears!=at)throw new InterruptedIOException("cleared");   // Privacy, a reset or a forgotten server meanwhile
+                save(f,next,at);
+                if(clears!=at)throw new InterruptedIOException("cleared");
             }finally{walking=-1;partial=null;}   // the saved list now holds everything the walk found
             return keep(next,lib);
         }
@@ -435,7 +464,10 @@ final class LibraryIndex {
      * onTrimMemory (PreviewApp): no screen is showing, so the saved list held in memory goes; it is read back from this
      * TV's storage the next time Home's row or the library asks (a walk in progress keeps its own copy).
      */
-    static void trim(){synchronized(MEMORY){memory=null;memoryKey=null;}}
-    /** Settings > Privacy, a reset, or forgetting the media server: forget every saved list. The only way one is cleared. */
-    static void clear(Context c){LibraryCollector.cancel();synchronized(MEMORY){clears++;memory=null;memoryKey=null;partial=null;File[] fs=dir(c).listFiles();if(fs!=null)for(File x:fs)if(!x.delete())x.deleteOnExit();}}
+    static void trim(){loaded=null;}
+    /**
+     * Settings > Privacy, a reset, or forgetting the media server: forget every saved list. The only way one is cleared.
+     * A save under way finds the list cleared at its rename and deletes its own temporary file.
+     */
+    static void clear(Context c){LibraryCollector.cancel();synchronized(MEMORY){clears++;loaded=null;partial=null;File[] fs=dir(c).listFiles();if(fs!=null)for(File x:fs)if(!x.delete())x.deleteOnExit();}}
 }

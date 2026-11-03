@@ -37,6 +37,12 @@ final class LibraryCollector {
     static final int WARM_PICTURES=1500;
     /** How long a pause for memory lasts before memory is checked again. */
     static volatile long pauseMs=30_000;
+    /**
+     * Owner's Sony, build run 106: "Checking for new films…" stayed on screen. With no step forward for this long (a page
+     * from the media server, a poster batch, or a rest for memory), the job is taken to be stuck: its words go, and come
+     * back if it moves again. Tests shorten it.
+     */
+    static volatile long stallMs=120_000;
 
     /** What the job is doing, for the lines on screen. Never changes once made. */
     static final class Status {
@@ -48,15 +54,24 @@ final class LibraryCollector {
          * doesn't move), and the only words are {@link #CHECKING}. Never "Finding your films… 0 so far" over a full list.
          */
         final boolean checking;
+        /** Busy, but nothing has moved for {@link #stallMs}: no words and no spinner (the saved list is what shows). */
+        final boolean stalled;
         Status(int pass,Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem){
             this(pass,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,false);}
         Status(int pass,Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem,boolean checking){
-            this.pass=pass;this.phase=phase;this.found=Math.max(0,found);this.postersDone=Math.max(0,postersDone);this.postersTotal=Math.max(0,postersTotal);this.noKey=noKey;this.paused=paused;this.stale=stale;this.problem=problem;this.checking=checking&&phase==Phase.SCANNING;}
-        Status paused(boolean p){return new Status(pass,phase,found,postersDone,postersTotal,noKey,p,stale,problem,checking);}
+            this(pass,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,checking,false);}
+        Status(int pass,Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem,boolean checking,boolean stalled){
+            this.pass=pass;this.phase=phase;this.found=Math.max(0,found);this.postersDone=Math.max(0,postersDone);this.postersTotal=Math.max(0,postersTotal);this.noKey=noKey;this.paused=paused;this.stale=stale;this.problem=problem;this.checking=checking&&phase==Phase.SCANNING;
+            this.stalled=stalled&&(phase==Phase.SCANNING||phase==Phase.POSTERS);}
+        Status paused(boolean p){return new Status(pass,phase,found,postersDone,postersTotal,noKey,p,stale,problem,checking,stalled);}
+        Status stalled(boolean s){return new Status(pass,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,checking,s);}
+        /** Whether a spinner belongs on screen: under way and not stuck. */
+        boolean moving(){return busy()&&!stalled;}
         boolean scanning(){return phase==Phase.SCANNING;}
         boolean busy(){return phase==Phase.SCANNING||phase==Phase.POSTERS;}
         /** "Finding your films… 120 so far" or "Getting posters: 80 of 200"; empty when nothing is under way. */
         String progress(){
+            if(stalled)return "";
             String p=phase==Phase.SCANNING?(checking?CHECKING:found==0?"Finding your films…":"Finding your films… "+number(found)+" so far")
                 :phase==Phase.POSTERS?"Getting posters: "+number(postersDone)+" of "+number(postersTotal):"";
             return p.isEmpty()||!paused?p:p+" (resting while the TV needs its memory)";
@@ -66,8 +81,8 @@ final class LibraryCollector {
         /** The setup sheet's line after Save. */
         String setup(){
             switch(phase){
-                case SCANNING:return checking?progress():progress()+" — you can carry on.";
-                case POSTERS:return "Found "+videos(found)+". "+progress()+".";
+                case SCANNING:return checking||stalled?progress():progress()+" — you can carry on.";
+                case POSTERS:return stalled?"Found "+videos(found)+".":"Found "+videos(found)+". "+progress()+".";
                 case DONE:return "Found "+videos(found)+(postersTotal>0&&postersDone>=postersTotal?". Posters are ready.":".");
                 case FAILED:return "The media server isn't answering just now. Unified TV tries again when you open Your Films & TV.";
                 default:return "";
@@ -75,9 +90,9 @@ final class LibraryCollector {
         }
         /** Home's row (owner, build run 99): never a bare "View all" while the list is being made. */
         String home(){
-            if(checking)return progress();
+            if(checking||stalled)return progress();
             if(phase==Phase.SCANNING)return (found==0?"Scanning your film and TV library…":"Scanning your film and TV library — "+videos(found)+" found so far.")+" You can keep watching.";
-            if(phase==Phase.POSTERS)return progress()+". You can keep watching.";
+            if(phase==Phase.POSTERS)return progress()+". You can keep watching.";   // (stalled: returned above)
             return "";
         }
     }
@@ -163,11 +178,16 @@ final class LibraryCollector {
         try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);}catch(RuntimeException|LinkageError ignored){/* JVM tests */}
         try{
             while(true){
-                pass();
+                try{pass();}
+                catch(RuntimeException e){set(make(Phase.IDLE,0,0,0,false,false,false,0));}   // never left saying it is busy
                 if(Thread.currentThread().isInterrupted())return;
                 synchronized(lock){if(!again){running=false;return;}again=false;}
             }
-        }finally{thread=null;synchronized(lock){running=false;}}
+        }finally{
+            thread=null;synchronized(lock){running=false;}
+            // However the run ended (finished, cancelled, stopped, or a failure no one expected), no line says it is busy.
+            if(status.busy())set(make(Phase.IDLE,0,0,0,false,false,false,0));
+        }
     }
     private void pass(){
         LibraryFolders.Library lib=LibraryFolders.library(LibraryFolders.read(app,LibraryFolders.STORE),LibraryFolders.read(app,KidsPolicy.STORE),false);
@@ -243,6 +263,7 @@ final class LibraryCollector {
     private void breathe()throws InterruptedIOException{
         if(Thread.currentThread()!=thread)return;
         if(cancels.get()!=passCancels)throw new InterruptedIOException("cleared");
+        alive();
         try{
             long gap=MemoryBudget.current().indexGapMs();if(gap>0)Thread.sleep(gap);
             boolean rested=false;
@@ -255,6 +276,7 @@ final class LibraryCollector {
                     }
                     if(!rested){rested=true;set(status.paused(true));}
                     lock.wait(Math.max(1,Math.min(pausedUntil-now,1000)));
+                    beat=SystemClock.uptimeMillis();   // resting for memory is not being stuck
                 }
                 pausedUntil=0;
             }
@@ -273,9 +295,26 @@ final class LibraryCollector {
     private Status make(Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem,boolean checking){
         return new Status(passes,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,checking);}
 
+    // --- stuck or moving
+    /** When the job last moved (uptime): a page, a poster batch, a rest for memory, or a new status from the job. */
+    private volatile long beat;
+    private final Runnable watch=this::watch;
+    /** The job moved: a stuck line comes back. */
+    private void alive(){beat=SystemClock.uptimeMillis();Status s=status;if(s.stalled)set(s.stalled(false));}
+    /** On the main thread while the job is busy: after {@link #stallMs} without a step, the words go (owner, run 106). */
+    private void watch(){
+        Status s=status;if(!s.busy()||s.stalled)return;
+        long idle=SystemClock.uptimeMillis()-beat,limit=stallMs;
+        if(idle>=limit)set(s.stalled(true));
+        else main.postDelayed(watch,Math.max(1,Math.min(limit-idle,Math.max(1000,limit/4))));
+    }
+
     // --- telling the screens
     private void set(Status s){
-        status=s;long wait;
+        if(!s.stalled&&s!=status&&(status==null||status.phase!=s.phase||status.pass!=s.pass||status.found!=s.found||status.postersDone!=s.postersDone))beat=SystemClock.uptimeMillis();
+        status=s;
+        if(s.busy()&&!s.stalled){main.removeCallbacks(watch);main.postDelayed(watch,Math.max(1000,stallMs/4));}
+        long wait;
         synchronized(notifyLock){if(posted)return;posted=true;wait=Math.max(0,notifiedAt+NOTIFY_MS-SystemClock.uptimeMillis());}
         main.postDelayed(this::tell,wait);
     }

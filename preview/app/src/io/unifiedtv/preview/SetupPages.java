@@ -82,6 +82,7 @@ final class SetupPages {
     void entered(int category) { if (category == SettingsActivity.SMART_HOME) { haChecked = null; haFound = null; } }
     /** Back inside a task's own sub-page (a league, a search); true when handled. */
     boolean back(String task) {
+        if (SettingsActivity.HOUSEHOLD.equals(task) && household.back()) return true;   // a list inside the page: back to the page
         if (SettingsActivity.TEAM.equals(task) && (teamLeague != 0 || teamQuery != null)) { teamLeague = 0; teamQuery = null; teamAsked = null; teamAnswer = null; a.redraw(); return true; }
         return false;
     }

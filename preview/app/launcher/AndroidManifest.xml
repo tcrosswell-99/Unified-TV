@@ -43,5 +43,15 @@
     </receiver>
     <!-- OD-23's small watcher for "screen on again", running only while the feature is on and allowed. -->
     <service android:name="io.unifiedtv.preview.TurnOnService" android:exported="false"/>
+    <!-- OD-31 (owner, 3 November 2026): the remote button that opens Unified TV. Off by default, adults (PIN), and inert
+         until the household both chooses a button in When the TV turns on and switches this service on in the TV's
+         accessibility settings. It reacts only to that one button (every other key passes on untouched), reads no screen
+         content and logs no keys (res/xml/remote_button.xml). Only the system can bind it (the permission). The preview
+         app never has it. -->
+    <service android:name="io.unifiedtv.preview.ButtonService" android:exported="true" android:label="@string/remote_button_label"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/remote_button"/>
+    </service>
   </application>
 </manifest>

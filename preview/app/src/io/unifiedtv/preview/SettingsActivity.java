@@ -353,7 +353,12 @@ public final class SettingsActivity extends Screen {
             String chip=TurnOnChoice.current(this).chip;
             wake.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(chip,true,false,textPx(19)),null);wake.setCompoundDrawablePadding(px(16));
             wake.setContentDescription(TurnOnChoice.TITLE+", "+chip);
-            text(TurnOnChoice.ROW_LINE,15);}
+            text(TurnOnChoice.ROW_LINE,15);
+            // OD-31: the remote button that opens Unified TV lives on the same page; this row points to it.
+            Button remote=button(RemoteButton.TITLE,()->{turnOnOpen=true;TurnOnChoiceActivity.openButton(this);});
+            String state=RemoteButton.state(this).words;
+            remote.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(state,true,false,textPx(19)),null);remote.setCompoundDrawablePadding(px(16));
+            remote.setContentDescription(RemoteButton.TITLE+", "+state);}
         section("Wallpaper");
         button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
         wallpaper();
@@ -492,12 +497,18 @@ public final class SettingsActivity extends Screen {
     // --- Smart Home (SetupPages: Home Assistant status first, set up on the phone; football; Advanced in the sheet)
     private void smartHome(){setup.smartHome();}
 
+    /** An installed app's name, else its package. */
+    private String appLabel(String pkg){try{android.content.pm.PackageManager pm=getPackageManager();return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg,0)));}catch(Exception e){return pkg;}}
     // --- Live TV & Network Protection (OD-26 as amended 3 November 2026: Live TV opens when a VPN is connected; not a kill switch)
     private void liveTv(){
         String live=LiveTvProtection.livePackage(this);LiveTvProtection.State state=LiveTvProtection.now(this);
         TextView word=text("Live TV: "+LiveTvProtection.word(state),20);word.setFocusable(false);
         text(LiveTvProtection.message(state),16);
-        text(live.isEmpty()?"No single Live TV app was recognised on this TV.":"Live TV app: "+live,15);
+        // The household's Live TV app (DockPicker.LIVE_PREF; owner's Sony: ReamSmartz wasn't identified): Automatic keeps
+        // Unified TV's own recognition; a choice is what the gate, the safety net and the cover treat as Live TV.
+        String chosen=prefs.getString(DockPicker.LIVE_PREF,"");
+        chevron(button("Live TV app: "+(chosen.isEmpty()?DockPicker.AUTOMATIC:appLabel(chosen)),()->EditLock.ask(this,()->AppPickerActivity.live(this,false))));
+        text(!chosen.isEmpty()?"Live TV opens "+appLabel(chosen)+", only when a VPN is connected.":live.isEmpty()?"No single Live TV app was recognised on this TV. Choose yours above.":"Recognised: "+appLabel(live),15);
         button("Check again",()->{VpnGate.invalidate();show(LIVE_TV);});
         button("NordVPN",()->VpnGate.show(this));
         // OD-29: Unified TV runs NordVPN itself. The same page as holding OK on Home's shield (VpnActivity, the glass sidebar).
