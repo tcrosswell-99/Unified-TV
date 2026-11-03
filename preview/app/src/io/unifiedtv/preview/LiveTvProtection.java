@@ -107,10 +107,16 @@ final class LiveTvProtection {
 
     // --- Android
     static String version(Context c,String pkg){if(pkg==null||pkg.isEmpty())return "";try{String v=c.getPackageManager().getPackageInfo(pkg,0).versionName;return v==null?"":v;}catch(Exception e){return "";}}
-    /** The configured Live TV app, else the one installed app the protected-app rule recognises; never a guess between several. */
+    /**
+     * The household's chosen Live TV app while it is still installed and can be opened, else the one installed app the
+     * protected-app rule recognises; never a guess between several. A chosen app since uninstalled reads as Automatic
+     * (review of a615a38), so a Live TV route offers the choice again rather than a dead end.
+     */
     static String livePackage(Context c){
-        SharedPreferences p=c.getSharedPreferences("unified-tv-preview",0);String configured=p.getString("livePackage","");if(!configured.isEmpty())return configured;
-        PackageManager pm=c.getPackageManager();Set<String> found=new LinkedHashSet<>();
+        SharedPreferences p=c.getSharedPreferences("unified-tv-preview",0);String configured=p.getString("livePackage","");
+        PackageManager pm=c.getPackageManager();
+        if(!configured.isEmpty()&&Launch.entry(pm,configured)!=null)return configured;
+        Set<String> found=new LinkedHashSet<>();
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){String pkg=r.activityInfo.packageName;if(Endpoint.protectedApp(pkg,String.valueOf(r.loadLabel(pm)),""))found.add(pkg);}
         return found.size()==1?found.iterator().next():"";

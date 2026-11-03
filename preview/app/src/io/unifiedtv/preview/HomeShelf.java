@@ -1,5 +1,6 @@
 package io.unifiedtv.preview;
 import android.content.Context;
+import android.content.SharedPreferences;
 import org.json.*;
 import java.util.*;
 
@@ -92,9 +93,24 @@ final class HomeShelf {
     }
     /** A library is set up for whoever is watching: Kids folders (or a Kids media account) for Kids, the household's for Adults. */
     static boolean configured(Context c){
-        try{
-            if(LibraryFolders.library(c).ready)return true;
-            return LibraryFolders.read(c,Vault.mediaKey(c)).optBoolean("enabled");
-        }catch(Exception e){return false;}
+        boolean yes;
+        try{yes=LibraryFolders.library(c).ready||LibraryFolders.read(c,Vault.mediaKey(c)).optBoolean("enabled");}catch(Exception e){yes=false;}
+        remember(c,yes);return yes;
+    }
+
+    // --- the last answer, for the main thread (review of a615a38: Home's first Down must not wait for the encrypted store)
+    /** Plain preference per profile: the last answer {@link #configured} gave (never a key or an address). */
+    static final String KNOWN="library.configured.";
+    /** The last answer for whoever is watching, or null when it is not known yet (a neutral label shows then). Main thread. */
+    static Boolean known(SharedPreferences p){String k=KNOWN+Profiles.current(p);return p.contains(k)?p.getBoolean(k,false):null;}
+    private static void remember(Context c,boolean yes){
+        try{SharedPreferences p=c.getSharedPreferences(HouseholdSettings.PREFS,0);String k=KNOWN+Profiles.current(p);
+            if(!p.contains(k)||p.getBoolean(k,false)!=yes)p.edit().putBoolean(k,yes).apply();}
+        catch(RuntimeException ignored){/* worked out again next time */}
+    }
+    /** Folders saved or forgotten: the last answers are out of date until the next check (LibraryFolders.save). */
+    static void forgetKnown(Context c){
+        try{SharedPreferences p=c.getSharedPreferences(HouseholdSettings.PREFS,0);p.edit().remove(KNOWN+Profiles.ADULT).remove(KNOWN+Profiles.CHILD).apply();}
+        catch(RuntimeException ignored){}
     }
 }

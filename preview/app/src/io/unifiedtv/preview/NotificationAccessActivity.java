@@ -52,6 +52,8 @@ public final class NotificationAccessActivity extends GlassScreen {
     private ExecutorService worker;
     /** The whole-attempt limit (LinkSteps.FLOW_MS). */
     private final Handler watch = new Handler(Looper.getMainLooper());
+    /** The one change is being sent: the two-minute limit no longer applies (the command has its own). */
+    private volatile boolean sending;
     private volatile Closeable link, opening;
     private volatile boolean busy, stopped, destroyed;
     private volatile int generation;
@@ -86,7 +88,7 @@ public final class NotificationAccessActivity extends GlassScreen {
         card(); progress = busy("Connecting to this TV…"); prompt = text("", 17);
         String command;
         try { command = AdbCommands.allowListener(getPackageName()); } catch (IllegalArgumentException e) { intro(); return; }
-        busy = true; int mine = ++generation;
+        busy = true; sending = false; int mine = ++generation;
         watch.removeCallbacksAndMessages(null);
         watch.postDelayed(() -> tooLong(mine), LinkSteps.FLOW_MS);
         Context app = getApplicationContext();
@@ -95,6 +97,7 @@ public final class NotificationAccessActivity extends GlassScreen {
             try {
                 Cleanup.Shell sh = shell(mine);
                 say("Turning it on…");
+                sending = true; watch.removeCallbacksAndMessages(null);   // the one change: its own command limit only
                 sh.run(command);
                 boolean on = MediaWatch.granted(getApplicationContext());
                 ui = () -> finishPage(on);
@@ -130,7 +133,7 @@ public final class NotificationAccessActivity extends GlassScreen {
 
     /** Two minutes and still waiting: stopped, the link closed, said plainly; a fresh worker so Try again never queues. */
     private void tooLong(int mine) {
-        if (mine != generation || !busy || destroyed) return;
+        if (mine != generation || !busy || destroyed || sending) return;   // never while the change is being sent
         generation++; busy = false;
         closeLink();
         ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();

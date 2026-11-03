@@ -35,7 +35,7 @@ final class HaEntities {
      * that never rings on the TV, so event doorbells are only named, not chosen. Turn on once AlertPolicy supports them.
      */
     static final boolean EVENT_DOORBELLS = true;
-    static final String[] ROLES={"door","person","camera","calendar","xbox","tvplus","art","ringEnter","ringExit"};
+    static final String[] ROLES={"door","person","motion","camera","calendar","xbox","tvplus","art","ringEnter","ringExit"};
     static final String[][] ROOMS={{"tcl","TCL"},{"sony","Sony BRAVIA"},{"frame","Samsung The Frame"}};
     /** The rooms this Android app can be in: the Frame runs the separate Tizen app, so it is never offered here. */
     static final String[][] ANDROID_ROOMS={ROOMS[0],ROOMS[1]};
@@ -151,7 +151,8 @@ final class HaEntities {
                 for(Iterator<Entity> it=strong.iterator();it.hasNext();){Entity e=it.next();
                     if(e.domain.equals("binary_sensor")&&e.ring)for(Entity x:strong)if(x.domain.equals("event")&&x.ring&&sameDevice(x,e)){it.remove();other.add(e);break;}}
                 break;
-            case "person":
+            case "person":case "motion":
+                // "Motion at the door" (motion) and the older person choice (person) offer the same list.
                 // Optional, and never filled in by itself: the household chooses a Ring motion or person event, or a person
                 // sensor. Plain motion sensors wait behind "Show everything".
                 heading="Other sensors";automatic=false;
@@ -283,7 +284,7 @@ final class HaEntities {
         String d=device(e.name);
         switch(role){
             case "door":return new String[]{d+" — doorbell press",d,d};
-            case "person":{boolean person=e.typed("person","human","people","pedestrian")||(!e.domain.equals("event")&&e.any("person","people","human","pedestrian"));
+            case "person":case "motion":{boolean person=e.typed("person","human","people","pedestrian")||(!e.domain.equals("event")&&e.any("person","people","human","pedestrian"));
                 return new String[]{d+(person?" — person":" — motion"),d,d};}
             case "camera":{String kind=still(e)?(e.phrase.contains(" last recording ")?"last recording":"still picture"):d.equals(e.name)?null:"live view";
                 return kind==null?new String[]{e.name,e.name,e.name}:new String[]{d+" — "+kind,d,d+" "+kind};}
@@ -310,7 +311,7 @@ final class HaEntities {
     /** The Home Assistant domain a role accepts. */
     static String domain(String role){
         switch(role){
-            case "door":case "person":return "binary_sensor";   // an event entity is also accepted (valid)
+            case "door":case "person":case "motion":return "binary_sensor";   // an event entity is also accepted (valid)
             case "camera":return "camera";
             case "calendar":return "calendar";
             case "xbox":case "tvplus":case "art":case "ringEnter":case "ringExit":return "script";
@@ -322,7 +323,7 @@ final class HaEntities {
         if(id==null||id.isEmpty())return true;
         if(id.matches(domain(role)+"\\.[a-z0-9_]+"))return true;
         if(role.equals("xbox"))return id.matches("(script|scene|button|input_button)\\.[a-z0-9_]+");
-        return EVENT_DOORBELLS&&(role.equals("door")||role.equals("person"))&&id.matches("event\\.[a-z0-9_]+");
+        return EVENT_DOORBELLS&&(role.equals("door")||role.equals("person")||role.equals("motion"))&&id.matches("event\\.[a-z0-9_]+");
     }
     /** The Home Assistant action that runs a chosen script, scene or button; null for anything else. */
     static String service(String entity){

@@ -70,6 +70,8 @@ public final class HomeTakeoverActivity extends GlassScreen {
     private final Handler clock = new Handler(Looper.getMainLooper());
     /** The whole-attempt limit (LinkSteps.FLOW_MS), apart from {@link #clock}, which each new page clears. */
     private final Handler watch = new Handler(Looper.getMainLooper());
+    /** The running job changes the TV throughout (take over, give back, restore): the clock never stops it. */
+    private volatile boolean changeJob;
     /** What this TV allows, decided before any link (HomeTakeover.plan). */
     private HomeTakeover.Plan plan;
     private volatile Cleanup.Shell shell;
@@ -433,6 +435,9 @@ public final class HomeTakeoverActivity extends GlassScreen {
     /** Two minutes and still waiting: stopped, the link closed, said plainly; a fresh worker so Try again never queues. */
     private void tooLong(int mine) {
         if (mine != generation || !busy || destroyed) return;
+        // Never part-way through a change: a change job runs to its end (each command has its own limit); a reading job's
+        // one set-home-activity is let finish, then the clock looks again.
+        if (changing) { if (!changeJob) watch.postDelayed(() -> tooLong(mine), 1000); return; }
         generation++; busy = false; changing = false;
         closeLink();
         ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();
@@ -461,7 +466,8 @@ public final class HomeTakeoverActivity extends GlassScreen {
             say("Connected. Reading…");
         }
         if (gone(mine)) throw new AdbException(AdbException.Kind.LOST, "The page was left.");
-        if (change) { changing = true; return s; }
+        changeJob = change;
+        if (change) { changing = true; watch.removeCallbacksAndMessages(null); return s; }   // from here, each command's own limit only
         // A reading job: Back is refused only while a change command is actually being sent.
         Cleanup.Shell reading = s;
         return command -> {

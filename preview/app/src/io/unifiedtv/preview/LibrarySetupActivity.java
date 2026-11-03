@@ -51,11 +51,17 @@ public final class LibrarySetupActivity extends GlassScreen {
     @Override public void onCreate(Bundle state){
         super.onCreate(state);DlnaClient.lan=LocalDiscovery.lan(this);
         if(Profiles.kids(this)){page=Page.KIDS;render();return;}
-        JSONObject household=LibraryFolders.read(this,LibraryFolders.STORE),kids=LibraryFolders.read(this,KidsPolicy.STORE);
-        LibraryFolders.Library lib=LibraryFolders.library(household,kids,false);
-        if(lib.ready){server=LibraryFolders.serverOnly(lib.source);folders=new ArrayList<>(lib.folders);}
-        if(server.optString("control").isEmpty())discover();else render();
         LibraryCollector.get(this).listen(jobChanged);
+        // The saved folders are an encrypted record (keystore and storage): read on the worker, never on the main thread
+        // (review of a615a38). Until then the sheet says it is opening, with Close.
+        clear();head("Your Films & TV",null);card();busy("Opening your folders…");button("Close",this::close);
+        int mine=++ticket;Context app=getApplicationContext();
+        try{worker.execute(()->{
+            LibraryFolders.Library lib=LibraryFolders.library(LibraryFolders.read(app,LibraryFolders.STORE),LibraryFolders.read(app,KidsPolicy.STORE),false);
+            handler.post(()->{if(mine!=ticket||isFinishing()||isDestroyed())return;
+                if(lib.ready){server=LibraryFolders.serverOnly(lib.source);folders=new ArrayList<>(lib.folders);}
+                if(server.optString("control").isEmpty())discover();else render();});
+        });}catch(java.util.concurrent.RejectedExecutionException ignored){/* closing */}
     }
     /** Leaving never stops the background job: it belongs to the app, not to this sheet. */
     @Override protected void onDestroy(){ticket++;LibraryCollector.get(this).unlisten(jobChanged);handler.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}

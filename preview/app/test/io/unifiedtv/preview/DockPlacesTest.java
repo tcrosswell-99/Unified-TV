@@ -40,10 +40,10 @@ public class DockPlacesTest {
     @Before public void clean(){
         prefs().edit().clear().putString("dock","netflix,disney,bbc,music,library").commit();
         install("com.netflix.ninja","Netflix");install(SONY_SELECT,"Sony Select");install(REAM,"ReamSmartz");
-        LiveTvProtection.forTests=facts(VpnGate.State.DISCONNECTED);ShadowDialog.reset();
+        LiveTvProtection.forTests=facts(VpnGate.State.DISCONNECTED);ShadowDialog.reset();AppPickerActivity.testWorker=Runnable::run;
         while(Shadows.shadowOf((android.app.Application)app()).getNextStartedService()!=null){}
     }
-    @After public void reset(){Comeback.disarm();NordConnect.stop();LiveTvProtection.forTests=null;LiveTvProtection.last=null;LiveTvGuard.running=false;}
+    @After public void reset(){AppPickerActivity.testWorker=null;Comeback.disarm();NordConnect.stop();LiveTvProtection.forTests=null;LiveTvProtection.last=null;LiveTvGuard.running=false;}
     private static LiveTvProtection.Facts facts(VpnGate.State vpn){LiveTvProtection.Facts f=new LiveTvProtection.Facts();f.vpn=vpn;f.nordInstalled=true;return f;}
 
     // --- Home's dock, by reflection (Home is one drawn view)
@@ -71,8 +71,10 @@ public class DockPlacesTest {
     }
     private ActivityController<AppPickerActivity> picker(Intent started){
         assertNotNull("the picker opened",started);assertEquals(AppPickerActivity.class.getName(),started.getComponent().getClassName());
-        return Robolectric.buildActivity(AppPickerActivity.class,started).setup();
+        return openPicker(started);
     }
+    /** The picker, with its worker's jobs (here run at once) delivered to the main thread. */
+    private static ActivityController<AppPickerActivity> openPicker(Intent i){ActivityController<AppPickerActivity> c=Robolectric.buildActivity(AppPickerActivity.class,i).setup();idle(0);idle(0);return c;}
 
     // --- The empty place
     @Test public void okOnTheEmptyPlaceOpensThePickerForThatPlace()throws Exception{
@@ -108,7 +110,7 @@ public class DockPlacesTest {
         try(ActivityController<UnifiedPreviewActivity> c=home()){assertEquals(5,dockIds().size());assertEquals("focus is back on the empty place",true,field("blank"));}
     }
     @Test public void thePickerLeavesOutAppsAlreadyOnHome()throws Exception{
-        try(ActivityController<AppPickerActivity> p=Robolectric.buildActivity(AppPickerActivity.class,new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.PLACE).putExtra(AppPickerActivity.PLACE,5)).setup()){
+        try(ActivityController<AppPickerActivity> p=openPicker(new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.PLACE).putExtra(AppPickerActivity.PLACE,5))){
             List<String> offered=p.get().offered();
             assertFalse("Netflix is on Home",offered.contains("Netflix"));assertTrue(offered.contains("Sony Select"));assertTrue(offered.contains("ReamSmartz"));
         }
@@ -144,7 +146,7 @@ public class DockPlacesTest {
     }
     @Test public void aChosenIptvAppOpensOnlyThroughTheGateAndIsWatched()throws Exception{
         install(FAMILY,"Family Channels");
-        try(ActivityController<AppPickerActivity> p=Robolectric.buildActivity(AppPickerActivity.class,new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.LIVE).putExtra(AppPickerActivity.THEN_OPEN,true)).setup()){
+        try(ActivityController<AppPickerActivity> p=openPicker(new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.LIVE).putExtra(AppPickerActivity.THEN_OPEN,true))){
             find(p.get().findViewById(android.R.id.content),Button.class,"Family Channels").performClick();
             Intent next=Shadows.shadowOf(p.get()).getNextStartedActivity();assertNotNull("Home carries on into Live TV",next);assertTrue(next.getBooleanExtra(AppPickerActivity.OPEN_LIVE,false));
         }
@@ -172,6 +174,58 @@ public class DockPlacesTest {
         }
     }
     private static boolean opened(Intent i,String pkg){return i!=null&&i.getComponent()!=null&&pkg.equals(i.getComponent().getPackageName());}
+
+    // --- Review of a615a38
+    @Test public void anEmptyPlaceNeverReplacesATileWhenTheSavedListHoldsHiddenApps()throws Exception{
+        // com.x.iptv is in the saved list but no longer installed, so Home shows Netflix and Disney+ and an empty third place.
+        prefs().edit().putString("dock","netflix,com.x.iptv,disney").commit();Intent started;
+        try(ActivityController<UnifiedPreviewActivity> c=home()){
+            assertEquals(Arrays.asList("netflix","disney"),dockIds());toTheEmptyPlace();press(KeyEvent.KEYCODE_DPAD_CENTER);
+            started=Shadows.shadowOf(c.get()).getNextStartedActivity();assertEquals(2,started.getIntExtra(AppPickerActivity.PLACE,-1));
+            assertEquals("the last shown tile","disney",started.getStringExtra(AppPickerActivity.AFTER));c.pause();
+        }
+        try(ActivityController<AppPickerActivity> p=picker(started)){find(p.get().findViewById(android.R.id.content),Button.class,"Sony Select").performClick();}
+        assertEquals("Disney+ stays; the new app follows it","netflix,com.x.iptv,disney,"+SONY_SELECT,prefs().getString("dock",""));
+        try(ActivityController<UnifiedPreviewActivity> c=home()){assertEquals(Arrays.asList("netflix","disney",SONY_SELECT),dockIds());assertEquals("focus on the new tile",2,field("index"));}
+    }
+    @Test public void anUninstalledLiveTvChoiceOffersThePickerAgain()throws Exception{
+        install("tv.example.iptvsmarters","IPTV Smarters");   // with ReamSmartz: two candidates, so Automatic finds none
+        prefs().edit().putString(DockPicker.LIVE_PREF,"com.example.gone").commit();
+        try(ActivityController<UnifiedPreviewActivity> c=home()){
+            assertEquals("an app since uninstalled reads as unset","",LiveTvProtection.livePackage(c.get()));
+            assertEquals(Launch.CHOOSE_LIVE,Launch.live(c.get()));
+            Intent started=Shadows.shadowOf(c.get()).getNextStartedActivity();assertNotNull(started);assertEquals(AppPickerActivity.class.getName(),started.getComponent().getClassName());
+        }
+    }
+    @Test public void theLiveTvChoicesLeaveOutVpnAppsSettingsAndUnifiedTv(){
+        install(LiveTvProtection.NORDVPN,"NordVPN");install("com.android.tv.settings","Settings");install("com.example.privatevpn","Private Tunnel VPN");
+        try(ActivityController<AppPickerActivity> p=openPicker(new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.LIVE))){
+            List<String> offered=p.get().offered();
+            assertTrue(offered.toString(),offered.contains("ReamSmartz"));assertEquals("the likeliest first","ReamSmartz",offered.get(0));
+            for(String no:new String[]{"NordVPN","Settings","Private Tunnel VPN"})assertFalse(no+" is never Live TV",offered.contains(no));
+        }
+        assertTrue(DockPicker.notLiveTv(app().getPackageName(),"Unified TV",app().getPackageName()));
+    }
+    @Test public void thePickerReadsAppsAndArtOffTheMainThreadAndOnlyForRowsOnScreen(){
+        for(int i=0;i<30;i++)install("com.example.app"+(char)('a'+i%26)+i,"App "+(char)('A'+i%26)+i);
+        List<Runnable> queued=new ArrayList<>();AppPickerActivity.testWorker=queued::add;
+        try(ActivityController<AppPickerActivity> p=Robolectric.buildActivity(AppPickerActivity.class,new Intent(app(),AppPickerActivity.class).putExtra(AppPickerActivity.MODE,AppPickerActivity.PLACE).putExtra(AppPickerActivity.PLACE,5)).setup()){
+            AppPickerActivity a=p.get();idle(0);
+            assertFalse("nothing read on the main thread yet",a.scanned());assertTrue(a.offered().isEmpty());
+            assertNotNull("a waiting line meanwhile",find(a.findViewById(android.R.id.content),TextView.class,AppPickerActivity.LOOKING));
+            assertEquals("one job: the list",1,queued.size());queued.remove(0).run();idle(0);idle(0);
+            assertTrue(a.scanned());assertTrue(a.offered().size()>30);assertNull(find(a.findViewById(android.R.id.content),TextView.class,AppPickerActivity.LOOKING));
+            Set<String> asked=a.artAsked();
+            assertFalse("some art is asked for",asked.isEmpty());assertTrue("only rows on screen: "+asked.size()+" of "+a.offered().size(),asked.size()<a.offered().size());
+            assertEquals("one job per row asked",asked.size(),queued.size());
+            String first=asked.iterator().next();
+            assertTrue("a placeholder first",a.artOf(first) instanceof android.graphics.drawable.ColorDrawable);
+            for(Runnable r:new ArrayList<>(queued))r.run();queued.clear();idle(0);
+            android.graphics.drawable.Drawable d=a.artOf(first);assertTrue("then the app's own art",d instanceof android.graphics.drawable.BitmapDrawable);
+            int h=Math.round(48*Math.max(.5f,Math.min(a.getResources().getDisplayMetrics().widthPixels/1920f,a.getResources().getDisplayMetrics().heightPixels/1080f)));
+            assertEquals("drawn at the row's size",h,((android.graphics.drawable.BitmapDrawable)d).getBitmap().getHeight());
+        }
+    }
 
     // --- Apps: one tile per app
     @Test public void eachAppIsOneTileWithItsNameInside(){

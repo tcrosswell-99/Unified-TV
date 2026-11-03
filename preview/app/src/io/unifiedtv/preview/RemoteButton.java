@@ -59,6 +59,7 @@ final class RemoteButton {
     static final String ANDROID_ROW = "Android's accessibility switch";
     static final String SWITCHED_ON = "Switched on ✓", NOT_ON = "Not switched on";
     static final String CHOOSE_FIRST = "Choose a button first.", NOT_CHOSEN = "Not chosen";
+    static final String TIMED_OUT = "No button was pressed, so nothing changed.";
     static final String WAKE_WORDS = "If the TV is asleep, the button wakes it; Unified TV then opens as it does when the TV turns on. The TV's own Live TV may show for a moment first.";
     static final String ANY_WAKE = "While this is on, Unified TV comes to the front whenever the TV wakes from standby, whatever woke it: Android doesn't tell apps which button woke the TV.";
     static final String WARNING_MEANS = "Android warns that an accessibility service can observe what you do. Unified TV only reacts to the one button you chose; it doesn't read the screen or other keys.";
@@ -110,7 +111,13 @@ final class RemoteButton {
         if (PLAYERS.contains(code)) return "players use it";
         return null;
     }
-    static boolean allowed(int code) { return refusal(code) == null; }
+    /**
+     * Allowed or not, from a table made once: no boxing or allocation, so the service can ask it for a key arriving on
+     * the main thread in constant time.
+     */
+    static boolean allowed(int code) { return code >= 0 && code < ALLOWED.length ? ALLOWED[code] : refusal(code) == null; }
+    private static final boolean[] ALLOWED = new boolean[KeyEvent.getMaxKeyCode() + 1];
+    static { for (int i = 0; i < ALLOWED.length; i++) ALLOWED[i] = refusal(i) == null; }
 
     /** What the line under the rows says when a pressed button is refused. */
     static String refused(int code) { return name(code) + " can't be used: " + refusal(code) + ". Press another button, or Back to stop."; }
@@ -173,6 +180,8 @@ final class RemoteButton {
     static void listen(Chooser c, long untilUptime) { chooser = c; chooseUntil = c == null ? 0 : untilUptime; }
     /** The page listening now, or null (none, or its time is up). */
     static Chooser chooser(long nowUptime) { Chooser c = chooser; return c != null && nowUptime < chooseUntil ? c : null; }
+    /** When the choice under way stops by itself (uptime), or 0 when none is. */
+    static long chooseUntil() { return chooser == null ? 0 : chooseUntil; }
 
     // --- this TV
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences(HouseholdSettings.PREFS, 0); }
@@ -218,6 +227,9 @@ final class RemoteButton {
         private final GlassScreen a;
         private final Runnable changed;
         private boolean listening, androidAsked;
+        /** Ends a choice nobody finished, after {@link #CHOOSE_MS}: the service then stops taking keys for it. */
+        private final android.os.Handler later = new android.os.Handler(android.os.Looper.getMainLooper());
+        private final Runnable expire = this::expired;
         /** The last line about a press (refused, or chosen), shown under the rows until the next change. */
         private String said;
 
@@ -256,10 +268,12 @@ final class RemoteButton {
         void listen() {
             listening = true; said = null;
             RemoteButton.listen(code -> a.runOnUiThread(() -> { if (listening) chosen(code); }), android.os.SystemClock.uptimeMillis() + CHOOSE_MS);
+            later.removeCallbacks(expire); later.postDelayed(expire, CHOOSE_MS);
             ButtonService.refilter();
             changed.run();
         }
-        private void stop() { listening = false; RemoteButton.listen(null, 0); ButtonService.refilter(); }
+        private void expired() { if (listening) { stop(); said = TIMED_OUT; changed.run(); } }
+        private void stop() { listening = false; later.removeCallbacks(expire); RemoteButton.listen(null, 0); ButtonService.refilter(); }
 
         void chosen(int code) {
             if (listening) stop();

@@ -128,6 +128,7 @@ final class LibraryFolders {
     }
     /** Saves both records; no folders left means no library (and no Kids folders). */
     static void save(Context c,JSONObject server,List<Folder> folders)throws Exception{
+        HomeShelf.forgetKnown(c);   // Home's last answer ("set up or not") is worked out again
         Store s=store(c);JSONObject before;try{before=s.read(KidsPolicy.STORE);}catch(Exception e){before=new JSONObject();}
         // Kids folders chosen earlier on another media server are not this list's to clear.
         boolean otherServer=KidsPolicy.ready(before)&&!sameServer(before,server);

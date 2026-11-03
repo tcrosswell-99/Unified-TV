@@ -27,7 +27,8 @@ public class HomeFocusTest {
     private ActivityController<UnifiedPreviewActivity> controller;private UnifiedPreviewActivity activity;private View home;private Method key;
     private static SharedPreferences prefs(){return RuntimeEnvironment.getApplication().getSharedPreferences("unified-tv-preview",0);}
     @Before public void start()throws Exception{
-        prefs().edit().clear().putString("dock",RemoteJourneyTest.SEEDED).commit();
+        // No library set up, as Home last found it (HomeShelf.known): the first Down needs no wait for the worker.
+        prefs().edit().clear().putString("dock",RemoteJourneyTest.SEEDED).putBoolean(HomeShelf.KNOWN+Profiles.ADULT,false).commit();
         controller=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup();activity=controller.get();
         home=RemoteJourneyTest.homeIn(activity);key=home.getClass().getDeclaredMethod("key",KeyEvent.class);key.setAccessible(true);
     }

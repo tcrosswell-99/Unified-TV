@@ -57,7 +57,8 @@ public class RemoteButtonTest {
         return b.toString();
     }
     private static void press(android.app.Activity a, String start) { Button b = starting(root(a), start); assertNotNull("'" + start + "' on: " + words(root(a)), b); b.requestFocus(); b.performClick(); idle(); }
-    private Intent next() { return Shadows.shadowOf((android.app.Application) app).getNextStartedActivity(); }
+    /** The next start, after the main thread has run what is due (the service posts its launch). */
+    private Intent next() { Shadows.shadowOf(Looper.getMainLooper()).idle(); return Shadows.shadowOf((android.app.Application) app).getNextStartedActivity(); }
     private void drain() { while (next() != null) { /* earlier starts */ } }
     private static KeyEvent down(int code) { return new KeyEvent(KeyEvent.ACTION_DOWN, code); }
     private static KeyEvent up(int code) { return new KeyEvent(KeyEvent.ACTION_UP, code); }
@@ -79,7 +80,7 @@ public class RemoteButtonTest {
 
     @Before public void clean() {
         app = RuntimeEnvironment.getApplication(); prefs().edit().clear().commit(); ShadowAlertDialog.reset(); ShadowSettings.setCanDrawOverlays(false);
-        serviceSwitchedOn(false); RemoteButton.listen(null, 0); HouseholdService.alarmOnScreen = false; ButtonService.lastWake = null; drain();
+        serviceSwitchedOn(false); RemoteButton.listen(null, 0); HouseholdService.alarmOnScreen = false; ButtonService.lastWake = null; ButtonService.lastFilter = null; drain();
     }
     @After public void reset() { RemoteButton.listen(null, 0); ShadowSettings.setCanDrawOverlays(false); }
 
@@ -207,6 +208,61 @@ public class RemoteButtonTest {
         assertTrue(s.onKeyEvent(down(KeyEvent.KEYCODE_TV)));
         assertNotNull(next());
         s.onKeyEvent(up(KeyEvent.KEYCODE_TV));
+    }
+
+    @Test public void theKeyPathReadsNoPreferencesAndMakesNoBinderCalls() {
+        Assume.assumeTrue("launcher app only", launcher());
+        ButtonService s = service();
+        chosen(KeyEvent.KEYCODE_TV, true);
+        ButtonService.CONTEXT_READS.set(0);
+        for (int i = 0; i < 50; i++) for (int other : new int[]{KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_PROG_RED}) {
+            assertFalse(s.onKeyEvent(down(other))); assertFalse(s.onKeyEvent(up(other)));
+        }
+        assertTrue(s.onKeyEvent(down(KeyEvent.KEYCODE_TV))); assertTrue(s.onKeyEvent(up(KeyEvent.KEYCODE_TV)));
+        assertEquals("no preferences, package manager or content resolver on the key path", 0, ButtonService.CONTEXT_READS.get());
+        assertNotNull("the launch is posted, then runs", next());
+
+        // A change of choice reaches the service by its listener, not by reading on each key.
+        chosen(KeyEvent.KEYCODE_PROG_RED, true);
+        ButtonService.CONTEXT_READS.set(0);
+        assertFalse("the old button passes on now", s.onKeyEvent(down(KeyEvent.KEYCODE_TV)));
+        assertTrue(s.onKeyEvent(down(KeyEvent.KEYCODE_PROG_RED))); s.onKeyEvent(up(KeyEvent.KEYCODE_PROG_RED));
+        chosen(KeyEvent.KEYCODE_PROG_RED, false);
+        ButtonService.CONTEXT_READS.set(0);
+        assertFalse("switched off: passes on", s.onKeyEvent(down(KeyEvent.KEYCODE_PROG_RED)));
+        // Choosing: the service reports to the page without reading anything either.
+        int[] got = {KeyEvent.KEYCODE_UNKNOWN};
+        RemoteButton.listen(code -> got[0] = code, android.os.SystemClock.uptimeMillis() + 10_000);
+        assertEquals(0, ButtonService.CONTEXT_READS.get());
+    }
+
+    @Test public void anUnfinishedChoiceStopsByItselfAndTheServiceLetsKeysGo() {
+        Assume.assumeTrue("launcher app only", launcher());
+        ButtonService s = service();
+        assertEquals("off: no keys asked for", Boolean.FALSE, ButtonService.lastFilter);
+        // The service alone: a choice under way is looked at again when it runs out.
+        RemoteButton.listen(code -> {}, android.os.SystemClock.uptimeMillis() + 1000);
+        ButtonService.refilter(); idle();
+        assertEquals(Boolean.TRUE, ButtonService.lastFilter);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
+        assertEquals("keys let go once the choice ran out", Boolean.FALSE, ButtonService.lastFilter);
+        RemoteButton.listen(null, 0);
+
+        // The page: after CHOOSE_MS it stops listening, says so, and the service stops taking keys.
+        try (ActivityController<TurnOnChoiceActivity> c = page()) {
+            TurnOnChoiceActivity a = c.get();
+            press(a, RemoteButton.CHOOSE);
+            assertTrue(a.button().listening());
+            assertEquals(Boolean.TRUE, ButtonService.lastFilter);
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(RemoteButton.CHOOSE_MS + 1000));
+            assertFalse(a.button().listening());
+            assertNull(RemoteButton.chooser(android.os.SystemClock.uptimeMillis()));
+            assertTrue(words(root(a)).contains(RemoteButton.TIMED_OUT));
+            assertFalse(words(root(a)).contains(RemoteButton.PRESS));
+            assertEquals(Boolean.FALSE, ButtonService.lastFilter);
+            assertEquals("nothing changed", KeyEvent.KEYCODE_UNKNOWN, RemoteButton.key(app));
+            assertFalse(s.onKeyEvent(down(KeyEvent.KEYCODE_TV)));
+        }
     }
 
     @Test public void offNothingIsConsumed() {

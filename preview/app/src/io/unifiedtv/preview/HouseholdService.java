@@ -142,16 +142,18 @@ public final class HouseholdService extends Service {
                 if(r!=AlertPolicy.NONE)render(r==AlertPolicy.NEW_ALARM);return;}}
         long now=System.currentTimeMillis();long fired;
         try{fired=Instant.parse(event.getString("time_fired")).toEpochMilli();}catch(Exception e){return;}
-        if(fired>now+5000||now-fired>30000)return;
         if(type.equals("state_changed")){
+            // The doorbell never compares Home Assistant's clock with the TV's: a ding is judged by Home Assistant's own times
+            // (the change, the event), and Home Assistant only sends changes as they happen.
             JSONObject before=data.optJSONObject("old_state"),after=data.optJSONObject("new_state");if(before==null||after==null)return;
             String entity=data.optString("entity_id");
             // A Ring ding is an event entity whose state is the event's time: one replayed from before is not a visit.
-            int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"),now);
+            int kind=AlertPolicy.ringKind(entity,house.optString("door"),house.optString("person"),house.optString("motion"),before.optString("state"),after.optString("state"),after.optJSONObject("attributes"),fired);
             if(kind!=AlertPolicy.RING_NONE)lastEvent(kind==AlertPolicy.RING_PRESS?"doorbell press":kind==AlertPolicy.RING_PERSON?"person":"motion",now);
             if(kind==AlertPolicy.RING_PRESS)doorbell(entity+":"+after.optString("state")+":"+after.optString("last_changed"),false,now);
             else if(kind!=AlertPolicy.RING_NONE&&policy.acceptPerson(entity,now))person(false,kind==AlertPolicy.RING_MOTION);
         }else if(type.equals("unified_tv_reminder")&&house.optBoolean("reminders")){
+            if(fired>now+5000||now-fired>30000)return;   // a reminder is about now on this TV's clock
             String target=data.optString("room");if(!target.isEmpty()&&!target.equals(getSharedPreferences("unified-tv-preview",0).getString("room","tcl")))return;
             if(policy.emergency())return;   // spec 4.10: reminders arriving during an emergency are dropped, not held
             if(policy.ringing(now))policy.defer(data.optString("text"),fired);else if(policy.reminderAllowed(fired,now))reminder(data.optString("text"));
@@ -411,7 +413,7 @@ public final class HouseholdService extends Service {
         String kind=intent.getStringExtra("kind"),state=intent.getStringExtra("state"),name=intent.getStringExtra("name");long now=System.currentTimeMillis();
         if("end".equals(kind)){policy.endSimulation();render(false);return;}
         if("door".equals(kind)){doorbell("test:"+now,true,now);return;}
-        if("person".equals(kind)){if(policy.acceptPerson("test:"+now,now))person(true,"motion".equals(state));return;}
+        if("person".equals(kind)){if(policy.acceptPerson("test:"+now,now))person(true,"motion".equals(state));return;}   // state: "motion" or "person", what was chosen
         if(!"smoke".equals(kind)&&!"carbon_monoxide".equals(kind))return;
         int result=policy.update("simulated."+kind+("on".equals(state)?"":"_"+state),kind,name==null?"":name,state,now,true);
         if(result!=AlertPolicy.NONE)render(result==AlertPolicy.NEW_ALARM);

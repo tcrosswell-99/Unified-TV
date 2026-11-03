@@ -83,6 +83,7 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **Review fixes for run 109:** a Ring press counts on Home Assistant's own clock; older person choices stay person-only; an empty dock place never replaces a tile; an uninstalled Live TV app brings the picker back and VPN apps are never offered as Live TV; long clean-up or Home changes always finish; the remote button costs nothing per key; Home's films label is never wrong; no keystore reads on the main thread. **Not tested** on a television.
 - **Library froze the remote while checking for new films (Sony):** screens read only published lists; disk and keystore work off the main thread; the checking line always clears. **Not tested** on a television.
 - **Home takeover hung on the Sony:** what's possible is decided before the debugging link; untested TVs get the gentle route only; every link step has a time limit and plain words. **Not tested** on a television.
 - **Unified TV's own VPN, security review:** Live TV now also needs Android to report the VPN up (a stale "connected" can no longer open it); "Connected" only after NordVPN answers; no freeze at start-up; Kids can't turn it on or off; a background reconnect waits for Home; unused GPL wireguard-tools binaries and non-ARM libraries left out of the app. **Not tested** on a television.

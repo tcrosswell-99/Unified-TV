@@ -334,7 +334,7 @@ public final class UnifiedPreviewActivity extends Activity {
             if (shelf) {
                 if (shelfHint) commitScene("neutral", Posters.ROW_HINT);
                 else if (posterIndex < posters.size()) { HomeShelf.Poster p = posters.get(posterIndex); commitScene("poster:" + p.id, p.label()); askBackdrop(p); }
-                else commitScene("neutral", libraryReady || !libraryKnown ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
+                else commitScene("neutral", !libraryKnown ? "Your Films & TV" : libraryReady ? "View all your films and TV" : Profiles.kids(getContext()) ? "Ask an adult to choose Kids folders" : "Set up Your Films & TV");
             } else if (blank) commitScene("neutral", DockLabels.ADD_LABEL);
             else if (index >= 0 && index < dock.size()) commitScene(dock.get(index).id, dock.get(index).name);
             else commitScene("neutral", "");
@@ -755,7 +755,10 @@ public final class UnifiedPreviewActivity extends Activity {
 
             } else if (blank || dock.isEmpty()) {
                 // An empty place: choose an app for exactly this place (adult PIN in Kids, as every Home edit).
-                int place = dock.size(); EditLock.ask(activity, () -> AppPickerActivity.place(activity, place, null));
+                // The saved list may hold ids Home doesn't show (an app since uninstalled), so the picker is told which shown
+                // tile the new one follows, never a position in the saved list (review of a615a38).
+                int place = dock.size(); String after = dock.isEmpty() ? null : dock.get(dock.size() - 1).id;
+                EditLock.ask(activity, () -> AppPickerActivity.empty(activity, place, after));
             } else if (index >= 0 && index < dock.size()) launch(dock.get(index));
             else info("Add apps to Home from Settings > Apps & Shortcuts");
             invalidate();
@@ -1283,7 +1286,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 if (i < posters.size()) poster(c, posters.get(i), x, top, w, h);
                 else {
                     glass(c, x, top, x + w, top + h, 22, 0, 0);
-                    text(c, libraryReady || !libraryKnown ? "View All" : Profiles.kids(prefs) ? "Ask an adult" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
+                    text(c, !libraryKnown ? "Films & TV" : libraryReady ? "View All" : Profiles.kids(prefs) ? "Ask an adult" : "Set up", x + w / 2, top + h / 2 - 6, 30, WHITE, true, Paint.Align.CENTER);
                     text(c, "Films & TV", x + w / 2, top + h / 2 + 32, 24, MUTED, false, Paint.Align.CENTER);
                 }
                 if (!selected && shelf) { paint.setShader(null); paint.setColor(0x52000000); rect.set(x, top, x + w, top + h); c.drawRoundRect(rect, 22, 22, paint); }
@@ -1354,8 +1357,10 @@ public final class UnifiedPreviewActivity extends Activity {
         private void openShelf() {
             if (menu || moving) return;
             shelf = true; shelfAt = calm() ? 0 : SystemClock.uptimeMillis(); shelfMoved = false;
-            // Whether a library is set up comes from the encrypted store: read with the row on the worker (loadPosters),
-            // never on the main thread (owner's Sony, build run 106: the remote stopped answering while the library was checked).
+            // Whether a library is set up comes from the encrypted store, so it is worked out with the row on the worker
+            // (loadPosters), never on the main thread (owner's Sony, build run 106). Its last answer is kept in a plain
+            // preference and used at once; never known yet, the end card has a neutral label until the worker answers.
+            Boolean known = HomeShelf.known(prefs); if (known != null) { libraryReady = known; libraryKnown = true; }
             posterIndex = landingPoster(); shelfHint = false;
             moved(); loadPosters(false); invalidate();
         }

@@ -29,7 +29,8 @@ import java.util.concurrent.*;
 final class HouseholdPage {
     /** Record key, the row's words, and the list's title. Xbox only on the Sony (DockPolicy). */
     static final String[][] ITEMS = {
-        {"door", "Doorbell press", "Doorbell press"}, {"person", "Motion at the door (optional)", "Motion at the door"},
+        {"door", "Doorbell press", "Doorbell press"}, {"motion", "Motion at the door (optional)", "Motion at the door"},
+        {"person", "Person at the door", "Person at the door"},
         {"camera", "Picture", "Picture when it rings"}, {"calendar", "Football fixtures calendar", "Football fixtures calendar"},
         {"xbox", "Turn on the Xbox from this TV", "Turn on the Xbox"}};
     /** The Frame's items, kept in old records but never offered on Android. */
@@ -40,6 +41,7 @@ final class HouseholdPage {
     /** One line under each row. */
     static final String DOOR_LINE = "When someone presses the doorbell, the TV shows who's there.",
         PERSON_LINE = "A small notice when someone moves at the door. Off unless you choose it.",
+        PERSON_ONLY_LINE = "A small notice only when the doorbell is sure it saw a person.",
         CAMERA_LINE = "The picture shown when the doorbell rings.",
         TEST_LINE = "Shows exactly what appears when someone rings, marked TEST. Back closes it.",
         XBOX_LINE = "Pick the Home Assistant script or scene that turns your Xbox on. Unified TV runs it when you choose Xbox.",
@@ -132,11 +134,16 @@ final class HouseholdPage {
 
         a.section("Doorbell");
         row(config, "door", NOT_SET, DOOR_LINE);
-        row(config, "person", OFF, PERSON_LINE);
+        // "Motion at the door" is its own opt-in ("motion", off by default). A person choice saved by an older version keeps
+        // its old meaning (a confirmed person only), shown here so it can be changed or switched off.
+        row(config, "motion", OFF, PERSON_LINE);
+        if (!config.optString("person").isEmpty()) row(config, "person", OFF, PERSON_ONLY_LINE);
         row(config, "camera", NOT_SET, CAMERA_LINE);
         a.button("Test the doorbell", () -> simulate("door", null, null));
         a.text(TEST_LINE, 15);
-        if (!config.optString("person").isEmpty()) a.button("Test the motion notice", () -> simulate("person", "motion", null));
+        // Each test shows the notice that choice really gives: movement, or a person.
+        if (!config.optString("motion").isEmpty()) { String test = notice(config, "motion"); a.button("Test the " + test + " notice", () -> simulate("person", test, null)); }
+        if (!config.optString("person").isEmpty()) a.button("Test the person notice", () -> simulate("person", "person", null));
         if (!FixtureFeed.listed(a)) { a.section("Football"); row(config, "calendar", NOT_SET, "Only needed if you'd rather use your own calendar than choose your team in Smart Home > Football."); }
         if (visible("xbox", room)) { a.section("Xbox (optional)"); row(config, "xbox", XBOX_NOT_SET, XBOX_LINE); }
 
@@ -215,11 +222,17 @@ final class HouseholdPage {
         JSONObject names = config.optJSONObject("names"); String name = names == null ? "" : names.optString(key);
         return name.isEmpty() ? HaEntities.pretty(id.substring(id.indexOf('.') + 1)) : name;
     }
+    /** The notice a choice gives: "person" for a sensor or event that reports people, otherwise "motion". */
+    private String notice(JSONObject config, String key) {
+        if (key.equals("person")) return "person";
+        HaEntities.Candidate c = candidate(config, key, config.optString(key));
+        return c != null && c.label.endsWith(" — person") ? "person" : "motion";
+    }
     static String label(String key) { for (String[] i : ITEMS) if (i[0].equals(key)) return i[1]; return key; }
     private static String title(String key) { if (ROOM.equals(key)) return "Which TV is this?"; for (String[] i : ITEMS) if (i[0].equals(key)) return i[2]; return key; }
     private static String line(String key) {
         switch (key) {
-            case "door": return DOOR_LINE; case "person": return PERSON_LINE; case "camera": return CAMERA_LINE;
+            case "door": return DOOR_LINE; case "motion": return PERSON_LINE; case "person": return PERSON_ONLY_LINE; case "camera": return CAMERA_LINE;
             case "xbox": return XBOX_LINE; case ROOM: return ROOM_LINE; default: return "Choose your fixtures calendar.";
         }
     }
@@ -257,14 +270,14 @@ final class HouseholdPage {
         }
         List<HaEntities.Entity> entities = snapshot == null ? null : snapshot.entities;
         HaEntities.Choices choices = HaEntities.choices(key, entities, config.optString("door"));
-        boolean doorbell = key.equals("door") || key.equals("person") || key.equals("camera");
+        boolean doorbell = key.equals("door") || key.equals("motion") || key.equals("person") || key.equals("camera");
         if (snapshot == null) a.text("Reading Home Assistant…", 15);
         if (!choices.ring.isEmpty()) { a.section(key.equals("camera") ? "Ring cameras" : "Ring doorbells"); for (HaEntities.Candidate c : choices.ring) choice(key, c, now); }
         if (!choices.strong.isEmpty()) { a.section(choices.ring.isEmpty() ? "Best matches" : "Others"); for (HaEntities.Candidate c : choices.strong) choice(key, c, now); }
         if (choices.best().isEmpty() && entities != null) a.text(doorbell && HaEntities.choices("door", entities, "").best().isEmpty() ? NO_RING
             : key.equals("xbox") ? "No Xbox script found in Home Assistant." : "Nothing suitable found in Home Assistant.", 15);
         a.section("Other choices");
-        a.button((key.equals("person") ? OFF : "None") + (now.isEmpty() ? TICK : ""), () -> pick(key, null));
+        a.button((optional(key) ? OFF : "None") + (now.isEmpty() ? TICK : ""), () -> pick(key, null));
         if (!everything) { a.button("Show everything", () -> { everything = true; a.redraw(); focus("Show fewer", false); }); return; }
         if (!choices.other.isEmpty()) { a.section(choices.otherHeading); for (HaEntities.Candidate c : choices.other) choice(key, c, now); }
         a.button("Type its name instead", () -> typeIt(key));
@@ -282,11 +295,12 @@ final class HouseholdPage {
     }
     /** Secondary words in a row: the row's own colour (light, or dark when focused), dimmed. */
     private static final class Dimmer extends CharacterStyle { @Override public void updateDrawState(TextPaint p) { p.setAlpha(170); } }
+    private static boolean optional(String key) { return key.equals("motion") || key.equals("person"); }
     private void pick(String key, HaEntities.Candidate c) {
         try { JSONObject config = config(); put(config, key, c == null ? "" : c.id, c == null ? "" : c.device); new Vault(a).save("household", config); }
         catch (Exception e) { a.note("Couldn't save on this TV. Nothing was changed."); return; }
-        if (c == null) a.note(label(key) + ": " + (key.equals("person") ? "off" : "none"));
-        else if (key.equals("person") && !c.label.endsWith(" — person")) a.note("Saved. Movement also comes from cars, pets and passers-by, so a small notice may appear for them too.");
+        if (c == null) a.note(label(key) + ": " + (optional(key) ? "off" : "none"));
+        else if (key.equals("motion") && !c.label.endsWith(" — person")) a.note("Saved. Movement also comes from cars, pets and passers-by, so a small notice may appear for them too.");
         else a.note("Saved: " + c.label);
         back();
     }

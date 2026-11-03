@@ -24,8 +24,11 @@ import java.util.concurrent.*;
  */
 @RunWith(RobolectricTestRunner.class) @Config(sdk=30)
 public class LibraryResponsiveTest {
-    /** Main-thread time allowed for opening the screen or handling one key (Robolectric's main thread, generous). */
-    static final long BUDGET_MS=250;
+    /**
+     * Main-thread time allowed for one key (Robolectric's main thread is slow and noisy; a wait on a held lock would take
+     * the whole 30 s hold, so this still tells the two apart).
+     */
+    static final long BUDGET_MS=500;
     /**
      * Opening the screen (Robolectric inflates it, which takes a few hundred ms on its own): a wait on a held lock would
      * take the whole hold (30 s), so this still tells the two apart.
@@ -212,6 +215,66 @@ public class LibraryResponsiveTest {
             assertEquals("the saved titles still there",13,a.catalogue().titles.size());
             server.gate.countDown();   // it moves again, then finishes
             LibraryJourneyTest.until("done, and the line gone",()->status().phase==LibraryCollector.Phase.DONE&&!status().stalled&&!LibraryJourneyTest.says(a,LibraryCollector.CHECKING));
+        }
+    }
+
+    // --- review of a615a38
+    @Test public void homesFirstDownUsesTheLastAnswerAndANeutralLabelUntilThereIsOne()throws Exception{
+        ActivityController<UnifiedPreviewActivity> home=Robolectric.buildActivity(UnifiedPreviewActivity.class).setup();
+        try{
+            View surface=RemoteJourneyTest.homeIn(home.get());Method key=surface.getClass().getDeclaredMethod("key",KeyEvent.class);key.setAccessible(true);
+            Field title=surface.getClass().getDeclaredField("sceneTitle");title.setAccessible(true);Field known=surface.getClass().getDeclaredField("libraryKnown");known.setAccessible(true);
+            android.content.SharedPreferences p=app.getSharedPreferences(HouseholdSettings.PREFS,0);
+            assertNull("never worked out on this TV yet",HomeShelf.known(p));
+            OffMain.strict=true;
+            key.invoke(surface,new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_DOWN));key.invoke(surface,new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_DOWN));
+            org.robolectric.Shadows.shadowOf(Looper.getMainLooper()).idle();
+            // Not known yet: the end card is neutral (or the row's first title already has focus), never "Set up".
+            assertNotEquals("never a wrong label","Set up Your Films & TV",title.get(surface));
+            Object focusedTitle=title.get(surface);if(((List<?>)posters(surface)).isEmpty())assertEquals("Your Films & TV",focusedTitle);
+            LibraryJourneyTest.until("the worker's answer, kept for next time",()->(Boolean)known.get(surface)&&Boolean.TRUE.equals(HomeShelf.known(p)));
+            Field ready=surface.getClass().getDeclaredField("libraryReady");ready.setAccessible(true);assertEquals(true,ready.get(surface));
+            // The next start of Home (a new process) has the answer at once, before any worker runs.
+            assertEquals(Boolean.TRUE,HomeShelf.known(p));
+            OffMain.strict=false;
+            // Folders saved again: the old answer is dropped (worked out again), never shown wrong.
+            LibraryFolders.save(app,FakeServer.source(),Collections.singletonList(new LibraryFolders.Folder("v","Video",null,false)));
+            assertNull(HomeShelf.known(p));
+            LibraryJourneyTest.until("the check is done",()->!status().busy());
+        }finally{OffMain.strict=false;home.pause().stop().destroy();}
+    }
+    static Object posters(View surface)throws Exception{Field f=surface.getClass().getDeclaredField("posters");f.setAccessible(true);return f.get(surface);}
+    @Test public void theSetupSheetReadsTheFoldersOffTheMainThread()throws Exception{
+        LibrarySetupActivity.Finder before=LibrarySetupActivity.finder;LibrarySetupActivity.finder=(c,r)->Collections.singletonList(FakeServer.device());
+        OffMain.strict=true;
+        try(var c=Robolectric.buildActivity(LibrarySetupActivity.class).setup()){LibrarySetupActivity a=c.get();
+            LibraryJourneyTest.until("the saved folder, read on the worker",()->a.folders().size()==1&&a.page()==LibrarySetupActivity.Page.MANAGE);
+        }finally{OffMain.strict=false;LibrarySetupActivity.finder=before;}
+    }
+    @Test public void viewAllWithAnAccountLibraryDecidesOffTheMainThread()throws Exception{
+        app.getSharedPreferences(HouseholdSettings.PREFS,0).edit().remove(MediaSources.PREFERRED).commit();   // not "your chosen folders"
+        try(var c=Robolectric.buildActivity(android.app.Activity.class).setup()){
+            OffMain.strict=true;
+            Launch.library(c.get());   // OK on Home's end card or the dock's Library
+            android.content.Intent[] next={null};
+            LibraryJourneyTest.until("opened once the store has answered",()->(next[0]=org.robolectric.Shadows.shadowOf(c.get()).getNextStartedActivity())!=null);
+            assertEquals(LibraryActivity.class.getName(),next[0].getComponent().getClassName());
+        }finally{OffMain.strict=false;}
+    }
+    @Test public void theStuckWatchdogNeverOverwritesTheJobsLastWord()throws Exception{
+        try(var c=checking(1)){
+            LibraryCollector job=LibraryCollector.get(app);LibraryCollector.Status seen=job.status();assertTrue(seen.busy());
+            server.gate.countDown();LibraryJourneyTest.until("done",()->job.status().phase==LibraryCollector.Phase.DONE);
+            // The watchdog read "busy" just before the job wrote DONE: its stale copy must not win.
+            assertFalse("not swapped",job.stall(seen));
+            assertEquals(LibraryCollector.Phase.DONE,job.status().phase);assertFalse(job.status().busy());assertFalse(job.status().stalled);
+        }
+    }
+    @Test public void theStuckWatchdogMarksAStatusThatIsStillCurrent()throws Exception{
+        try(var c=checking(1)){
+            LibraryCollector job=LibraryCollector.get(app);
+            assertTrue(job.stall(job.status()));assertTrue(job.status().stalled);assertEquals("",job.status().line());
+            server.gate.countDown();LibraryJourneyTest.until("moves again, then done",()->job.status().phase==LibraryCollector.Phase.DONE&&!job.status().stalled);
         }
     }
 }

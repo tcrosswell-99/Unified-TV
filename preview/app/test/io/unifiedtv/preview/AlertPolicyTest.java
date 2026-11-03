@@ -135,9 +135,12 @@ public class AlertPolicyTest {
     private static org.json.JSONObject attrs(String json){try{return new org.json.JSONObject(json);}catch(Exception e){throw new RuntimeException(e);}}
     @Test public void ring01OrdinaryMotionNeverCounts(){
         String door="binary_sensor.front_door_ding",person="binary_sensor.front_door_motion";
-        assertEquals("motion from the sensor chosen for \"Motion at the door\" is movement, not a person",AlertPolicy.RING_MOTION,AlertPolicy.ringKind(person,door,person,"off","on",attrs("{\"friendly_name\":\"Front Door Motion\"}")));
+        assertEquals("the older person choice keeps its meaning: motion alone shows nothing",AlertPolicy.RING_NONE,AlertPolicy.ringKind(person,door,person,"off","on",attrs("{\"friendly_name\":\"Front Door Motion\"}")));
+        assertEquals("motion from the sensor chosen for \"Motion at the door\" is movement, not a person",AlertPolicy.RING_MOTION,AlertPolicy.ringKind(person,door,"",person,"off","on",attrs("{\"friendly_name\":\"Front Door Motion\"}")));
+        assertEquals("a person it confirms is still a person",AlertPolicy.RING_PERSON,AlertPolicy.ringKind(person,door,"",person,"off","on",attrs("{\"personDetected\":true}")));
         assertEquals("motion that isn't the chosen person sensor",AlertPolicy.RING_NONE,AlertPolicy.ringKind("binary_sensor.drive_motion",door,"binary_sensor.front_door_person","off","on",null));
-        assertEquals("a chosen Ring motion event is movement, not a person",AlertPolicy.RING_MOTION,AlertPolicy.ringKind("event.front_door_motion",door,"event.front_door_motion","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"motion\"}")));
+        assertEquals("a Ring motion event saved as the older person choice is not a person",AlertPolicy.RING_NONE,AlertPolicy.ringKind("event.front_door_motion",door,"event.front_door_motion","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"motion\"}")));
+        assertEquals("chosen under Motion at the door, it is movement",AlertPolicy.RING_MOTION,AlertPolicy.ringKind("event.front_door_motion",door,"","event.front_door_motion","2026-10-25T10:00:00Z","2026-10-25T10:05:00Z",attrs("{\"event_type\":\"motion\"}")));
     }
     @Test public void ring02OnlyAConfirmedPersonCounts(){
         String door="binary_sensor.front_door_ding";

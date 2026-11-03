@@ -46,9 +46,16 @@ public class RemoteJourneyTest {
         int before=(Integer)field("index");press(KeyEvent.KEYCODE_DPAD_DOWN);press(KeyEvent.KEYCODE_BACK);
         assertEquals(false,field("shelf"));assertEquals("Back from Films keeps the dock focus",before,field("index"));
     }
+    /**
+     * The screen OK opened. With no library chosen on this TV, whether one is set up comes from the encrypted store, which
+     * Launch.library reads off the main thread (review of a615a38), so the screen opens a moment later.
+     */
+    private Intent started()throws Exception{
+        Intent[] next={null};LibraryJourneyTest.until("the screen OK opens",()->(next[0]=Shadows.shadowOf(activity).getNextStartedActivity())!=null);return next[0];
+    }
     @Test public void withNoLibraryTheEndCardOpensSetup()throws Exception{
         press(KeyEvent.KEYCODE_DPAD_DOWN);Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();press(KeyEvent.KEYCODE_DPAD_CENTER);
-        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);
+        Intent started=started();
         assertEquals(DlnaLibraryActivity.class.getName(),started.getComponent().getClassName());assertTrue(started.getBooleanExtra("setup",false));
     }
     @Test public void moveCancelDoesNotPersistPartialOrder()throws Exception{
@@ -105,7 +112,7 @@ public class RemoteJourneyTest {
         activity.getSharedPreferences("unified-tv-preview",0).edit().putString("dock","netflix,library").commit();
         controller.pause().resume();press(KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(1,field("index"));press(KeyEvent.KEYCODE_DPAD_CENTER);
-        Intent started=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(started);
+        Intent started=started();
         assertEquals(DlnaLibraryActivity.class.getName(),started.getComponent().getClassName());assertTrue(started.getBooleanExtra("setup",false));
         controller.pause().stop().restart().start().resume();
         assertEquals("focus stays on Library",1,field("index"));assertEquals("library",field("scene"));

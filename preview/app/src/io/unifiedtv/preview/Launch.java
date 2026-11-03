@@ -35,7 +35,7 @@ final class Launch {
      */
     static final String CHOOSE_LIVE="Choose your Live TV app";
     static String live(Activity a){
-        String pkg=LiveTvProtection.livePackage(a);if(!pkg.isEmpty())return open(a,pkg,"Live TV");
+        String pkg=LiveTvProtection.livePackage(a);if(!pkg.isEmpty()&&entry(a.getPackageManager(),pkg)!=null)return open(a,pkg,"Live TV");
         EditLock.ask(a,()->AppPickerActivity.live(a,true));return CHOOSE_LIVE;
     }
     /** A short visit to a utility app (AirPin, NordVPN) that the household comes straight back from: see the class notes. */
@@ -154,12 +154,21 @@ final class Launch {
      * otherwise setup for Adults, or for Kids the "ask an adult" page. Never another app.
      */
     static void library(Activity a){
-        Intent next;
         // Folders chosen on this TV (the usual case): straight to Films & TV, which reads the encrypted folders off the main
-        // thread and says itself when nothing is set up (owner's Sony, build run 106). Otherwise as before.
-        if(MediaSources.FOLDERS.equals(a.getSharedPreferences(HouseholdSettings.PREFS,0).getString(MediaSources.PREFERRED,"")))next=new Intent(a,DlnaLibraryActivity.class);
-        else if(HomeShelf.configured(a))next=new Intent(a,LibraryActivity.class);
-        else next=Profiles.kids(a)?new Intent(a,DlnaLibraryActivity.class):new Intent(a,DlnaLibraryActivity.class).putExtra("setup",true);
+        // thread and says itself when nothing is set up (owner's Sony, build run 106).
+        if(MediaSources.FOLDERS.equals(a.getSharedPreferences(HouseholdSettings.PREFS,0).getString(MediaSources.PREFERRED,""))){library(a,new Intent(a,DlnaLibraryActivity.class));return;}
+        // Otherwise whether one is set up comes from the encrypted store: worked out off the main thread, then opened
+        // (review of a615a38). The remote keeps answering meanwhile.
+        boolean kids=Profiles.kids(a);Context app=a.getApplicationContext();
+        Boolean known=HomeShelf.known(a.getSharedPreferences(HouseholdSettings.PREFS,0));   // Home's last answer, when it has one
+        if(known!=null){library(a,known?new Intent(a,LibraryActivity.class):kids?new Intent(a,DlnaLibraryActivity.class):new Intent(a,DlnaLibraryActivity.class).putExtra("setup",true));return;}
+        Thread t=new Thread(()->{boolean set=HomeShelf.configured(app);
+            a.runOnUiThread(()->{if(a.isFinishing()||a.isDestroyed())return;
+                library(a,set?new Intent(a,LibraryActivity.class):kids?new Intent(a,DlnaLibraryActivity.class):new Intent(a,DlnaLibraryActivity.class).putExtra("setup",true));});
+        },"library-open");
+        t.setDaemon(true);t.start();
+    }
+    private static void library(Activity a,Intent next){
         try{a.startActivity(next);a.overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
         catch(RuntimeException e){android.widget.Toast.makeText(a,"Unable to open Films & TV",android.widget.Toast.LENGTH_LONG).show();}
     }

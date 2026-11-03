@@ -245,7 +245,7 @@ public class RingDoorbellTest {
         java.lang.reflect.Method m=HouseholdService.class.getDeclaredMethod("event",JSONObject.class);m.setAccessible(true);m.invoke(s.get(),event);idle(0);
     }
     @Test public void aRingDingEventRingsOnceAndOldOnesAreIgnored()throws Exception{
-        JSONObject house=new JSONObject().put("door","event.front_door_ding").put("camera","camera.front_door_live_view").put("person","event.front_door_motion")
+        JSONObject house=new JSONObject().put("door","event.front_door_ding").put("camera","camera.front_door_live_view").put("motion","event.front_door_motion")
             .put("names",new JSONObject().put("door","Front Door").put("camera","Front Door"));
         ServiceController<HouseholdService> s=service();
         try{java.lang.reflect.Field f=HouseholdService.class.getDeclaredField("house");f.setAccessible(true);f.set(s.get(),house);
@@ -263,6 +263,51 @@ public class RingDoorbellTest {
             deliver(s,changed("event.front_door_motion","unknown",Instant.ofEpochMilli(later-500).toString(),"motion",later));
             TextView t=toast(s);assertNotNull("motion at the chosen sensor: the small notice",t);assertEquals(DoorbellCamera.movement("Front Door",false),t.getText().toString());
             assertNull("motion never opens the camera",card(s));
+        }finally{s.destroy();}
+    }
+    private ServiceController<HouseholdService> serviceWith(JSONObject house)throws Exception{
+        ServiceController<HouseholdService> s=service();java.lang.reflect.Field f=HouseholdService.class.getDeclaredField("house");f.setAccessible(true);f.set(s.get(),house);return s;
+    }
+    /** Home Assistant's clock minutes ahead of or behind the TV's: a ding is judged on Home Assistant's own times, so it still rings once. */
+    @Test public void aDingRingsOnceWhateverTheTvClockSays()throws Exception{
+        for(long skew:new long[]{120_000,-120_000}){
+            ServiceController<HouseholdService> s=serviceWith(new JSONObject().put("door","event.front_door_ding").put("names",new JSONObject().put("door","Front Door")));
+            try{long ha=System.currentTimeMillis()+skew;String before=Instant.ofEpochMilli(ha-3_600_000).toString(),at=Instant.ofEpochMilli(ha-300).toString();
+                deliver(s,changed("event.front_door_ding",before,at,"ring",ha));
+                View card=card(s);assertNotNull("Home Assistant "+(skew>0?"ahead":"behind")+" by two minutes: the card",card);back(card);
+                deliver(s,changed("event.front_door_ding",before,at,"ring",ha+200));assertNull("once",card(s));
+                deliver(s,changed("event.front_door_ding","unavailable",at,"ring",ha+400));assertNull("a return from unavailable is not a visit",card(s));
+                deliver(s,changed("event.front_door_ding","unknown",before,"ring",ha+600));assertNull("an old ding replayed is not a visit",card(s));
+            }finally{s.destroy();}
+        }
+    }
+    /** Owner review (item 5): a person choice saved before "Motion at the door" existed keeps its old meaning. */
+    @Test public void anOlderPersonChoiceStaysPersonOnly()throws Exception{
+        ServiceController<HouseholdService> s=serviceWith(new JSONObject().put("door","event.front_door_ding").put("person","binary_sensor.front_door_motion").put("names",new JSONObject().put("door","Front Door")));
+        try{long now=System.currentTimeMillis();
+            deliver(s,changed("binary_sensor.front_door_motion","off","on","",now));assertNull("a plain motion sensor chosen before shows nothing, as before",toast(s));
+            JSONObject seen=changed("binary_sensor.front_door_motion","on","on","",now+100);seen.getJSONObject("data").getJSONObject("old_state").put("state","off");
+            seen.getJSONObject("data").getJSONObject("new_state").getJSONObject("attributes").put("personDetected",true);
+            deliver(s,seen);TextView t=toast(s);assertNotNull("a person it confirms still shows",t);assertEquals(DoorbellCamera.person("Front Door",false),t.getText().toString());
+        }finally{s.destroy();}
+    }
+    @Test public void theMotionTestShowsWhatTheChoiceGives()throws Exception{
+        Intent motion,person;
+        // An older person choice (a Ring motion event saved under it) and the new "Motion at the door".
+        new Vault(app).save("household",new JSONObject().put("person","event.front_door_motion").put("decided",new JSONArray().put("person")));
+        try(ActivityController<SettingsActivity> c=page(true)){SettingsActivity a=c.get();
+            assertNotNull("the older choice is shown, to change or switch off",button(root(a),"Person at the door: Front Door"));
+            assertNull("motion is its own opt-in, off",button(root(a),"Test the motion notice"));
+            button(root(a),"Test the person notice").performClick();idle();person=started();
+            button(root(a),"Motion at the door (optional): Off").performClick();idle();
+            button(root(a),"Front Door — motion").performClick();idle();
+            assertNotNull(button(root(a),"Motion at the door (optional): Front Door"+HouseholdPage.TICK));
+            button(root(a),"Test the motion notice").performClick();idle();motion=started();
+        }
+        assertEquals("motion",motion.getStringExtra("state"));assertEquals("person",person.getStringExtra("state"));
+        ServiceController<HouseholdService> s=service();
+        try{s.withIntent(motion).startCommand(0,1);idle(0);assertEquals(DoorbellCamera.movement("Front Door",true),toast(s).getText().toString());
+            idle(61_000);s.withIntent(person).startCommand(0,2);idle(0);assertEquals(DoorbellCamera.person("Front Door",true),toast(s).getText().toString());
         }finally{s.destroy();}
     }
 }

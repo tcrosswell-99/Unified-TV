@@ -69,11 +69,27 @@ final class DockPicker {
         String s=((pkg==null?"":pkg)+" "+(name==null?"":name)).toLowerCase(Locale.ROOT);
         return Endpoint.protectedApp(pkg==null?"":pkg,name==null?"":name,"")||s.contains("iptv")||s.contains("live");
     }
-    /** For the Live TV app: every installed app, the likeliest Live TV apps first, then by name, narrowed by {@code query}. */
-    static List<Choice> liveChoices(Map<String,String> launchable,String query){
+    /** Settings apps that are never a Live TV app. */
+    private static final Set<String> SETTINGS=new HashSet<>(Arrays.asList("com.android.tv.settings","com.android.settings","com.google.android.tv.settings","com.sony.dtv.settings","com.tcl.settings"));
+    /**
+     * Pure: apps that are never the household's Live TV app (review of a615a38: choosing NordVPN looped on "Connect NordVPN
+     * first"): NordVPN and any VPN app, the TV's settings, and Unified TV itself ({@code own}).
+     */
+    static boolean notLiveTv(String pkg,String name,String own){
+        String p=pkg==null?"":pkg.toLowerCase(Locale.ROOT),n=name==null?"":name.trim().toLowerCase(Locale.ROOT);
+        return p.isEmpty()||p.equals(own)||p.equals(LiveTvProtection.NORDVPN)||p.contains("vpn")||n.contains("vpn")
+            ||SETTINGS.contains(p)||p.endsWith(".settings")||n.equals("settings")||n.endsWith(" settings");
+    }
+    /** For the Live TV app (see the four-argument form), with no VPN apps known beyond the names. */
+    static List<Choice> liveChoices(Map<String,String> launchable,String query){return liveChoices(launchable,query,Collections.<String>emptySet(),null);}
+    /**
+     * For the Live TV app: the installed apps that could be it (not notLiveTv(), not one of {@code vpnApps}, the apps that
+     * can run a VPN), the likeliest Live TV apps first, then by name, narrowed by {@code query}.
+     */
+    static List<Choice> liveChoices(Map<String,String> launchable,String query,Set<String> vpnApps,String own){
         List<Choice> first=new ArrayList<>(),rest=new ArrayList<>();
         for(Map.Entry<String,String> e:launchable.entrySet()){String pkg=e.getKey(),name=e.getValue()==null||e.getValue().trim().isEmpty()?pkg:e.getValue().trim();
-            if(!matches(name,pkg,query))continue;Choice c=new Choice(pkg,pkg,name,false);(liveLike(pkg,name)?first:rest).add(c);}
+            if(notLiveTv(pkg,name,own)||(vpnApps!=null&&vpnApps.contains(pkg))||!matches(name,pkg,query))continue;Choice c=new Choice(pkg,pkg,name,false);(liveLike(pkg,name)?first:rest).add(c);}
         first.sort(byName());rest.sort(byName());first.addAll(rest);return first;
     }
 
@@ -83,6 +99,20 @@ final class DockPicker {
      * An app already elsewhere on the dock moves rather than appearing twice. Null when the place can't take it (no free
      * place there, or not an app this room can show): nothing is saved then.
      */
+    /**
+     * An empty place: the household's saved dock with {@code id} right after {@code after}, the last tile Home shows (null:
+     * Home shows none, so first). The saved list may hold ids Home hides (an app since uninstalled), so a position counted
+     * on Home is never used as an index into it (review of a615a38: that replaced a tile). {@code place} is the empty
+     * place's number on Home, which must be within {@code capacity}. Null when the place can't take it ({@code after} is no
+     * longer on the dock, no room, or not an app this room can show): nothing is saved then.
+     */
+    static List<String> insertAfter(String room,List<String> dock,String after,String id,int place,int capacity){
+        String c=DockPolicy.canonical(id==null?"":id);if(c.isEmpty()||!DockPolicy.valid(room,c)||place<0||place>=capacity)return null;
+        List<String> next=new ArrayList<>(dock);next.remove(c);
+        int at=0;if(after!=null){at=next.indexOf(DockPolicy.canonical(after))+1;if(at==0)return null;}
+        next.add(at,c);return next;
+    }
+    /** A filled place, by its index in the saved list (see insertAfter for an empty one). */
     static List<String> put(String room,List<String> dock,int place,String id,int capacity){
         String c=DockPolicy.canonical(id==null?"":id);if(c.isEmpty()||!DockPolicy.valid(room,c)||place<0||place>=capacity)return null;
         List<String> next=new ArrayList<>(dock);

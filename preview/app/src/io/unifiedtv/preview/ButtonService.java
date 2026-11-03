@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -41,10 +42,31 @@ public final class ButtonService extends AccessibilityService {
     private long seenAt = Long.MIN_VALUE / 2;
     /** A key whose press was consumed: its release is consumed too, so the TV never acts on half a press. */
     private int swallowUp = KeyEvent.KEYCODE_UNKNOWN;
+    /**
+     * The household's choice, read once on connecting and again whenever it changes (the preferences listener and
+     * {@link #refilter}). With the option on, every key on the TV passes through {@link #onKeyEvent} on Unified TV's main
+     * thread, which an accessibility service can't move; so it reads only these fields: no binder call, no preferences,
+     * no allocation.
+     */
+    private volatile boolean offered, on;
+    private volatile int chosen = KeyEvent.KEYCODE_UNKNOWN;
+    private final SharedPreferences.OnSharedPreferenceChangeListener changes = (p, key) -> {
+        if (key == null || RemoteButton.ON.equals(key) || RemoteButton.KEY.equals(key)) { read(); filter(); }
+    };
+    private SharedPreferences prefs;
+    private final Runnable home = this::home;
+    private final Runnable refilterNow = this::filter;
+    /** Tests: how often this service asked for its preferences, package manager or content resolver. */
+    static final java.util.concurrent.atomic.AtomicInteger CONTEXT_READS = new java.util.concurrent.atomic.AtomicInteger();
+    /** Tests and owner checks: whether the service last asked Android for keys. */
+    static volatile Boolean lastFilter;
 
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
         connected = new java.lang.ref.WeakReference<>(this);
+        offered = RemoteButton.offered(this);   // the app never changes flavour while it runs
+        if (prefs == null) try { prefs = getSharedPreferences(HouseholdSettings.PREFS, 0); prefs.registerOnSharedPreferenceChangeListener(changes); } catch (RuntimeException e) { prefs = null; }
+        read();
         filter();
         if (screen != null) return;
         screen = new BroadcastReceiver() { @Override public void onReceive(Context c, Intent i) { heard(i == null ? null : i.getAction()); } };
@@ -57,12 +79,19 @@ public final class ButtonService extends AccessibilityService {
     }
 
     /** Follows the switch: asks Android for keys only while they could matter ({@link RemoteButton#wantsKeys}). */
-    static void refilter() { ButtonService s = connected.get(); if (s != null) s.main.post(s::filter); }
+    static void refilter() { ButtonService s = connected.get(); if (s != null) s.main.post(s.refilterNow); }
+    private void read() { on = RemoteButton.on(this); chosen = RemoteButton.key(this); }
     private void filter() {
+        read();
+        main.removeCallbacks(refilterNow);
+        // A choice under way stops by itself: look again then, so keys aren't filtered a moment longer than needed.
+        long now = SystemClock.uptimeMillis(), until = RemoteButton.chooseUntil();
+        if (until > now) main.postAtTime(refilterNow, until + 1);   // only ahead: never a loop once it has run out
+        boolean keys = offered && (RemoteButton.chooser(now) != null || (on && chosen != KeyEvent.KEYCODE_UNKNOWN));
+        lastFilter = keys;
         try {
             AccessibilityServiceInfo info = getServiceInfo();
             if (info == null) return;
-            boolean keys = RemoteButton.wantsKeys(this, SystemClock.uptimeMillis());
             int flags = keys ? info.flags | AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS : info.flags & ~AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             if (flags == info.flags) return;
             info.flags = flags; setServiceInfo(info);
@@ -76,7 +105,7 @@ public final class ButtonService extends AccessibilityService {
         if (e == null) return false;
         int code = e.getKeyCode(); boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (!down && e.getAction() == KeyEvent.ACTION_UP && code == swallowUp && code != KeyEvent.KEYCODE_UNKNOWN) { swallowUp = KeyEvent.KEYCODE_UNKNOWN; return true; }
-        if (!RemoteButton.offered(this)) return false;
+        if (!offered) return false;
         // Choosing: buttons that can't be chosen (Back, the arrows, OK…) reach the page as always; an allowed one is reported.
         RemoteButton.Chooser chooser = RemoteButton.chooser(SystemClock.uptimeMillis());
         if (chooser != null && Comeback.front() instanceof TurnOnChoiceActivity) {
@@ -84,15 +113,22 @@ public final class ButtonService extends AccessibilityService {
             if (down && e.getRepeatCount() == 0) { swallowUp = code; chooser.chose(code); }
             return true;
         }
+        if (code != chosen || !on) return false;   // every other key: one compare, passed on untouched
         Activity front = Comeback.front();
-        RemoteButton.Press what = RemoteButton.press(true, RemoteButton.on(this), RemoteButton.key(this), code, HouseholdService.alarmOnScreen, front instanceof PlayerActivity && !front.isFinishing());
+        RemoteButton.Press what = RemoteButton.press(true, true, chosen, code, HouseholdService.alarmOnScreen, front instanceof PlayerActivity && !front.isFinishing());
         if (what == RemoteButton.Press.PASS) return false;
         if (down && e.getRepeatCount() == 0) {
             seenAt = SystemClock.elapsedRealtime(); swallowUp = code;
-            if (what == RemoteButton.Press.HOME) try { startActivity(TurnOn.home(this)); } catch (RuntimeException ignored) { /* Android refused: nothing else */ }
+            if (what == RemoteButton.Press.HOME) main.post(home);   // the launch itself runs after the key is answered
         }
         return true;
     }
+    private void home() { try { startActivity(TurnOn.home(this)); } catch (RuntimeException ignored) { /* Android refused: nothing else */ } }
+
+    // The counting seam for RemoteButtonTest: the key path must reach none of these.
+    @Override public SharedPreferences getSharedPreferences(String name, int mode) { CONTEXT_READS.incrementAndGet(); return super.getSharedPreferences(name, mode); }
+    @Override public android.content.pm.PackageManager getPackageManager() { CONTEXT_READS.incrementAndGet(); return super.getPackageManager(); }
+    @Override public android.content.ContentResolver getContentResolver() { CONTEXT_READS.incrementAndGet(); return super.getContentResolver(); }
 
     private void heard(String action) {
         if (Intent.ACTION_SCREEN_OFF.equals(action)) { main.removeCallbacks(look); wake.off(); return; }
@@ -112,6 +148,8 @@ public final class ButtonService extends AccessibilityService {
     @Override public void onDestroy() { stop(); super.onDestroy(); }
     private void stop() {
         if (connected.get() == this) connected = new java.lang.ref.WeakReference<>(null);
+        if (prefs != null) try { prefs.unregisterOnSharedPreferenceChangeListener(changes); } catch (RuntimeException ignored) { /* gone */ }
+        prefs = null;
         main.removeCallbacksAndMessages(null);
         if (screen != null) try { unregisterReceiver(screen); } catch (RuntimeException ignored) { /* already gone */ }
         screen = null;

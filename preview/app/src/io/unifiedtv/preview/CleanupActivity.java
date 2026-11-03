@@ -217,7 +217,8 @@ public final class CleanupActivity extends GlassScreen {
         card(); progress = busy("Saving the undo record first…");
         File file = recordFile(); String created = created(); Context app = getApplicationContext();
         work(true, sh -> {
-            Cleanup.apply(sh, file, check, batch, created, (n, total, p) -> say(p == null ? "Checking the result…" : "Turning off " + (n + 1) + " of " + total + ": " + title(p)),
+            Cleanup.apply(sh, file, check, batch, created, (n, total, p) -> { if (p != null) partly = n == 0 ? PARTLY_FIRST : PARTLY_OFF;
+                    say(p == null ? "Checking the result…" : "Turning off " + (n + 1) + " of " + total + ": " + title(p)); },
                 p -> EventLog.record(app, EventLog.SETTINGS, "Clean-up turned off " + p));
             Map<String, String> states = Cleanup.states(sh, batch);
             return () -> { chosen.clear(); after = states; resultPage("Done: here's what changed"); };
@@ -260,7 +261,8 @@ public final class CleanupActivity extends GlassScreen {
         card(); progress = busy("Turning apps back on…");
         Context app = getApplicationContext();
         work(true, sh -> {
-            Cleanup.turnBackOn(sh, rec, which, (n, total, p) -> say(p == null ? "Checking the result…" : "Turning on " + (n + 1) + " of " + total + ": " + title(p)),
+            Cleanup.turnBackOn(sh, rec, which, (n, total, p) -> { if (p != null) partly = PARTLY_ON;
+                    say(p == null ? "Checking the result…" : "Turning on " + (n + 1) + " of " + total + ": " + title(p)); },
                 p -> EventLog.record(app, EventLog.SETTINGS, "Clean-up turned back on " + p));
             Map<String, String> states = Cleanup.states(sh, rec == null ? which : rec.changedApps());
             return () -> { after = states; resultPage("Turned back on"); };
@@ -343,20 +345,24 @@ public final class CleanupActivity extends GlassScreen {
     // ------------------------------------------------------------------ the link and the work
     private interface Job { Runnable run(Cleanup.Shell sh) throws Exception; }
 
-    /** Runs a job with the link (opening it first), then its result on the page. {@code change}: it changes the TV. */
+    /**
+     * Runs a job with the link (opening it first), then its result on the page. {@code change}: it changes the TV. The
+     * two-minute limit covers connecting, the TV's Allow and reading only: once a change job has the link it runs to the
+     * end, command by command, each within AdbLink's own limit, so a long batch is never cut off part-way by the clock.
+     */
     private void work(boolean change, Job job) {
         // "changing" (Back refused) starts only once the link is open, so Back still works while the TV's prompt waits.
-        busy = true; changing = false; int mine = ++generation;
+        busy = true; changing = false; partly = null; int mine = ++generation;
         watch.removeCallbacksAndMessages(null);
         watch.postDelayed(() -> tooLong(mine), LinkSteps.FLOW_MS);
         Context app = getApplicationContext();
         background(() -> {
             Runnable ui;
             try { if (titles == null) titles = titlesOf(CleanupLists.load(this)); ui = job.run(shell(mine, change)); }
-            catch (AdbException e) { closeLink(); if (mine == generation) LinkSteps.failed(app, e); ui = () -> problem(e); }
+            catch (AdbException e) { closeLink(); if (mine == generation) LinkSteps.failed(app, e); String part = partly; ui = () -> problem(e, null, part); }
             catch (IllegalStateException e) { ui = () -> problem((AdbException) null); }
             catch (IllegalArgumentException e) { ui = () -> problem(CANT_CHANGE); }
-            catch (Exception e) { closeLink(); ui = () -> problem(new AdbException(AdbException.Kind.LOST, "failed")); }
+            catch (Exception e) { closeLink(); String part = partly; ui = () -> problem(new AdbException(AdbException.Kind.LOST, "failed"), null, part); }
             Runnable show = ui;
             runOnUiThread(() -> {
                 boolean current = mine == generation;
@@ -368,6 +374,12 @@ public final class CleanupActivity extends GlassScreen {
         });
     }
     static final String CANT_CHANGE = "That app can't be changed here. Nothing was changed. Run the check again.";
+    /** A change job stopped part-way (a command failed or took too long): what the undo record now means, in plain words. */
+    static final String PARTLY_OFF = "Some apps were already turned off — they're in the undo record; Undo all puts them back.";
+    static final String PARTLY_FIRST = "The first app may already be turned off — it's in the undo record; Undo all puts it back.";
+    static final String PARTLY_ON = "Some apps may already be back on. The undo record still lists every app Unified TV turned off, so Turn apps back on can finish the job.";
+    /** Set by a change job once its first change is sent (null before): the words for a stop part-way. */
+    private volatile String partly;
     /** The owner has left this job's page or the screen: its link must not be kept. */
     private boolean gone(int mine) { return mine != generation || stopped || destroyed || isFinishing(); }
 
@@ -376,7 +388,7 @@ public final class CleanupActivity extends GlassScreen {
      * is replaced, so Try again never queues behind a step that is still stuck.
      */
     private void tooLong(int mine) {
-        if (mine != generation || !busy || destroyed) return;
+        if (mine != generation || !busy || destroyed || changing) return;   // a change job is never stopped by the clock
         generation++; busy = false; changing = false;
         closeLink();
         ExecutorService old = worker; worker = Executors.newSingleThreadExecutor(); old.shutdownNow();
@@ -404,7 +416,7 @@ public final class CleanupActivity extends GlassScreen {
             say("Connected. Reading…");
         }
         if (gone(mine)) throw new AdbException(AdbException.Kind.LOST, "The page was left.");
-        if (change) changing = true;
+        if (change) { changing = true; watch.removeCallbacksAndMessages(null); }   // from here, each command's own limit only
         return s;
     }
 
@@ -440,11 +452,17 @@ public final class CleanupActivity extends GlassScreen {
         for (Closeable c : new Closeable[]{l, o}) if (c != null) try { c.close(); } catch (IOException ignored) { /* already closed */ }
     }
 
-    private void problem(AdbException e) { problem(e, null); }
-    private void problem(String words) { problem(null, words); }
-    /** What failed, at which step, in plain words (LinkSteps.words), then what that means here; Try again or Cancel. */
-    private void problem(AdbException e, String given) {
-        screen("Nothing more was changed", null, this::intro);
+    private void problem(AdbException e) { problem(e, null, null); }
+    private void problem(String words) { problem(null, words, null); }
+    /**
+     * What failed, at which step, in plain words (LinkSteps.words), then what that means here; Try again or Cancel. A
+     * change job that stopped part-way ({@code part}) says so from the undo record, which still lists every app of the
+     * batch, and offers the way back.
+     */
+    private void problem(AdbException e, String given, String part) {
+        CleanupRecord rec = part == null ? null : record();
+        boolean recorded = rec != null && !rec.changedApps().isEmpty();
+        screen(recorded ? "Stopped part-way" : "Nothing more was changed", null, this::intro);
         card();
         String words;
         if (given != null) words = given;
@@ -455,12 +473,15 @@ public final class CleanupActivity extends GlassScreen {
                 case CLOSED: words += " Turn it off again when you're done."; break;
                 case NOT_ALLOWED: case NOT_THIS_TV: break;
                 case PROTOCOL: words += " Nothing was changed."; break;
-                default: words += " Anything already changed is in the undo record, and can be turned back on here or in the TV's settings."; break;
+                default: words += recorded ? "" : " Anything already changed is in the undo record, and can be turned back on here or in the TV's settings."; break;
             }
+            if (recorded) words += " " + part;
         }
         text(words, 18);
         text(LinkSteps.last(this), 15);
-        button("Try again", this::intro).requestFocus();
+        Button undo = recorded ? button("Turn apps back on", this::undoPage) : null;
+        Button again = button("Try again", this::intro);
+        (undo != null ? undo : again).requestFocus();
         button("Cancel", this::finish);
     }
 

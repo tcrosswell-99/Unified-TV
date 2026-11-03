@@ -127,6 +127,22 @@ public class DockFitTest {
         assertEquals("a known app by its package keeps its tile id","netflix",DockPicker.put("sony",Arrays.asList("music"),1,"com.netflix.ninja",6).get(1));
         assertNull("room-only tiles stay in their room",DockPicker.put("tcl",dock,5,"xbox",6));
     }
+    @Test public void anEmptyPlaceGoesAfterTheLastShownTileWhateverTheSavedListHolds(){
+        // Review of a615a38: com.x.iptv is saved but hidden (uninstalled); Home shows netflix, disney and an empty third place.
+        List<String> saved=Arrays.asList("netflix","com.x.iptv","disney");
+        assertEquals(Arrays.asList("netflix","com.x.iptv","disney","com.sony.select"),DockPicker.insertAfter("sony",saved,"disney","com.sony.select",2,6));
+        assertEquals("nothing shown: first",Arrays.asList("com.sony.select","com.x.iptv"),DockPicker.insertAfter("sony",Arrays.asList("com.x.iptv"),null,"com.sony.select",0,6));
+        assertNull("the tile it follows has gone",DockPicker.insertAfter("sony",saved,"bbc","com.sony.select",2,6));
+        assertNull("no room",DockPicker.insertAfter("sony",saved,"disney","com.sony.select",6,6));
+    }
+    @Test public void vpnAppsAndSettingsAreNeverLiveTv(){
+        assertTrue(DockPicker.notLiveTv(LiveTvProtection.NORDVPN,"NordVPN",null));assertTrue(DockPicker.notLiveTv("com.example.x","Super VPN",null));
+        assertTrue(DockPicker.notLiveTv("com.android.tv.settings","Settings",null));assertTrue(DockPicker.notLiveTv("io.unifiedtv.preview","Unified TV","io.unifiedtv.preview"));
+        assertFalse(DockPicker.notLiveTv("com.example.reamsmartz","ReamSmartz","io.unifiedtv.preview"));
+        Map<String,String> m=new LinkedHashMap<>(apps());m.put(LiveTvProtection.NORDVPN,"NordVPN");m.put("com.example.tunnel","Tunnel");
+        List<String> offered=names(DockPicker.liveChoices(m,"",Collections.singleton("com.example.tunnel"),"io.unifiedtv.preview"));
+        assertFalse(offered.contains("NordVPN"));assertFalse("an app that can run a VPN",offered.contains("Tunnel"));assertTrue(offered.contains("ReamSmartz"));
+    }
     @Test public void theLiveTvListPutsLikelyLiveTvAppsFirst(){
         List<String> offered=names(DockPicker.liveChoices(apps(),""));
         assertEquals("ReamSmartz",offered.get(0));assertEquals(apps().size(),offered.size());

@@ -119,7 +119,11 @@ final class LibraryCollector {
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new LinkedBlockingQueue<>(),r->{
         Thread t=new Thread(r,"library-collector");t.setDaemon(true);t.setPriority(Thread.MIN_PRIORITY);return t;});
     private final CopyOnWriteArraySet<Runnable> listeners=new CopyOnWriteArraySet<>();
-    private volatile Status status=new Status(0,Phase.IDLE,0,0,0,false,false,false,0);private int passes;
+    /**
+     * The job's status. The job's own thread replaces it; the stuck watchdog (main thread) and the job moving again only
+     * swap it with compareAndSet, so a final DONE or IDLE is never written over by a stale "stuck" copy (review of a615a38).
+     */
+    private final java.util.concurrent.atomic.AtomicReference<Status> state=new java.util.concurrent.atomic.AtomicReference<>(new Status(0,Phase.IDLE,0,0,0,false,false,false,0));private int passes;
     private final Object lock=new Object();private boolean running,again;private long pausedUntil;private volatile Thread thread;
     /**
      * Review, 27 October 2026: the job can be stopped part-way. {@code epoch} moves on with every start (folders saved
@@ -142,7 +146,7 @@ final class LibraryCollector {
     }
 
     // --- for screens
-    Status status(){return status;}
+    Status status(){return state.get();}
     /** Runs on the main thread when the status changes (at most every {@link #NOTIFY_MS}); remove it when the screen goes. */
     void listen(Runnable r){if(r!=null)listeners.add(r);}
     void unlisten(Runnable r){if(r!=null)listeners.remove(r);}
@@ -186,7 +190,7 @@ final class LibraryCollector {
         }finally{
             thread=null;synchronized(lock){running=false;}
             // However the run ended (finished, cancelled, stopped, or a failure no one expected), no line says it is busy.
-            if(status.busy())set(make(Phase.IDLE,0,0,0,false,false,false,0));
+            if(state.get().busy())set(make(Phase.IDLE,0,0,0,false,false,false,0));
         }
     }
     private void pass(){
@@ -197,7 +201,7 @@ final class LibraryCollector {
         // A library already on this TV stays on screen while it is checked: one quiet line, no count from zero.
         LibraryIndex.Index saved=LibraryIndex.cached(app,lib);boolean checking=LibraryIndex.settled(saved,lib);int have=saved.size();
         passes++;set(make(Phase.SCANNING,checking?have:0,0,0,false,false,false,0,checking));
-        LibraryIndex.Progress progress=checking?null:(titles,folders)->set(make(Phase.SCANNING,titles,0,0,false,status.paused,false,0));
+        LibraryIndex.Progress progress=checking?null:(titles,folders)->set(make(Phase.SCANNING,titles,0,0,false,state.get().paused,false,0));
         LibraryIndex.Index index=null;Exception failed=null;
         for(int attempt=0;;attempt++){
             failed=null;
@@ -246,7 +250,7 @@ final class LibraryCollector {
                 List<LibraryCatalogue.Card> part=todo.subList(i,Math.min(todo.size(),i+batch));CountDownLatch left=new CountDownLatch(part.size());
                 for(LibraryCatalogue.Card c:part)p.warm(c,udn,pictures++<WARM_PICTURES,left::countDown);
                 if(!left.await(2,TimeUnit.MINUTES))break;
-                done+=part.size();set(make(Phase.POSTERS,found,done,total,false,status.paused,stale,0));
+                done+=part.size();set(make(Phase.POSTERS,found,done,total,false,state.get().paused,stale,0));
             }
         }catch(InterruptedIOException|InterruptedException e){Thread.currentThread().interrupt();stopped=true;}
         finally{p.collecting(false);}   // and once more now, so nothing found is lost
@@ -274,13 +278,13 @@ final class LibraryCollector {
                         if(pausedUntil==0||!stillShort())break;
                         pausedUntil=now+pauseMs;   // still short: rest a while longer
                     }
-                    if(!rested){rested=true;set(status.paused(true));}
+                    if(!rested){rested=true;set(state.get().paused(true));}
                     lock.wait(Math.max(1,Math.min(pausedUntil-now,1000)));
                     beat=SystemClock.uptimeMillis();   // resting for memory is not being stuck
                 }
                 pausedUntil=0;
             }
-            if(rested)set(status.paused(false));
+            if(rested)set(state.get().paused(false));
         }catch(InterruptedException e){Thread.currentThread().interrupt();throw new InterruptedIOException();}
     }
     private boolean againSet(){synchronized(lock){return again;}}
@@ -300,20 +304,32 @@ final class LibraryCollector {
     private volatile long beat;
     private final Runnable watch=this::watch;
     /** The job moved: a stuck line comes back. */
-    private void alive(){beat=SystemClock.uptimeMillis();Status s=status;if(s.stalled)set(s.stalled(false));}
+    private void alive(){beat=SystemClock.uptimeMillis();Status s=state.get();if(s.stalled)swap(s,s.stalled(false));}
     /** On the main thread while the job is busy: after {@link #stallMs} without a step, the words go (owner, run 106). */
     private void watch(){
-        Status s=status;if(!s.busy()||s.stalled)return;
+        Status s=state.get();if(!s.busy()||s.stalled)return;
         long idle=SystemClock.uptimeMillis()-beat,limit=stallMs;
-        if(idle>=limit)set(s.stalled(true));
+        if(idle>=limit)stall(s);
         else main.postDelayed(watch,Math.max(1,Math.min(limit-idle,Math.max(1000,limit/4))));
     }
 
+    /**
+     * Marks {@code seen} as stuck, only if it is still the status: false (and nothing changed) when the job wrote another
+     * meanwhile, such as its final DONE or IDLE.
+     */
+    boolean stall(Status seen){return seen.busy()&&!seen.stalled&&swap(seen,seen.stalled(true));}
+    private boolean swap(Status seen,Status next){if(!state.compareAndSet(seen,next))return false;told();return true;}
+
     // --- telling the screens
     private void set(Status s){
-        if(!s.stalled&&s!=status&&(status==null||status.phase!=s.phase||status.pass!=s.pass||status.found!=s.found||status.postersDone!=s.postersDone))beat=SystemClock.uptimeMillis();
-        status=s;
+        Status was=state.get();
+        if(!s.stalled&&s!=was&&(was.phase!=s.phase||was.pass!=s.pass||was.found!=s.found||was.postersDone!=s.postersDone))beat=SystemClock.uptimeMillis();
+        state.set(s);
         if(s.busy()&&!s.stalled){main.removeCallbacks(watch);main.postDelayed(watch,Math.max(1000,stallMs/4));}
+        told();
+    }
+    /** The screens hear the newest status, at most every {@link #NOTIFY_MS}. */
+    private void told(){
         long wait;
         synchronized(notifyLock){if(posted)return;posted=true;wait=Math.max(0,notifiedAt+NOTIFY_MS-SystemClock.uptimeMillis());}
         main.postDelayed(this::tell,wait);

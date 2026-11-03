@@ -312,6 +312,84 @@ public class CleanupJourneyTest {
         assertTrue(tv.changes().isEmpty());
     }
 
+    // --- review finding 3: the two-minute limit never stops a change part-way
+    /** Every package any tested list names is on this simulated TV, so the batch is as large as the lists allow. */
+    private void installEverythingListed() throws Exception {
+        for (CleanupLists.Profile p : CleanupLists.profiles(new org.json.JSONObject(FakeTv.lists()))) for (String[] e : p.packages) tv.installed.add(e[0]);
+    }
+    /** Switches on every app the check offers, then the summary. Returns how many. */
+    @SuppressWarnings("unchecked")
+    private int chooseAll(CleanupActivity a) throws Exception {
+        java.lang.reflect.Field cf = CleanupActivity.class.getDeclaredField("check"), sf = CleanupActivity.class.getDeclaredField("chosen");
+        cf.setAccessible(true); sf.setAccessible(true);
+        Set<String> chosen = (Set<String>) sf.get(a);
+        for (Cleanup.Item i : ((Cleanup.Check) cf.get(a)).items) if (i.canTurnOff()) chosen.add(i.pkg());
+        a.summary(); idle();
+        return chosen.size();
+    }
+    private static void until(CleanupActivity a, String shown) throws InterruptedException {
+        for (int i = 0; i < 500 && !words(root(a)).contains(shown); i++) { idle(); Thread.sleep(10); }
+        assertTrue("'" + shown + "' on: " + words(root(a)), words(root(a)).contains(shown));
+    }
+
+    @Test public void aBatchLongerThanTwoMinutesRunsToTheEnd() throws Exception {
+        installEverythingListed();
+        java.util.concurrent.CountDownLatch reached = new java.util.concurrent.CountDownLatch(1), go = new java.util.concurrent.CountDownLatch(1);
+        int[] disables = {0};
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { opens++; return new CleanupActivity.Opened(command -> {
+            if (command.startsWith("pm disable-user") && ++disables[0] == 10) { reached.countDown(); try { go.await(10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException e) { throw new java.io.InterruptedIOException("stopped"); } }
+            return tv.run(command); }, tv); };
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = c.get();
+            press(a, "Start the read-only check");
+            int n = chooseAll(a);
+            assertTrue("a big batch: " + n, n >= 30);
+            CleanupActivity.backgroundForTests = null;   // the page's own worker thread, as on the TV
+            press(a, "Turn off these " + n + " apps");
+            assertTrue(reached.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(LinkSteps.FLOW_MS + 60_000));   // three minutes into the batch
+            assertFalse("never stopped by the clock", words(root(a)).contains(LinkSteps.FLOW_TIMEOUT));
+            assertFalse(tv.closed);
+            go.countDown();
+            until(a, "Done: here's what changed");
+            CleanupRecord rec = CleanupRecord.read(recordFile());
+            assertEquals("every app of the batch was turned off", n, tv.changes().size());
+            for (String p : rec.changedApps()) assertTrue(p, tv.disabled.contains(p));
+            assertEquals(n, rec.changedApps().size());
+        }
+    }
+
+    @Test public void aStuckCommandPartWayStopsWithTheRecordIntactAndSaysSo() throws Exception {
+        installEverythingListed();
+        int[] disables = {0};
+        CleanupActivity.openerForTests = (c, prompt, opening) -> { opens++; return new CleanupActivity.Opened(command -> {
+            if (command.startsWith("pm disable-user") && ++disables[0] == 10)
+                throw new AdbException(AdbException.Kind.TIMED_OUT, io.unifiedtv.adb.AdbLink.Step.COMMAND, "slow");   // AdbLink's 15-second limit
+            return tv.run(command); }, tv); };
+        try (ActivityController<CleanupActivity> c = open()) {
+            CleanupActivity a = c.get();
+            press(a, "Start the read-only check");
+            int n = chooseAll(a);
+            press(a, "Turn off these " + n + " apps");
+            String said = words(root(a));
+            assertTrue(said, said.contains("Stopped part-way"));
+            assertTrue(said.contains(LinkSteps.COMMAND_TIMEOUT));
+            assertTrue("honest words from the record", said.contains(CleanupActivity.PARTLY_OFF));
+            assertFalse("never 'nothing changed' after changes", said.contains("Nothing more was changed"));
+            assertTrue("the link is closed", tv.closed);
+            assertEquals("nine apps were turned off before the stuck one", 9, tv.changes().size());
+            CleanupRecord rec = CleanupRecord.read(recordFile());
+            assertNotNull("the record is intact", rec);
+            assertEquals("it still lists the whole batch, so nothing turned off is ever missing from it", n, rec.changedApps().size());
+            for (String p : tv.disabled) if (!p.equals("com.tcl.notereminder")) assertTrue("recorded: " + p, rec.changedApps().contains(p));
+            // The way back, from the same page.
+            tv.closed = false;
+            press(a, "Turn apps back on");
+            press(a, "Undo all (9)");
+            assertEquals("all nine back on", Collections.singleton("com.tcl.notereminder"), new HashSet<>(tv.disabled));
+        }
+    }
+
     @Test public void leavingTheScreenClosesTheLink() {
         ActivityController<CleanupActivity> c = open();
         press(c.get(), "Start the read-only check");
