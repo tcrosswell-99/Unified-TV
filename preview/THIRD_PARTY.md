@@ -61,9 +61,67 @@ The Optional clean-up's ADB client (`preview/app/src/io/unifiedtv/adb/`: `AdbLin
 
 ## WireGuard tunnel library for Android, WireGuard LLC, Apache License 2.0
 
-Unified TV's own NordVPN connection (OD-29, 3 November 2026) uses the official WireGuard tunnel library for Android, `com.wireguard.android:tunnel` **1.0.20260102** from Maven Central (https://www.wireguard.com/, source https://git.zx2c4.com/wireguard-android), declared in `preview/app/build.gradle`. Its own notice: "Copyright © 2017-2025 WireGuard LLC. All Rights Reserved. SPDX-License-Identifier: Apache-2.0". It brings `GoBackend` and its `VpnService` (`com.wireguard.android.backend.GoBackend$VpnService`, guarded by `BIND_VPN_SERVICE`), and its own native libraries (`libwg-go.so`, `libwg.so`, `libwg-quick.so` for arm64-v8a, armeabi-v7a, x86 and x86_64), which the WireGuard project builds from wireguard-go (MIT) and the Go runtime (BSD-3-Clause); those two notices were not re-read from the AAR itself when this was written. Its Maven dependencies, `androidx.annotation:annotation` 1.9.1 and `androidx.collection:collection` 1.5.0, are Android Open Source Project libraries under Apache-2.0. Unified TV's code uses only `GoBackend`, `Tunnel` and `Config.parse` (`WireGuardTunnel.java`); nothing in the library was changed. The NordLynx server details it is given come from NordVPN's unofficial API (docs/VPN_PROTECTION.md); NordVPN and NordLynx are NordVPN's trademarks and Unified TV is not affiliated with or endorsed by NordVPN. "WireGuard" is a registered trademark of Jason A. Donenfeld.
+Unified TV's own NordVPN connection (OD-29, 3 November 2026) uses the official WireGuard tunnel library for Android, `com.wireguard.android:tunnel` **1.0.20260102** from Maven Central (https://www.wireguard.com/, source https://git.zx2c4.com/wireguard-android), declared in `preview/app/build.gradle`. Its own notice: "Copyright © 2017-2025 WireGuard LLC. All Rights Reserved. SPDX-License-Identifier: Apache-2.0". It brings `GoBackend` and its `VpnService` (`com.wireguard.android.backend.GoBackend$VpnService`, guarded by `BIND_VPN_SERVICE`) and native libraries. **Only `libwg-go.so` ships**, for armeabi-v7a and arm64-v8a only (`preview/app/build.gradle`: `abiFilters`, and `packaging.jniLibs.excludes`). `libwg-go.so` is built by the WireGuard project from its `tunnel/tools/libwg-go` glue (Apache-2.0, "Copyright © 2017-2022 Jason A. Donenfeld"), wireguard-go (MIT, "Copyright (C) 2017-2025 WireGuard LLC") and the Go toolchain and runtime (BSD-3-Clause, "Copyright 2009 The Go Authors"; the library's build pins Go 1.24.3). The library's other two native files, `libwg.so` and `libwg-quick.so`, are wireguard-tools' `wg` and `wg-quick` (GPL-2.0) for its root-only `WgQuickBackend`, which Unified TV never uses, so they are excluded and not distributed. These licences were read from the upstream repositories (github.com/WireGuard/wireguard-android `tunnel/tools`, github.com/WireGuard/wireguard-go `LICENSE`, github.com/golang/go `LICENSE`) on 3 November 2026; the AAR itself carries no licence files. Its Maven dependencies, `androidx.annotation:annotation` 1.9.1 and `androidx.collection:collection` 1.5.0, are Android Open Source Project libraries under Apache-2.0. Unified TV's code uses only `GoBackend`, `Tunnel` and `Config.parse` (`WireGuardTunnel.java`); nothing in the library was changed. The NordLynx server details it is given come from NordVPN's unofficial API (docs/VPN_PROTECTION.md); NordVPN and NordLynx are NordVPN's trademarks and Unified TV is not affiliated with or endorsed by NordVPN. "WireGuard" is a registered trademark of Jason A. Donenfeld.
 
-Licence text (Apache License 2.0, also covering the AndroidX, Media3, OkHttp and Robolectric entries above):
+### wireguard-go (in `libwg-go.so`), MIT License
+
+Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
+
+```
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### The Go programming language runtime and standard library (in `libwg-go.so`), BSD-3-Clause
+
+```
+Copyright 2009 The Go Authors.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Apache License 2.0
+
+Licence text (WireGuard tunnel library and `libwg-go` glue; also covering the AndroidX, Media3, OkHttp and Robolectric entries above):
 
 ```
 

@@ -77,6 +77,7 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Fixed
 
+- **Unified TV's own VPN, security review:** Live TV now also needs Android to report the VPN up (a stale "connected" can no longer open it); "Connected" only after NordVPN answers; no freeze at start-up; Kids can't turn it on or off; a background reconnect waits for Home; unused GPL wireguard-tools binaries and non-ARM libraries left out of the app. **Not tested** on a television.
 - **Films & TV library lost after a day (owner's TCL, 3 November 2026):** the list was saved only at the end of a full scan, a later check replaced it with its own progress, a NAS going quiet emptied it, and a port change looked like a new server. Now it is saved as it goes, resumes where it stopped, refreshes only add and remove titles, and the same NAS is found again at a new address. **Not tested** on a television.
 - **Live TV opens whenever a VPN is connected (OD-26 amended by the owner):** no more "can't confirm it's NordVPN" loop; NordVPN's notice only adds the country. **Not tested** on a television.
 - **Phone setup said "Not allowed" for every save (owner's TCL, 28 October 2026):** the phone pages asked the browser to send no referrer, which makes phones mark their form posts "Origin: null", and the TV refused them. Pages now use a same-site referrer policy, and a null Origin is accepted only on the one-time session path. This affected the TMDB key, API-Football key and Home Assistant sign-in. **Not tested** on a television.

@@ -67,9 +67,10 @@ final class OwnVpn {
         NO_SERVER = "NordVPN didn't offer a server just now. Try again, or choose another country.",
         BAD_KEY = "The NordVPN key on this TV doesn't work any more. Add a new token on your phone.",
         NO_TUNNEL = "The VPN couldn't start on this TV. Try again, or use NordVPN's own app.",
+        NO_ANSWER = "NordVPN didn't answer — check your NordVPN subscription, or paste a new token.",
         KIDS = "An adult turns the VPN on or off, in Adults.",
         DROPPED = "Android turned Unified TV's VPN off (another VPN app may have connected).",
-        LAN = "Your home network stays reachable while the VPN is on: the NAS, Home Assistant and AirPlay don't go through it.",
+        LAN = "Your home network stays reachable while the VPN is on: the NAS, Home Assistant and AirPlay don't go through it. Names from your router may not work while it is on (it uses NordVPN's DNS), so use their IP addresses or .local names.",
         NOT_KILL_SWITCH = "This isn't a kill switch: if the VPN drops, Android doesn't block other apps' traffic unless you set Unified TV as the TV's always-on VPN with \"Block connections without VPN\".",
         UNOFFICIAL = "Unified TV uses NordVPN's servers the way NordVPN's own Linux app does. NordVPN doesn't publish this for other apps, so it may change.";
 
@@ -93,6 +94,7 @@ final class OwnVpn {
     /** Tests only: back to a fresh app (state, tunnel and seams). */
     static synchronized void resetForTests() {
         phase = Phase.OFF; problem = null; server = null; serverCountry = null; since = 0; tunnel = null; pending = null; LISTENERS.clear();
+        generation++; attempt = null; HANDSHAKE_MS = 10_000; deferred = false; resumed = 0; explanation = null;
         http = NordLynx.HTTPS; factory = WireGuardTunnel::new; consent = android.net.VpnService::prepare; worker = WORKER; unwatch();
     }
 
@@ -148,8 +150,15 @@ final class OwnVpn {
     }
     static boolean atStart(Context c) { return prefs(c).getBoolean(BOOT, false); }
     static void atStart(Context c, boolean on) { prefs(c).edit().putBoolean(BOOT, on).apply(); }
-    /** "Connect when the TV turns on" works only in the launcher app, which is told that the TV has started. */
-    static boolean atStartOffered(Context c) { return DefaultHome.available(c); }
+    /**
+     * "Connect when the TV turns on" works only in the launcher app (told that the TV has started), and only where Unified
+     * TV comes to the front by itself afterwards: it is the Home screen, or "Open Unified TV when the TV turns on" is on
+     * (Android won't let it start the VPN from the background; it connects when Home appears).
+     */
+    static boolean atStartOffered(Context c) {
+        if (!DefaultHome.available(c)) return false;
+        try { return DefaultHome.isDefault(c) || TurnOn.active(c); } catch (RuntimeException e) { return false; }
+    }
 
     /** NordVPN's countries: from the week's copy, else asked for (blocking; call off the main thread). */
     static List<NordLynx.Country> countries(Context c, boolean fresh) {
@@ -165,17 +174,37 @@ final class OwnVpn {
     static List<NordLynx.Country> cached(Context c) { return NordLynx.countries(prefs(c).getString(COUNTRIES, "[]")); }
 
     // --- connecting and disconnecting (off the main thread; the answer comes back on it)
-    /** Connects (or moves to the chosen country when already on). {@code done} gets true once the tunnel is up. */
+    /**
+     * One connection attempt: its generation and everyone waiting for its answer. disconnect() and dropped() start a new
+     * generation, so an attempt that finishes after them can never turn the state back to ON (security review, 3 November
+     * 2026: a drop while connecting was overwritten and Live TV opened with no VPN).
+     */
+    private static final class Attempt { final int generation; final List<Consumer<Boolean>> waiters = new ArrayList<>(); Attempt(int g) { generation = g; } }
+    private static int generation;
+    private static Attempt attempt;
+    /** How long a new tunnel may take to complete its first handshake with NordVPN before it counts as failed. */
+    static volatile long HANDSHAKE_MS = 10_000;
+    static final long HANDSHAKE_STEP_MS = 250;
+
+    /**
+     * Connects (or moves to the chosen country when already on). {@code done} gets true once the tunnel is up and NordVPN
+     * has answered; while an attempt is already running, {@code done} waits for that attempt's answer.
+     */
     static void connect(Context c, Consumer<Boolean> done) {
         Context app = c.getApplicationContext();
-        synchronized (OwnVpn.class) { if (phase == Phase.CONNECTING) return; phase = Phase.CONNECTING; problem = null; }
+        Attempt mine;
+        synchronized (OwnVpn.class) {
+            if (phase == Phase.CONNECTING && attempt != null) { if (done != null) attempt.waiters.add(done); return; }
+            phase = Phase.CONNECTING; problem = null; mine = attempt = new Attempt(++generation); if (done != null) mine.waiters.add(done);
+        }
         prefs(app).edit().putBoolean(WANTED, true).apply();
         watch(app);
         changed();
-        try { worker.execute(() -> { String why; try { why = bringUp(app); } catch (Throwable t) { why = NO_TUNNEL; } finish(app, why, done); }); }
-        catch (RuntimeException e) { finish(app, NO_TUNNEL, done); }
+        try { worker.execute(() -> { String why; try { why = bringUp(app, mine); } catch (Throwable t) { why = NO_TUNNEL; } finish(app, why, mine); }); }
+        catch (RuntimeException e) { finish(app, NO_TUNNEL, mine); }
     }
-    private static String bringUp(Context app) throws Exception {
+    private static boolean current(Attempt a) { synchronized (OwnVpn.class) { return a.generation == generation; } }
+    private static String bringUp(Context app, Attempt mine) throws Exception {
         String key = key(app);
         if (key == null) return saved(app) ? BAD_KEY : NO_KEY;
         Intent ask; try { ask = consent.prepare(app); } catch (RuntimeException e) { return NO_SCREEN; }
@@ -191,38 +220,63 @@ final class OwnVpn {
         if (r.status != 200) return OFFLINE;
         List<NordLynx.Server> servers = NordLynx.servers(r.body);
         if (servers.isEmpty()) return NO_SERVER;
+        if (!current(mine)) return STALE;
         VpnTunnel t = tunnel(app);
-        if (t.isUp()) t.down();   // moving to another server or country
+        if (t.isUp()) t.down();   // moving to another server or country (the real tunnel waits until the old VPN service has gone)
         for (int i = 0; i < Math.min(2, servers.size()); i++) {
             NordLynx.Server s = servers.get(i);
-            try {
-                t.up(NordLynx.config(key, s));
-                server = s.name; serverCountry = s.country.isEmpty() ? (code.isEmpty() ? null : code) : s.country; since = System.currentTimeMillis();
-                return null;
-            } catch (Exception e) { try { t.down(); } catch (Exception ignored) {} }
+            try { t.up(NordLynx.config(key, s)); } catch (Exception e) { try { t.down(); } catch (Exception ignored) {} continue; }
+            // "Up" is only the interface: ON needs NordVPN's answer (a handshake) and the tunnel still up afterwards.
+            if (!answered(t, mine)) { try { t.down(); } catch (Exception ignored) {} return current(mine) ? NO_ANSWER : STALE; }
+            server = s.name; serverCountry = s.country.isEmpty() ? (code.isEmpty() ? null : code) : s.country; since = System.currentTimeMillis();
+            return null;
         }
         return NO_TUNNEL;
+    }
+    /** Waits (on the worker) for the first handshake, at most HANDSHAKE_MS; false when none came, the tunnel fell, or the attempt was superseded. */
+    private static boolean answered(VpnTunnel t, Attempt mine) {
+        long waited = 0;
+        while (true) {
+            if (!t.isUp() || !current(mine)) return false;
+            if (t.handshake() > 0) return t.isUp();
+            if (waited >= HANDSHAKE_MS) return false;
+            try { Thread.sleep(HANDSHAKE_STEP_MS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+            waited += HANDSHAKE_STEP_MS;
+        }
     }
     private static synchronized VpnTunnel tunnel(Context app) {
         if (tunnel == null) { tunnel = factory.make(app); tunnel.onDropped(() -> dropped(app)); }
         return tunnel;
     }
-    private static void finish(Context app, String why, Consumer<Boolean> done) {
-        boolean ok = why == null;
-        synchronized (OwnVpn.class) { phase = ok ? Phase.ON : Phase.FAILED; problem = why; if (!ok) { server = null; serverCountry = null; since = 0; } }
+    /** Marks an attempt that was superseded (disconnect, a drop): its answer changes nothing. */
+    static final String STALE = "superseded";
+    private static void finish(Context app, String why, Attempt mine) {
+        boolean ok = why == null, stale;
+        synchronized (OwnVpn.class) {
+            stale = mine.generation != generation || STALE.equals(why);
+            if (!stale) { phase = ok ? Phase.ON : Phase.FAILED; problem = why; if (!ok) { server = null; serverCountry = null; since = 0; } attempt = null; }
+        }
+        List<Consumer<Boolean>> waiting; synchronized (OwnVpn.class) { waiting = new ArrayList<>(mine.waiters); mine.waiters.clear(); }
+        if (stale) {
+            // The tunnel this attempt may have raised is not wanted any more (disconnect queued its own down after this).
+            if (ok) { VpnTunnel t; synchronized (OwnVpn.class) { t = tunnel; } if (phase != Phase.ON && phase != Phase.CONNECTING && t != null) try { t.down(); } catch (Throwable ignored) {} }
+            for (Consumer<Boolean> w : waiting) MAIN.post(() -> w.accept(false));
+            return;
+        }
         if (!ok && (NOT_ALLOWED.equals(why) || NO_KEY.equals(why) || BAD_KEY.equals(why) || NO_SCREEN.equals(why))) { prefs(app).edit().putBoolean(WANTED, false).apply(); unwatch(); }
         EventLog.record(app, EventLog.CONNECTION, ok ? "Unified TV's VPN connected: " + server : "Unified TV's VPN couldn't connect");
         changed();
-        if (done != null) MAIN.post(() -> done.accept(ok));
+        for (Consumer<Boolean> w : waiting) MAIN.post(() -> w.accept(ok));
     }
-    /** Turns the VPN off; the household no longer wants it on. */
+    /** Turns the VPN off; the household no longer wants it on. An attempt still running is superseded. */
     static void disconnect(Context c, Runnable done) {
         Context app = c.getApplicationContext();
         prefs(app).edit().putBoolean(WANTED, false).apply(); unwatch();
+        synchronized (OwnVpn.class) { generation++; attempt = null; phase = Phase.OFF; problem = null; server = null; serverCountry = null; since = 0; }
+        changed();
         Runnable off = () -> {
             VpnTunnel t; synchronized (OwnVpn.class) { t = tunnel; }
             try { if (t != null) t.down(); } catch (Throwable ignored) {}
-            synchronized (OwnVpn.class) { phase = Phase.OFF; problem = null; server = null; serverCountry = null; since = 0; }
             EventLog.record(app, EventLog.CONNECTION, "Unified TV's VPN turned off");
             changed();
             if (done != null) MAIN.post(done);
@@ -231,8 +285,10 @@ final class OwnVpn {
     }
     /** Android took the tunnel down by itself: it stays off (never a fight with another VPN app), and says why. */
     private static void dropped(Context app) {
-        if (phase == Phase.OFF) return;
-        synchronized (OwnVpn.class) { phase = Phase.OFF; problem = DROPPED; server = null; serverCountry = null; since = 0; }
+        synchronized (OwnVpn.class) {
+            if (phase == Phase.OFF) return;
+            generation++; attempt = null; phase = Phase.OFF; problem = DROPPED; server = null; serverCountry = null; since = 0;
+        }
         prefs(app).edit().putBoolean(WANTED, false).apply(); unwatch();
         EventLog.record(app, EventLog.CONNECTION, "Unified TV's VPN was turned off by Android");
         changed();
@@ -261,12 +317,22 @@ final class OwnVpn {
     private static final class Pending { final Activity from; final Consumer<Boolean> done; Pending(Activity from, Consumer<Boolean> done) { this.from = from; this.done = done; } }
     private static volatile Pending pending;
     static final int REQUEST = 4129;
-    /** For tests: the explanation sheet shown before Android's consent dialog, or null. */
-    static volatile Dialog explanation;
+    /**
+     * The explanation sheet shown before Android's consent dialog, held weakly and cleared when it closes, so a closed
+     * screen is never kept alive by it. For tests.
+     */
+    private static volatile java.lang.ref.WeakReference<Dialog> explanation;
+    static Dialog explanation() { java.lang.ref.WeakReference<Dialog> w = explanation; return w == null ? null : w.get(); }
 
     /** Turns the VPN on from a screen: says once that it replaces NordVPN's app, and asks for Android's consent first if needed. */
     static void turnOn(Activity a, Consumer<Boolean> done) {
         if (!saved(a)) { say(a, NO_KEY); setup(a); if (done != null) done.accept(false); return; }
+        // Kids never turn Unified TV's VPN on (or give Android's VPN consent) by themselves: the adult PIN first, on every
+        // route (the Live TV sheet's Connect, the cover's Reconnect).
+        if (Profiles.kids(a)) { say(a, KIDS); EditLock.ask(a, () -> adultTurnOn(a, done)); return; }
+        adultTurnOn(a, done);
+    }
+    private static void adultTurnOn(Activity a, Consumer<Boolean> done) {
         SharedPreferences p = prefs(a);
         if (VpnGate.inspect(a) == VpnGate.State.CONNECTED && phase != Phase.ON && !p.getBoolean(REPLACE_SAID, false)) {
             p.edit().putBoolean(REPLACE_SAID, true).apply(); say(a, REPLACES);
@@ -283,7 +349,8 @@ final class OwnVpn {
         d[0] = VpnGate.sheet(a, "Unified TV's VPN", EXPLAIN, Arrays.asList("Continue", "Cancel"),
             Arrays.asList(() -> { d[0].dismiss(); p.edit().putBoolean(EXPLAINED, true).apply(); show.run(); },
                 () -> { d[0].dismiss(); if (done != null) done.accept(false); }), null);
-        explanation = d[0];
+        explanation = new java.lang.ref.WeakReference<>(d[0]);
+        d[0].setOnDismissListener(x -> explanation = null);
     }
     private static void fail(Activity a, String why, Consumer<Boolean> done) {
         synchronized (OwnVpn.class) { phase = Phase.FAILED; problem = why; }
@@ -298,25 +365,65 @@ final class OwnVpn {
     }
     /** Registered once in PreviewApp: the consent answer arrives as the asking screen resumes. */
     static final Application.ActivityLifecycleCallbacks SCREENS = new Application.ActivityLifecycleCallbacks() {
-        @Override public void onActivityResumed(Activity a) { resumed(a); }
+        @Override public void onActivityResumed(Activity a) { resumed++; resumed(a); if (a instanceof UnifiedPreviewActivity || a instanceof VpnActivity) catchUp(a); }
+        @Override public void onActivityPaused(Activity a) { if (resumed > 0) resumed--; }
         @Override public void onActivityDestroyed(Activity a) { Pending p = pending; if (p != null && p.from == a) pending = null; }
         @Override public void onActivityCreated(Activity a, Bundle b) {}
         @Override public void onActivityStarted(Activity a) {}
-        @Override public void onActivityPaused(Activity a) {}
         @Override public void onActivityStopped(Activity a) {}
         @Override public void onActivitySaveInstanceState(Activity a, Bundle b) {}
     };
     private static void say(Activity a, String words) { try { Toast.makeText(a, words, Toast.LENGTH_LONG).show(); } catch (RuntimeException ignored) {} }
 
     // --- coming back by itself: a new network, the TV starting, Android's always-on VPN
+    /**
+     * Android 8 and later refuse to start a service from the background, and the WireGuard library starts its VpnService
+     * when a tunnel first comes up. So a reconnect (a new network) or "Connect when the TV turns on" that arrives while no
+     * Unified TV screen is on screen waits for the next time Home or the VPN page comes to the front (security review,
+     * 3 November 2026). The TV starting is remembered across the process (BOOT_PENDING), a new network only in memory.
+     */
+    private static volatile boolean deferred;
+    /** Unified TV screens resumed now (0: Unified TV is in the background). */
+    private static volatile int resumed;
+    static final String BOOT_PENDING = "bootPending";
+    /** How long after the TV starts "Connect when the TV turns on" still applies when Home first comes to the front. */
+    static final long BOOT_WINDOW_MS = 15L * 60 * 1000;
+    static boolean foreground() { return resumed > 0; }
+    /** For tests: a reconnect is waiting for Home or the VPN page. */
+    static boolean deferred() { return deferred; }
+    /** Home or the VPN page is in front: a reconnect or start-up connection that was waiting runs now. */
+    static void catchUp(Context c) {
+        Context app = c.getApplicationContext(); SharedPreferences p = prefs(app);
+        long boot = p.getLong(BOOT_PENDING, 0);
+        boolean atBoot = boot > 0 && System.currentTimeMillis() - boot < BOOT_WINDOW_MS && atStart(app);
+        if (boot > 0) p.edit().remove(BOOT_PENDING).apply();
+        boolean again = deferred; deferred = false;
+        if (atBoot && phase != Phase.ON && phase != Phase.CONNECTING && saved(app) && consented(app)) { connect(app, null); return; }
+        if (again && reconnects(p.getBoolean(WANTED, false), phase, saved(app), consented(app))) connect(app, null);
+    }
+
     private static ConnectivityManager.NetworkCallback network; private static Context watched;
     private static final Runnable LOOK = OwnVpn::look;
+    /**
+     * Networks already there when the watch started. Android calls onAvailable at once for each of them; only a network
+     * that wasn't there (or came back after it was lost) counts, so a quick failure isn't retried straight away.
+     */
+    static final class Seen {
+        private final Set<Object> known = new HashSet<>();
+        Seen(Collection<?> already) { if (already != null) known.addAll(already); }
+        synchronized boolean arrived(Object n) { return n != null && known.add(n); }
+        synchronized void lost(Object n) { known.remove(n); }
+    }
     /** While the VPN is wanted: Android's network callback for real (non-VPN) networks, no polling. */
     private static synchronized void watch(Context app) {
         if (network != null) return;
         ConnectivityManager cm = app.getSystemService(ConnectivityManager.class); if (cm == null) return;
+        List<Network> now = new ArrayList<>();
+        try { for (Network n : cm.getAllNetworks()) { NetworkCapabilities caps = cm.getNetworkCapabilities(n); if (caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) now.add(n); } } catch (RuntimeException ignored) {}
+        Seen seen = new Seen(now);
         ConnectivityManager.NetworkCallback cb = new ConnectivityManager.NetworkCallback() {
-            @Override public void onAvailable(Network n) { MAIN.removeCallbacks(LOOK); MAIN.postDelayed(LOOK, SETTLE_MS); }
+            @Override public void onAvailable(Network n) { if (!seen.arrived(n)) return; MAIN.removeCallbacks(LOOK); MAIN.postDelayed(LOOK, SETTLE_MS); }
+            @Override public void onLost(Network n) { seen.lost(n); }
         };
         try { cm.registerNetworkCallback(new NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), cb); network = cb; watched = app; }
         catch (RuntimeException ignored) {}
@@ -329,12 +436,14 @@ final class OwnVpn {
     /** For tests: the network watch is running. */
     static boolean watching() { return network != null; }
     /**
-     * A network came (back): when the household wants the VPN on and it isn't (it couldn't connect while the TV was
-     * offline, say), connect once. WireGuard itself carries a running tunnel across a network change.
+     * A new network came: when the household wants the VPN on and it isn't (it couldn't connect while the TV was
+     * offline, say), connect once, or, with Unified TV in the background, when Home next comes to the front. WireGuard
+     * itself carries a running tunnel across a network change.
      */
     static void look() {
         Context c = watched; if (c == null) return;
         if (!reconnects(prefs(c).getBoolean(WANTED, false), phase, saved(c), consented(c))) return;
+        if (!foreground()) { deferred = true; return; }
         connect(c, null);
     }
     /** Pure: whether a new network brings the VPN back. Never while connecting or on, and never without consent. */
@@ -342,11 +451,18 @@ final class OwnVpn {
         return wanted && saved && consented && (now == Phase.OFF || now == Phase.FAILED);
     }
     private static boolean consented(Context c) { try { return consent.prepare(c) == null; } catch (RuntimeException e) { return false; } }
-    /** The TV has started (TurnOnBoot, launcher app): connect if "Connect when the TV turns on" is on. {@code finished} always runs. */
+    /**
+     * The TV has started (TurnOnBoot, launcher app). {@code finished} runs at once, always: the receiver never waits on
+     * NordVPN. With "Connect when the TV turns on" the connection is made when Home first comes to the front (catchUp);
+     * nothing running is ever torn down here.
+     */
     static void boot(Context c, Runnable finished) {
         Context app = c.getApplicationContext();
-        if (!atStart(app) || !saved(app) || !consented(app)) { finished.run(); return; }
-        connect(app, ok -> finished.run());
+        try {
+            if (!atStart(app) || !saved(app) || phase == Phase.ON || phase == Phase.CONNECTING) return;
+            prefs(app).edit().putLong(BOOT_PENDING, System.currentTimeMillis()).apply();
+            if (foreground()) catchUp(app);
+        } finally { finished.run(); }
     }
     /** App start: Android's always-on VPN, when the owner chose Unified TV there, may start the tunnel by itself. */
     static void appStarted(Context c) {

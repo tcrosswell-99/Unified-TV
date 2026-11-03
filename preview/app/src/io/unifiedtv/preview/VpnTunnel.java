@@ -13,6 +13,11 @@ interface VpnTunnel {
     void down() throws Exception;
     /** Whether it is up now. */
     boolean isUp();
+    /**
+     * When the peer last completed a WireGuard handshake (milliseconds since the epoch), or 0 when it never has. A tunnel
+     * that is "up" only has its interface: NordVPN has answered only once this is non-zero.
+     */
+    long handshake();
     /** Told when Android takes the tunnel down by itself (another app's VPN took over, the VPN was revoked). */
     void onDropped(Runnable dropped);
 }

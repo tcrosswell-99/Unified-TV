@@ -59,6 +59,8 @@ final class PhoneService {
     String vpnWords;
     /** What the TV and the phone say when the service refused what was pasted (Verdict.REFUSED); null for the usual words. */
     String refusedTv, refusedPhone;
+    /** The phone page's last sentence about what is kept, when it isn't the usual "kept encrypted … never shown again". */
+    String keptWords;
     final String[] tvSteps; final Step[] steps; final List<Field> fields; final Submit submit; final Custom custom;
 
     PhoneService(String id, String name, String title, String tvIntro, String[] tvSteps, String phoneIntro, Step[] steps, List<Field> fields, String note,
@@ -176,6 +178,7 @@ final class PhoneService {
             "The TV sends the token to NordVPN once, to get the VPN key for your account, and keeps only that key. The token itself is not kept.",
             NORD_ACCOUNT, "Nord Account", "The TV checks the token with NordVPN and saves the VPN key. Then press the shield on Home to connect.",
             "Saved. Press the shield on Home to connect.", "Saved on the TV. Press the shield on Home to connect.", submit, null);
+        s.keptWords = " Only the VPN key NordVPN returns is kept, encrypted on the TV and never shown; the token is not kept.";
         s.refusedTv = "NordVPN didn't accept that token. Your phone shows what to try.";
         s.refusedPhone = "NordVPN didn't accept that token. Generate a new token in Nord Account (NordVPN, Set up NordVPN manually), copy all of it and paste it again.";
         return s;

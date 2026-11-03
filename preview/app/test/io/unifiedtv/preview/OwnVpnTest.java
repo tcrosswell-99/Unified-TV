@@ -36,8 +36,9 @@ public class OwnVpnTest {
 
     /** The tunnel, faked: what it was given, and whether it is up. */
     static final class FakeTunnel implements VpnTunnel {
-        final List<String> configs = new ArrayList<>(); boolean up, fails; int downs; Runnable dropped;
-        @Override public void up(String config) throws Exception { if (fails) throw new Exception("no tunnel"); configs.add(config); up = true; }
+        final List<String> configs = new ArrayList<>(); boolean up, fails, fallsAfterUp; int downs; long handshakeAt = 1; Runnable dropped;
+        @Override public void up(String config) throws Exception { if (fails) throw new Exception("no tunnel"); configs.add(config); up = !fallsAfterUp; }
+        @Override public long handshake() { return up ? handshakeAt : 0; }
         @Override public void down() { if (up) downs++; up = false; }
         @Override public boolean isUp() { return up; }
         @Override public void onDropped(Runnable r) { dropped = r; }
@@ -117,7 +118,7 @@ public class OwnVpnTest {
     @Test public void androidsConsentIsExplainedAndAskedOnlyOnce() throws Exception {
         keySaved(); Activity a = screen();
         OwnVpn.press(a); idle();
-        Dialog sheet = ShadowDialog.getLatestDialog(); assertNotNull("plain words first", sheet); assertSame(sheet, OwnVpn.explanation);
+        Dialog sheet = ShadowDialog.getLatestDialog(); assertNotNull("plain words first", sheet); assertSame(sheet, OwnVpn.explanation());
         assertTrue(words(sheet.getWindow().getDecorView()).contains(OwnVpn.EXPLAIN));
         assertNull("Android's dialog not yet", Shadows.shadowOf(a).getNextStartedActivityForResult());
         find(sheet.getWindow().getDecorView(), "Continue").performClick();
@@ -196,6 +197,8 @@ public class OwnVpnTest {
         keySaved(); consent.given = true;
         assertNotEquals(LiveTvProtection.State.OPEN, LiveTvProtection.now(app()));
         OwnVpn.connect(app(), null); idle();
+        assertNotEquals("Unified TV's own word alone never opens Live TV: Android must report the VPN", LiveTvProtection.State.OPEN, LiveTvProtection.now(app()));
+        android.net.Network vpn = androidVpn();
         assertEquals("open, even without NordVPN's app", LiveTvProtection.State.OPEN, LiveTvProtection.now(app()));
         assertEquals("Unified TV's NordVPN connection is on (United Kingdom). If it drops, Unified TV will cover Live TV.", LiveTvProtection.message(LiveTvProtection.State.OPEN));
         assertFalse("its own VPN service isn't 'another VPN app'", LiveTvProtection.vpnAppsDetail(app()).counted.contains(app().getPackageName()));
@@ -203,6 +206,17 @@ public class OwnVpnTest {
         assertEquals(OwnVpn.Phase.OFF, OwnVpn.phase()); assertEquals(OwnVpn.DROPPED, OwnVpn.problem());
         assertTrue(LiveTvProtection.dropped(LiveTvProtection.now(app())));
         assertFalse("never fights for the VPN", app().getSharedPreferences(OwnVpn.PREFS, 0).getBoolean(OwnVpn.WANTED, true));
+        Shadows.shadowOf(app().getSystemService(android.net.ConnectivityManager.class)).removeNetwork(vpn);
+    }
+    /** Android reports a VPN network, as it does while any VPN (Unified TV's included) is up. */
+    private android.net.Network androidVpn() {
+        android.net.ConnectivityManager cm = app().getSystemService(android.net.ConnectivityManager.class);
+        android.net.Network n = org.robolectric.shadows.ShadowNetwork.newInstance(4242);
+        android.net.NetworkCapabilities caps = org.robolectric.shadows.ShadowNetworkCapabilities.newInstance();
+        Shadows.shadowOf(caps).addTransportType(android.net.NetworkCapabilities.TRANSPORT_VPN);
+        Shadows.shadowOf(cm).addNetwork(n, org.robolectric.shadows.ShadowNetworkInfo.newInstance(android.net.NetworkInfo.DetailedState.CONNECTED, android.net.ConnectivityManager.TYPE_VPN, 0, true, android.net.NetworkInfo.State.CONNECTED));
+        Shadows.shadowOf(cm).setNetworkCapabilities(n, caps);
+        return n;
     }
     @Test public void aNewNetworkBringsItBackOnlyWhenWantedAndAllowed() {
         assertTrue(OwnVpn.reconnects(true, OwnVpn.Phase.FAILED, true, true)); assertTrue(OwnVpn.reconnects(true, OwnVpn.Phase.OFF, true, true));
@@ -210,15 +224,113 @@ public class OwnVpnTest {
         assertFalse(OwnVpn.reconnects(true, OwnVpn.Phase.CONNECTING, true, true)); assertFalse(OwnVpn.reconnects(true, OwnVpn.Phase.OFF, false, true));
         assertFalse("another VPN app has Android's consent now", OwnVpn.reconnects(true, OwnVpn.Phase.OFF, true, false));
     }
-    @Test public void theTvTurningOnConnectsOnlyWhenAskedTo() throws Exception {
+    @Test public void theTvTurningOnConnectsWhenHomeComesToTheFrontAndOnlyWhenAskedTo() throws Exception {
         keySaved(); consent.given = true; int[] finished = {0};
-        OwnVpn.boot(app(), () -> finished[0]++); idle();
+        OwnVpn.boot(app(), () -> finished[0]++); OwnVpn.catchUp(app()); idle();
         assertEquals(1, finished[0]); assertEquals("off by default", OwnVpn.Phase.OFF, OwnVpn.phase());
-        OwnVpn.atStart(app(), true); consent.given = false;
+        OwnVpn.atStart(app(), true);
         OwnVpn.boot(app(), () -> finished[0]++); idle();
-        assertEquals(2, finished[0]); assertEquals("no consent yet: nothing", OwnVpn.Phase.OFF, OwnVpn.phase());
-        consent.given = true; OwnVpn.boot(app(), () -> finished[0]++); idle();
-        assertEquals(3, finished[0]); assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+        assertEquals("the receiver never waits", 2, finished[0]); assertEquals("nothing from the background", OwnVpn.Phase.OFF, OwnVpn.phase());
+        OwnVpn.catchUp(app()); idle();   // Home comes to the front
+        assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+        OwnVpn.catchUp(app()); idle(); assertEquals("once per start", 1, tunnel.configs.size());
+    }
+    /** Review finding 2: a start-up while connecting or on finishes at once, and never touches the running tunnel. */
+    @Test public void bootNeverWaitsOnOrTearsDownARunningTunnel() throws Exception {
+        keySaved(); consent.given = true; OwnVpn.atStart(app(), true);
+        OwnVpn.worker = queued::add; OwnVpn.connect(app(), null);
+        int[] finished = {0}; OwnVpn.boot(app(), () -> finished[0]++);
+        assertEquals(1, finished[0]); assertEquals(0L, app().getSharedPreferences(OwnVpn.PREFS, 0).getLong(OwnVpn.BOOT_PENDING, 0));
+        queued.remove(0).run(); idle(); assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+        OwnVpn.boot(app(), () -> finished[0]++); OwnVpn.catchUp(app()); idle();
+        assertEquals(2, finished[0]); assertTrue(queued.isEmpty()); assertEquals(0, tunnel.downs); assertEquals(1, tunnel.configs.size());
+    }
+    /** Review finding 2: a second caller while connecting gets the same attempt's answer (it is never dropped). */
+    @Test public void everyoneWaitingGetsTheAnswer() throws Exception {
+        keySaved(); consent.given = true; OwnVpn.worker = queued::add;
+        List<Boolean> answers = new ArrayList<>();
+        OwnVpn.connect(app(), answers::add); OwnVpn.connect(app(), answers::add);
+        assertEquals("one attempt", 1, queued.size());
+        queued.remove(0).run(); idle();
+        assertEquals(Arrays.asList(true, true), answers);
+    }
+    /** Review finding 1: a drop or an Off while connecting is never overwritten by the attempt finishing. */
+    @Test public void aDropOrOffWhileConnectingWins() throws Exception {
+        keySaved(); consent.given = true;
+        OwnVpn.connect(app(), null); idle(); OwnVpn.disconnect(app(), null); idle();   // the tunnel exists now
+        OwnVpn.worker = queued::add; List<Boolean> answers = new ArrayList<>();
+        OwnVpn.connect(app(), answers::add);
+        tunnel.dropped.run(); idle();    // e.g. the old VPN service's onDestroy turning the new tunnel off
+        queued.remove(0).run(); idle();
+        assertEquals(OwnVpn.Phase.OFF, OwnVpn.phase()); assertEquals(OwnVpn.DROPPED, OwnVpn.problem()); assertEquals(Collections.singletonList(false), answers);
+        assertNotEquals(LiveTvProtection.State.OPEN, LiveTvProtection.now(app()));
+        OwnVpn.connect(app(), null); OwnVpn.disconnect(app(), null);
+        while (!queued.isEmpty()) queued.remove(0).run();
+        idle();
+        assertEquals("Off pressed while connecting", OwnVpn.Phase.OFF, OwnVpn.phase()); assertFalse(tunnel.up);
+    }
+    /** Review finding 1: a tunnel that falls straight after coming up is not ON. */
+    @Test public void aTunnelThatFallsAtOnceIsNotOn() throws Exception {
+        keySaved(); consent.given = true; tunnel.fallsAfterUp = true;
+        OwnVpn.connect(app(), null); idle();
+        assertEquals(OwnVpn.Phase.FAILED, OwnVpn.phase()); assertNull(OwnVpn.country());
+    }
+    /** Review finding 4: no handshake with NordVPN within the wait is a failure, said plainly, and the tunnel goes down. */
+    @Test public void noHandshakeIsNotConnected() throws Exception {
+        keySaved(); consent.given = true; tunnel.handshakeAt = 0; OwnVpn.HANDSHAKE_MS = 50;
+        OwnVpn.connect(app(), null); idle();
+        assertEquals(OwnVpn.Phase.FAILED, OwnVpn.phase()); assertEquals(OwnVpn.NO_ANSWER, OwnVpn.problem()); assertFalse(tunnel.up);
+        assertEquals("NordVPN didn't answer — check your NordVPN subscription, or paste a new token.", OwnVpn.NO_ANSWER);
+        tunnel.handshakeAt = 1; OwnVpn.connect(app(), null); idle(); assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+    }
+    /** Review finding 5: a new network while Unified TV is in the background waits for Home; start-up is offered only where it can work. */
+    @Test public void aBackgroundReconnectWaitsForHome() throws Exception {
+        keySaved(); consent.given = true; nord.offline = true;
+        OwnVpn.connect(app(), null); idle(); assertEquals(OwnVpn.Phase.FAILED, OwnVpn.phase()); assertTrue(OwnVpn.watching());
+        nord.offline = false; assertFalse(OwnVpn.foreground());
+        OwnVpn.look(); idle();
+        assertTrue(OwnVpn.deferred()); assertEquals("nothing started from the background", OwnVpn.Phase.FAILED, OwnVpn.phase());
+        OwnVpn.catchUp(app()); idle();
+        assertEquals(OwnVpn.Phase.ON, OwnVpn.phase()); assertFalse(OwnVpn.deferred());
+        assertFalse("neither the Home screen nor 'Open Unified TV when the TV turns on'", OwnVpn.atStartOffered(app()));
+    }
+    /** Review finding 6: Android's immediate onAvailable for networks already there is not a new network. */
+    @Test public void onlyANewNetworkCounts() {
+        OwnVpn.Seen seen = new OwnVpn.Seen(Collections.singletonList("wifi"));
+        assertFalse(seen.arrived("wifi")); assertTrue(seen.arrived("ethernet")); assertFalse(seen.arrived("ethernet"));
+        seen.lost("ethernet"); assertTrue("back after it was lost", seen.arrived("ethernet"));
+    }
+    /** Review finding 3: in Kids nothing turns Unified TV's VPN on or off without the adult PIN. */
+    @Test public void kidsCantTurnItOnOrOff() throws Exception {
+        keySaved(); consent.given = true; OwnVpn.connect(app(), null); idle(); assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+        app().getSharedPreferences("unified-tv-preview", 0).edit().putString("pin", Pins.record("2468")).putString(Profiles.PREF, Profiles.CHILD).commit();
+        try (ActivityController<VpnActivity> c = Robolectric.buildActivity(VpnActivity.class).setup()) {
+            String all = words(c.get().body);
+            assertNull(find(c.get().body, "Use NordVPN's own app instead")); assertNull(find(c.get().body, "VPN")); assertFalse(all, all.contains("Forget the NordVPN key"));
+            OwnVpn.press(c.get()); idle(); assertEquals(OwnVpn.KIDS, ShadowToast.getTextOfLatestToast()); assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+        }
+        OwnVpn.disconnect(app(), null); idle();
+        Activity a = screen();
+        OwnVpn.turnOn(a, null); idle();   // the Live TV sheet's Connect and the cover's Reconnect come here
+        assertEquals("the adult PIN first", OwnVpn.Phase.OFF, OwnVpn.phase());
+        android.app.AlertDialog pin = (android.app.AlertDialog) org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog(); assertNotNull(pin);
+        Pins.type(pin, "2468"); idle();
+        assertEquals(OwnVpn.Phase.ON, OwnVpn.phase());
+    }
+    /** Review finding 8: the explanation sheet isn't kept once it closes. */
+    @Test public void theExplanationIsNotKeptAfterItCloses() throws Exception {
+        keySaved(); Activity a = screen();
+        OwnVpn.press(a); idle(); assertNotNull(OwnVpn.explanation());
+        find(OwnVpn.explanation().getWindow().getDecorView(), "Cancel").performClick(); idle();
+        assertNull(OwnVpn.explanation()); assertEquals(OwnVpn.Phase.OFF, OwnVpn.phase());
+    }
+    /** Review findings 7 and 10: plain words about names on the home network, and the phone page doesn't say the token is kept. */
+    @Test public void theWordsAreHonest() throws Exception {
+        assertTrue(OwnVpn.LAN.contains(".local names"));
+        String page = phone(new ArrayList<>()).handle("", PhoneFlowsTest.req("GET", null, null)).html;
+        assertFalse(page, page.contains("never shown again")); assertTrue(page, page.contains("the token is not kept"));
+        String tmdb = new PhoneFlows.Form(PhoneService.tmdb(v -> PhoneFlows.Verdict.OK), x -> {}).handle("", PhoneFlowsTest.req("GET", null, null)).html;
+        assertTrue("other keys still say so", tmdb.contains("It is kept encrypted on the TV and never shown again."));
     }
 
     // --- secrets: never in logs, diagnostics, the event log, exports or the shield's words
@@ -253,7 +365,7 @@ public class OwnVpnTest {
         try (ActivityController<VpnActivity> c = Robolectric.buildActivity(VpnActivity.class).setup()) {
             VpnActivity a = c.get(); String all = words(a.body);
             assertTrue(all, all.contains("Country")); assertEquals("Country, " + OwnVpn.FASTEST, find(a.body, "Country").getContentDescription()); assertTrue(all.contains(OwnVpn.LAN)); assertTrue(all.contains(OwnVpn.NOT_KILL_SWITCH));
-            assertEquals("connect at start only in the launcher app", DefaultHome.available(a), all.contains("Connect when the TV turns on") && !all.contains("not in this preview"));
+            assertFalse("connect at start only where Unified TV comes to the front by itself", OwnVpn.atStartOffered(a)); assertTrue(all, all.contains("Connect when the TV turns on"));
             find(a.body, "VPN").performClick(); idle();
             assertEquals(OwnVpn.Phase.ON, OwnVpn.phase()); assertTrue(words(a.body).contains("On · United Kingdom #9001"));
             find(a.body, "Country").performClick(); idle();

@@ -41,7 +41,8 @@ public final class VpnActivity extends GlassScreen {
             toggle.setEnabled(p != OwnVpn.Phase.CONNECTING);
             row("Country", OwnVpn.countryWords(OwnVpn.chosen(this)), true, this::countries);
             if (OwnVpn.atStartOffered(this)) switchRow("Connect when the TV turns on", OwnVpn.atStart(this), yes -> OwnVpn.atStart(this, yes));
-            else text("\"Connect when the TV turns on\" is in the Unified TV app, not in this preview.", 15);
+            else text(DefaultHome.available(this) ? "\"Connect when the TV turns on\" needs Unified TV to come to the front by itself after the TV starts: make it the Home screen, or switch on \"Open Unified TV when the TV turns on\"."
+                : "\"Connect when the TV turns on\" is in the Unified TV app, not in this preview.", 15);
         }
         nordApp(kids);
         if (!kids) {
@@ -58,7 +59,9 @@ public final class VpnActivity extends GlassScreen {
     private void nordApp(boolean kids) {
         if (!LocalDiscovery.nordVpn(this)) return;
         group("NordVPN's own app"); card();
-        row("Use NordVPN's own app instead", null, false, () -> {
+        // Kids: only NordVPN's app opens (if an adult approved it); Unified TV's VPN is never turned off from here.
+        if (kids) row("Open NordVPN's app", null, false, () -> VpnGate.connect(this));
+        else row("Use NordVPN's own app instead", null, false, () -> {
             if (OwnVpn.phase() == OwnVpn.Phase.ON || OwnVpn.phase() == OwnVpn.Phase.CONNECTING) OwnVpn.disconnect(this, () -> VpnGate.connect(this));
             else VpnGate.connect(this);
         });

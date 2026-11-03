@@ -67,11 +67,14 @@ final class LiveTvProtection {
 
     /**
      * Pure: the one rule. A VPN up and NordVPN installed opens Live TV; nothing else is asked. Unified TV's own NordVPN
-     * tunnel up (OD-29) is a VPN connected to NordVPN, so it opens Live TV with or without NordVPN's app.
+     * tunnel up (OD-29), with Android reporting a VPN, is a VPN connected to NordVPN, so it opens Live TV with or without
+     * NordVPN's app.
      */
     static State decide(Facts f){
         if(f==null)return State.ERROR;
-        if(f.ownTunnel)return State.OPEN;
+        // Unified TV's own tunnel counts only while Android also reports a VPN: its in-memory state alone never opens Live
+        // TV (security review, 3 November 2026).
+        if(f.ownTunnel&&f.vpn==VpnGate.State.CONNECTED)return State.OPEN;
         if(!f.nordInstalled)return State.NO_NORDVPN;
         switch(f.vpn){
             case CONNECTED:return State.OPEN;
@@ -89,7 +92,7 @@ final class LiveTvProtection {
      * says so; otherwise just that a VPN is connected. Either way Live TV is open.
      */
     static String opened(Facts f){
-        if(f!=null&&f.ownTunnel)return "Unified TV's NordVPN connection is on"+(f.ownCountry==null?"":" ("+NordCountry.name(f.ownCountry)+")")+". If it drops, Unified TV will cover Live TV.";
+        if(f!=null&&f.ownTunnel&&f.vpn==VpnGate.State.CONNECTED)return "Unified TV's NordVPN connection is on"+(f.ownCountry==null?"":" ("+NordCountry.name(f.ownCountry)+")")+". If it drops, Unified TV will cover Live TV.";
         boolean nordSaid=f!=null&&f.notificationAccess&&Boolean.TRUE.equals(f.nordSays);
         String country=nordSaid&&f.country!=null?NordCountry.name(f.country):"";
         return (nordSaid?"NordVPN is connected"+(country.isEmpty()?"":" to "+country)+".":"A VPN is connected.")+" If NordVPN drops, Unified TV will cover Live TV.";

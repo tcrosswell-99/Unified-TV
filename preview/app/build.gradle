@@ -27,7 +27,9 @@ android {
     defaultConfig { minSdk 28; targetSdk 33; versionCode 5; versionName '0.5-preview'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         buildConfigField 'String', 'BUILD_SHA', "\"${buildSha}\""
         buildConfigField 'String', 'BUILD_RUN', "\"${buildRun}\""
-        buildConfigField 'String', 'BUILD_DATE', "\"${buildDate}\"" }
+        buildConfigField 'String', 'BUILD_DATE', "\"${buildDate}\""
+        // OD-29: the TCL (C725 family) and the Sony are ARM TVs; CI runs no emulator. Only these two ABIs ship.
+        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' } }
     buildFeatures { buildConfig true }
     sourceSets {
         main { manifest.srcFile 'AndroidManifest.xml'; java.srcDirs = ['src']; res.srcDirs = ['res'] }
@@ -58,6 +60,9 @@ android {
         // install beside the real apps and can be removed without touching them.
         deviceCheck { initWith debug; signingConfig signingConfigs.debug; applicationIdSuffix '.devicecheck'; versionNameSuffix '-devicecheck'; matchingFallbacks = ['debug'] }
     }
+    // OD-29: the WireGuard library's libwg.so and libwg-quick.so are wireguard-tools (GPL-2.0) for its root-only
+    // WgQuickBackend, which Unified TV never uses; only libwg-go.so (GoBackend) ships. preview/THIRD_PARTY.md.
+    packaging { jniLibs { excludes += ['**/libwg.so', '**/libwg-quick.so'] } }
     lint { abortOnError true; disable 'MissingTranslation' }
     testOptions {
         unitTests.includeAndroidResources = true

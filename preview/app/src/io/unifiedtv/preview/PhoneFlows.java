@@ -394,7 +394,7 @@ final class PhoneFlows {
             b.append("<button type=\"submit\">Save on the TV</button></form>");
             if (service.next != null && !service.next.isEmpty()) b.append("<h2>What happens next</h2><p>").append(PhonePages.esc(service.next)).append("</p>");
             return PhonePages.page(service.title, b.append("<p class=\"muted\">").append(PhonePages.esc(service.note))
-                .append(service.fields.stream().anyMatch(f -> f.secret) ? " It is kept encrypted on the TV and never shown again." : "").append("</p>").toString());
+                .append(service.keptWords != null ? service.keptWords : service.fields.stream().anyMatch(f -> f.secret) ? " It is kept encrypted on the TV and never shown again." : "").append("</p>").toString());
         }
     }
 }

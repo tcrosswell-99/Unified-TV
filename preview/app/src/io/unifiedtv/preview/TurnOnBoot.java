@@ -15,8 +15,8 @@ public final class TurnOnBoot extends BroadcastReceiver {
     @Override public void onReceive(Context c,Intent i){
         if(i==null||!Intent.ACTION_BOOT_COMPLETED.equals(i.getAction()))return;
         if(TurnOn.active(c))TurnOnService.start(c,TurnOnService.BOOT);
-        // OD-29: "Connect when the TV turns on" (off by default): Unified TV's own VPN connects, if Android's consent was
-        // given before. The receiver waits for the answer (goAsync), so the TV doesn't stop Unified TV half-way.
-        if(OwnVpn.atStart(c)){PendingResult waiting=goAsync();OwnVpn.boot(c,()->{try{waiting.finish();}catch(RuntimeException ignored){}});}
+        // OD-29: "Connect when the TV turns on" (off by default) is only noted here: Android won't let an app start the VPN
+        // from the background, so Unified TV's own VPN connects when Home first comes to the front (OwnVpn.catchUp).
+        if(OwnVpn.atStart(c))OwnVpn.boot(c,()->{});
     }
 }
