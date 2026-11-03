@@ -53,7 +53,8 @@ public class SettingsJourneyTest {
             assertEquals(SettingsActivity.APPEARANCE,a.overlay().category());
             assertNotNull(find(root(a),"Gallery & slideshow"));assertNull("the detail replaces the root rows",find(root(a),"Smart Home"));
             View f=a.getCurrentFocus();assertNotNull("focus moved into the detail, not lost",f);assertTrue("focus is inside the sheet: "+describe(f),f.getParent()!=null);
-            focused(a,"Gallery & slideshow");
+            // The launcher app's first row is When the TV turns on (owner, 3 November 2026); the preview starts at Wallpaper.
+            focused(a,TurnOnChoice.offered(RuntimeEnvironment.getApplication())?TurnOnChoice.TITLE:"Gallery & slideshow");
             a.onBackPressed();idle();
             assertEquals(SettingsOverlay.Phase.ROOT,a.overlay().page());focused(a,"Appearance & Home");
             // SET-008: an integration that isn't set up offers "Set up", not empty switches.

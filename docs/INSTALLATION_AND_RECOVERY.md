@@ -47,7 +47,7 @@ On Samsung Frame/Tizen, the Android APK **cannot** be installed natively. A comp
 
 ## Taking over the TV's own Home button (launcher app only, OD-28)
 
-**Not tested on a real TV.** Some TVs keep their own Home in front whatever Android is told: the owner's TCL (`TCL/BeyondTV6/BeyondTV4:11/RP1A.200622.001/AR10`, Android 11) declares `com.google.android.tvlauncher` as a Home at priority 2, so another Home can't take the Home button while it is on, and Android 11 has no `cmd role`. The launcher app's **Settings > Appearance & Home > Take over the Home button** handles this with the Optional clean-up's own rules:
+**Not tested on a real TV.** Some TVs keep their own Home in front whatever Android is told: the owner's TCL (`TCL/BeyondTV6/BeyondTV4:11/RP1A.200622.001/AR10`, Android 11) declares `com.google.android.tvlauncher` as a Home at priority 2, so another Home can't take the Home button while it is on, and Android 11 has no `cmd role`. The launcher app's **Settings > Appearance & Home > When the TV turns on > Make Unified TV the TV's Home (instant)** handles this with the Optional clean-up's own rules:
 
 - **Adults only**, behind the PIN, off until chosen; the preview app never has it.
 - **The same session-only link** to the TV's own debugging as the clean-up (same "Allow USB debugging?" prompt and key, this TV only, closed when done, then the guide to turn debugging off and the port check).

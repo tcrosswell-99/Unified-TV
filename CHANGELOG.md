@@ -10,6 +10,8 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **One choice for "When the TV turns on" (launcher):** Settings > Appearance & Home, and an optional setup-guide step: show the TV's own Home, open Unified TV (quick), or make Unified TV the TV's Home (instant, through the Home takeover with its way back). **Not tested** on a television.
+
 - **Unified TV's own NordVPN connection (OD-29):** after pasting a NordVPN access token once on the phone, OK on the shield connects or disconnects inside Unified TV, and holding OK picks the country. It uses NordVPN's WireGuard service (NordLynx) through the official WireGuard tunnel library (Apache-2.0). The home network stays reachable. NordVPN's server API is unofficial and may change. **Not tested** on a television.
 - **AirPlay icon never leaves Unified TV (OD-30):** a panel says AirPlay is ready, or how to keep AirPin always ready, with Check again; AirPin opens only from "Start AirPin now". **Not tested** on a television.
 

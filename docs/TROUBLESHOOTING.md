@@ -794,7 +794,7 @@ changes. Owner diagnostics (Updates & About → Advanced) shows the last phone s
 
 ## No Home screen after uninstalling Unified TV
 
-The Unified TV launcher app's **Take over the Home button** (Settings → Appearance & Home, OD-28) turns the TV's own
+The Unified TV launcher app's **Make Unified TV the TV's Home (instant)** (Settings → Appearance & Home → When the TV turns on, OD-28) turns the TV's own
 Home off on TVs that otherwise keep it in front, such as the TCL (`com.google.android.tvlauncher`). It is turned off,
 never removed. Uninstalling or replacing Unified TV before choosing **Return to the original TV interface** leaves the
 TV with no Home screen: pressing Home does nothing, or Android's setup or a blank screen appears. Put the TV's own Home

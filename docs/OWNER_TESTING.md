@@ -36,7 +36,7 @@ $tv = "<the TV's address>:5555"
 
 ## Review build of the launcher (safe beside everything else)
 
-> **Before uninstalling or replacing a review build that has taken over the Home button** (Settings → Appearance & Home → Take over the Home button, OD-28): first choose **Return to the original TV interface** in that build's Settings. Otherwise the TV's own Home stays off and the TV has no Home screen after the uninstall. If that has already happened, put it back from the PC:
+> **Before uninstalling or replacing a review build that has taken over the Home button** (Settings → Appearance & Home → When the TV turns on → Make Unified TV the TV's Home (instant), OD-28): first choose **Return to the original TV interface** in that build's Settings. Otherwise the TV's own Home stays off and the TV has no Home screen after the uninstall. If that has already happened, put it back from the PC:
 >
 > ```powershell
 > & "$HOME\platform-tools\adb.exe" -s $tv shell pm enable com.google.android.tvlauncher
@@ -98,7 +98,26 @@ Write down the last line: the TV's own Home (on the TCL it was `com.google.andro
 & "$HOME\platform-tools\adb.exe" -s $tv shell cmd package set-home-activity com.google.android.tvlauncher/.MainActivity
 ```
 
-Removing the review build also hands Home back, **unless** it has taken over the Home button (OD-28, below): then choose Return to the original TV interface first, or run `adb shell pm enable com.google.android.tvlauncher` afterwards. Then, in the review build, open **Settings → TV & performance → Make Unified TV the Home screen**, and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
+Removing the review build also hands Home back, **unless** it has taken over the Home button (OD-28, below): then choose Return to the original TV interface first, or run `adb shell pm enable com.google.android.tvlauncher` afterwards. Then, in the review build, open **Settings → Appearance & Home → When the TV turns on → Make Unified TV the Home screen** (Android's own Home choice, under Home button), and record what Android shows (a role request, a Home settings page or a chooser). Test Home from Netflix, after standby and after a restart, and **Open original TV interface**. Record each one.
+
+## When the TV turns on (launcher app; owner's question of 3 November 2026)
+
+**Not tested on a TV yet.** "Will Unified TV load instantly when the TV wakes from standby?" is now one choice: **Settings → Appearance & Home → When the TV turns on** (the first row there; its chip says the current choice). The page is the glass sidebar with three options, one line each, and a tick on what is true now:
+
+1. **Show the TV's own Home**: nothing changes (the default).
+2. **Open Unified TV (quick)**: the TV's own Home shows for a moment, then Unified TV comes to the front (OD-23, below).
+3. **Make Unified TV the TV's Home (instant)**: the Home button and waking both show Unified TV straight away (OD-28, below: it uses network debugging once and may turn the TV's own Home off).
+
+The Home button's other rows (Android's own **Make Unified TV the Home screen** and **Return to the original TV interface**) are on this page too, under *Home button*, and no longer in Appearance & Home itself.
+
+1. **Tick:** open the page and note which option is ticked. Expected on a fresh install: **Show the TV's own Home**.
+2. **Quick:** choose **Open Unified TV (quick)** and type the adult PIN. Expected: the tick moves to it. If *Display over other apps* is missing, the page says *Not working yet* and either opens the TV's own setting for it or shows the one-time computer command (below). Allow it, come back, and check the warning has gone. Then do the OD-23 checks below (standby and wake, and so on) and note how long the TV's own Home shows before Unified TV.
+3. **Back to 1:** choose **Show the TV's own Home**, PIN. Expected: the tick moves back and the notification *Open Unified TV when the TV turns on* goes.
+4. **Instant:** choose **Make Unified TV the TV's Home (instant)**. Expected: the Home takeover page opens and asks the adult PIN, then explains what changes (with the review build reminder). Follow the OD-28 steps below. When it finishes, open the page again: the tick is on option 3, and if option 2 was on before, it is now off (not needed).
+5. **Choosing 1 or 2 while Unified TV is Home:** with option 3 done, choose **Open Unified TV (quick)**. Expected: nothing changes yet; **Return to the original TV interface** opens first and says *To choose Open Unified TV (quick), Unified TV first hands the Home button back to the TV's own Home.* Choose **Not now**: the tick stays on option 3. Do it again and complete Return: back on the page, the tick is on option 2.
+6. **Guided setup:** Settings → Updates & About → Guided setup → **Run the guided setup again**. After *Your films and TV* comes **When the TV turns on** (step 5 of 6) with the same three options and **Skip — choose later in Settings**. Choose one (or skip), then **Next**: the last step lists *When the TV turns on:* and what is chosen (or *skipped*).
+
+Report the model, firmware, build, what each step said and how long each wake took.
 
 ## Take over the Home button (launcher app, OD-28; only when you choose to try it)
 
@@ -112,27 +131,27 @@ Removing the review build also hands Home back, **unless** it has taken over the
    & "$HOME\platform-tools\adb.exe" -s $tv shell pm list packages -d
    ```
 
-2. **Start:** Settings → Appearance & Home → **Take over the Home button**, PIN, **Start**. If the TV asks **Allow USB debugging?** for `unifiedtv@tv`, tick **Always allow** and choose **OK**. Expected on the TCL: the page says the TV puts **Android TV Home (com.google.android.tvlauncher)** ahead of other Home screens, and nothing has changed yet (step 1's commands still say the same). Record exactly what the page says.
-3. **Confirm:** choose **Turn off Android TV Home and use Unified TV**. Expected: *Unified TV is the Home screen*. From the PC, the first command of step 1 now names `io.unifiedtv.launcher.devicecheck/io.unifiedtv.preview.HomeEntry`, and `pm list packages -d` now includes `com.google.android.tvlauncher`. If the page says another app answers Home instead (for example `com.google.android.tungsten.setupwraith`), write its name down and choose **Undo**.
+2. **Start:** Settings → Appearance & Home → **When the TV turns on** → **Make Unified TV the TV's Home (instant)**, PIN, **Start**. The first page explains what changes and says *Before uninstalling a review build, choose Return to the original TV interface.* If the TV asks **Allow USB debugging?** for `unifiedtv@tv`, tick **Always allow** and choose **OK**. Expected on the TCL: the page says the TV puts **Android TV Home (com.google.android.tvlauncher)** ahead of other Home screens, and nothing has changed yet (step 1's commands still say the same). Record exactly what the page says.
+3. **Confirm:** choose **Turn off Android TV Home and use Unified TV** (the page first warns that a few of the remote's app buttons may stop working). Expected: *Unified TV is the Home screen*. From the PC, the first command of step 1 now names `io.unifiedtv.launcher.devicecheck/io.unifiedtv.preview.HomeEntry`, and `pm list packages -d` now includes `com.google.android.tvlauncher`. If the page says another app answers Home instead (for example `com.google.android.tungsten.setupwraith`), write its name down and choose **Undo**.
 4. **Debugging:** choose **Next**, follow the steps to turn off USB debugging if you want, and **Check that it's off**. Then **Next: try the Home button**.
 5. **Press Home** on the remote within 20 seconds. Expected: Unified TV comes to the front and says *Done. The Home button now opens Unified TV.* Then test Home from Netflix, from an HDMI input, after standby and after a restart at the wall, and Back from each app. Note any remote button (app buttons, Settings, Input) that stops working.
 6. **Uninstall guard:** Settings → Updates & About shows *Before uninstalling or replacing this build, choose Return to the original TV interface.*
-7. **Return:** Settings → Appearance & Home → **Return to the original TV interface**, PIN, and the same button again (debugging needs to be on for this). Expected: *The Home button opens Android TV Home again*; pressing Home shows the TV's own Home; step 1's commands match what you wrote down before.
+7. **Return:** Settings → Appearance & Home → **When the TV turns on** → **Return to the original TV interface**, PIN, and the same button again (debugging needs to be on for this). Expected: *The Home button opens Android TV Home again*; pressing Home shows the TV's own Home; step 1's commands match what you wrote down before.
 8. **Return without debugging:** repeat steps 2 to 5, turn off USB debugging, then try step 7. Expected: the page shows the TV-only route (Settings → Apps → See all apps → Show system apps → Android TV Home → Enable) and the PC command. Follow the TV-only route, then **Check again**.
 
 Report the model, firmware, build, what each step said, the PC output, and anything on the remote that stopped working. Unified TV never reads or reassigns any key, and never turns off anything except the TV's own Home.
 
 ## Open Unified TV when the TV turns on (launcher app, OD-23)
 
-For a TV that keeps its own Home button. In the launcher app: **Settings → Appearance & Home → Home button → Open Unified TV when the TV turns on** (adult PIN). It is off by default and not shown once the Home button opens Unified TV. The Home button still opens the TV's own Home; nothing reads or reassigns a key.
+For a TV that keeps its own Home button. In the launcher app: **Settings → Appearance & Home → When the TV turns on → Open Unified TV (quick)** (adult PIN; see the section above). It is off by default, and not needed once the Home button opens Unified TV (option 3 then has the tick). The Home button still opens the TV's own Home; nothing reads or reassigns a key.
 
-It needs Android's **Display over other apps** permission, used only to bring Unified TV to the front. If the TV has a screen for it, the row opens it. If not, the row says **Needs permission** and shows this one-time computer step with the right package name (the review build is `io.unifiedtv.launcher.devicecheck`):
+It needs Android's **Display over other apps** permission, used only to bring Unified TV to the front. If the TV has a screen for it, choosing the option opens it. If not, the page says **Not working yet** and shows this one-time computer step with the right package name (the review build is `io.unifiedtv.launcher.devicecheck`):
 
 ```powershell
 & "$HOME\platform-tools\adb.exe" -s $tv shell appops set io.unifiedtv.launcher SYSTEM_ALERT_WINDOW allow
 ```
 
-To take the permission away again: the same command with `default` instead of `allow`. Switching the row off stops the small watcher.
+To take the permission away again: the same command with `default` instead of `allow`. Choosing **Show the TV's own Home** stops the small watcher.
 
 On the TCL, with it switched on, record for each case which screen appears and after how long: (1) standby with the remote, wait 10 seconds, wake; (2) the same from inside Netflix, paused; (3) start a video, put the TV in standby and wake it: if the video is still playing, Unified TV should stay out of the way; (4) a full power cycle at the wall; (5) waking the TV by turning on a device on HDMI (HDMI-CEC), and with the TV set to start on its last input or on its own Live TV. Android does not tell apps the TV woke into another input, so in (5) Unified TV may come to the front over that input: say if it does. Also say if the TV's own Home appears on top of Unified TV a moment later, and send `adb shell dumpsys meminfo io.unifiedtv.launcher` after a day with it on.
 
