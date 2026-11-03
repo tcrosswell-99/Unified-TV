@@ -32,11 +32,13 @@ public class FirstRunJourneyTest {
         ActivityController<FirstRunActivity> c=Robolectric.buildActivity(FirstRunActivity.class,i).setup();idle();return c;
     }
     @Before public void clean(){app=RuntimeEnvironment.getApplication();prefs().edit().clear().commit();}
+    /** "of 5" in the preview; the launcher app has When the TV turns on too ("of 6"). */
+    private String of(){return " of "+FirstRun.steps(app).size();}
 
     @Test public void fiveOptionalStepsFromWelcomeToHome(){
         ActivityController<FirstRunActivity> c=start(null);FirstRunActivity a=c.get();
         try{
-            assertEquals(FirstRun.WELCOME,a.step());assertTrue(says(root(a),"Step 1 of 5"));assertTrue(says(root(a),"Nothing here asks for an account, a password or an address."));
+            assertEquals(FirstRun.WELCOME,a.step());assertTrue(says(root(a),"Step 1"+of()));assertTrue(says(root(a),"Nothing here asks for an account, a password or an address."));
             assertEquals("OK starts it","Start",focused(a));assertNotNull("Skip is always there",find(root(a),"Skip the guided setup"));
             press(a,"Start");
             assertEquals(FirstRun.REMOTE,a.step());assertEquals(FirstRun.REMOTE,FirstRun.load(prefs()).step);assertEquals(FirstRun.IN_PROGRESS,FirstRun.load(prefs()).status);
@@ -55,6 +57,7 @@ public class FirstRunJourneyTest {
             Intent lib=Shadows.shadowOf(a).getNextStartedActivity();assertEquals(DlnaLibraryActivity.class.getName(),lib.getComponent().getClassName());assertTrue(lib.getBooleanExtra("setup",false));
             c.pause().resume();idle();assertEquals("back from Films & TV setup, on the same step",FirstRun.LIBRARY,a.step());
             press(a,"Next");
+            if(DefaultHome.available(app)){assertEquals("the launcher app: When the TV turns on",FirstRun.TURN_ON,a.step());press(a,TurnOnChoice.SKIP);}
             assertEquals(FirstRun.FINISH,a.step());assertTrue(says(root(a),"Films & TV: skipped — set up any time in Settings"));assertNull("nothing left to skip",find(root(a),"Skip the guided setup"));
             press(a,"Go to Home");
             assertTrue(a.isFinishing());assertEquals(FirstRun.COMPLETED,FirstRun.load(prefs()).status);
@@ -84,7 +87,7 @@ public class FirstRunJourneyTest {
         press(c.get(),"Start");press(c.get(),"Next");assertEquals(FirstRun.APPS,c.get().step());
         c.pause().stop().destroy();   // the Home button, another app, or the TV going to standby
         ActivityController<FirstRunActivity> again=start(null);
-        try{assertEquals("resumed",FirstRun.APPS,again.get().step());assertTrue(says(root(again.get()),"Step 3 of 5"));}
+        try{assertEquals("resumed",FirstRun.APPS,again.get().step());assertTrue(says(root(again.get()),"Step 3"+of()));}
         finally{again.pause().stop().destroy();}
     }
     @Test public void neverShownInKids(){

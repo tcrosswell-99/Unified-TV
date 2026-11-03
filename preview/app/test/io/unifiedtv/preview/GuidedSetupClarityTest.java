@@ -267,13 +267,14 @@ public class GuidedSetupClarityTest {
         ActivityController<FirstRunActivity> c=Robolectric.buildActivity(FirstRunActivity.class).setup();settle();FirstRunActivity a=c.get();
         try{
             List<String> order=new ArrayList<>();
-            for(int i=0;i<FirstRun.STEPS.size();i++){
+            List<String> steps=FirstRun.steps(app);   // the launcher app adds When the TV turns on before the last step
+            for(int i=0;i<steps.size();i++){
                 order.add(a.step());String line=firstLine(a);
                 assertTrue(a.step()+" starts with what to do: "+line,line.startsWith("On Home:")||line.startsWith("Home has no apps yet")||line.matches(".*(Press|press|Nothing to do).*"));
-                if(i==0)press(a,"Start");else if(i<FirstRun.STEPS.size()-1)press(a,"Next");
+                if(i==0)press(a,"Start");else if(FirstRun.TURN_ON.equals(a.step()))press(a,TurnOnChoice.SKIP);else if(i<steps.size()-1)press(a,"Next");
             }
-            assertEquals(FirstRun.STEPS,order);
-            for(int i=FirstRun.STEPS.size()-1;i>0;i--){a.onBackPressed();idle();assertEquals("Back goes one step back",FirstRun.STEPS.get(i-1),a.step());assertFalse(a.isFinishing());}
+            assertEquals(steps,order);
+            for(int i=steps.size()-1;i>0;i--){a.onBackPressed();idle();assertEquals("Back goes one step back",steps.get(i-1),a.step());assertFalse(a.isFinishing());}
             // Left with nothing further left is Back too: from the remote step's Next, one step back, not out.
             press(a,"Start");Button next=button(root(a),"Next");next.requestFocus();
             a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_LEFT));idle();

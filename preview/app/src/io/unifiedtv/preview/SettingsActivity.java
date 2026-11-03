@@ -346,6 +346,14 @@ public final class SettingsActivity extends Screen {
 
     // --- Appearance & Home (module 13 §C 01: Wallpaper, Dock & Icons, Ambient background, Clock, Readability, Advanced)
     private void appearance(){
+        // Owner, 3 November 2026: one clear choice, at the top (launcher app only; the preview has no Home).
+        if(TurnOnChoice.offered(this)){
+            HomeTakeover.reconcile(this);   // OD-28: the TV's own Home turned back on outside Unified TV (TV settings, adb): tidy up
+            Button wake=button(TurnOnChoice.TITLE,()->{turnOnOpen=true;TurnOnChoiceActivity.open(this);});
+            String chip=TurnOnChoice.current(this).chip;
+            wake.setCompoundDrawablesRelative(null,null,new SettingsGlass.Trailing(chip,true,false,textPx(19)),null);wake.setCompoundDrawablePadding(px(16));
+            wake.setContentDescription(TurnOnChoice.TITLE+", "+chip);
+            text(TurnOnChoice.ROW_LINE,15);}
         section("Wallpaper");
         button("Gallery & slideshow",()->startActivity(new Intent(this,GalleryActivity.class).putExtra("edit",true)));
         wallpaper();
@@ -381,24 +389,11 @@ public final class SettingsActivity extends Screen {
         text("Doorbell, person and reminder messages, and the doorbell camera, stay twice as long.",15);
         section("Home navigation");
         taskRow("Navigation & Shortcuts",NAVIGATION,true,draftUtilities==null?null:"Preview");
-        if(DefaultHome.available(this)){section("Home button");
-            HomeTakeover.reconcile(this);   // OD-28: the TV's own Home turned back on outside Unified TV (TV settings, adb): tidy up
-            boolean ours=DefaultHome.isDefault(this),off=HomeTakeover.stockOff(this),kept=!ours&&!off&&DefaultHome.fixed(this);
-            // Chosen once, but this TV keeps its own Home button (owner's TCL, 25 October 2026): said plainly, no dead switch.
-            text(ours?(off?HOME_TAKEN:"The Home button opens Unified TV."):off?HOME_OFF_OTHER:kept?DefaultHome.KEPT_WORDS:"The Home button opens the original TV interface.",16);
-            if(!ours&&!kept&&!off)button("Make Unified TV the Home screen",()->EditLock.ask(this,this::homeSetup));
-            // OD-28: take over the TV's own Home button (asks the PIN itself), and always a way back while Unified TV has it.
-            if(!ours&&!off){button(HomeTakeoverActivity.TAKE_TITLE,()->HomeTakeoverActivity.open(this,true));text(TAKE_NOTE,15);}
-            if(ours||off||DefaultHome.offered(this))button(HomeTakeoverActivity.RETURN_TITLE,()->HomeTakeoverActivity.open(this,false));
-            // OD-23: only while the Home button doesn't open Unified TV (TurnOn); the preview never shows it.
-            if(!ours)turnOnRow();}
-        else{section("Home button");text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",15);}
+        // The launcher app's Home button rows (Android's own choice, Take over, Return, OD-23) live only in When the TV turns on.
+        if(!TurnOnChoice.offered(this)){section("Home button");text("This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.",15);}
         section("Advanced appearance");
         taskRow("Advanced appearance",APPEARANCE_ADVANCED,false,null);
     }
-    static final String HOME_TAKEN="The Home button opens Unified TV. The TV's own Home is turned off; Return to the original TV interface turns it back on.",
-        HOME_OFF_OTHER="Unified TV turned the TV's own Home off, but the Home button doesn't open Unified TV. Return to the original TV interface turns it back on.",
-        TAKE_NOTE="For a TV that keeps its own Home button. Uses the TV's network debugging, asks before turning the TV's own Home off (never removed), and is undone here.";
     /** Reduce motion, transparency, contrast or lightweight changed: the sheet and its rows follow at once (posted, so a
      *  switch is never removed while its own click is still running). */
     void restyle(){material();body.post(()->{if(overlay.acceptsInput()&&!overlay.atRoot())show(overlay.category());});}
@@ -546,7 +541,7 @@ public final class SettingsActivity extends Screen {
         text("What works, what needs setting up or your OK, and what this TV can't do, in plain words.",15);
         // SET-010 / SET-015: the guided setup again, whole or one part. Adults only, like the setup itself.
         if(!Profiles.kids(this)){section("Guided setup");
-            button(FirstRun.status(FirstRun.load(prefs)),()->EditLock.ask(this,()->{if(!FirstRun.IN_PROGRESS.equals(FirstRun.load(prefs).status))FirstRun.save(prefs,FirstRun.startOver());guidedSetupOpen=true;FirstRun.start(this,null);}));
+            button(FirstRun.status(FirstRun.load(prefs),FirstRun.steps(this)),()->EditLock.ask(this,()->{if(!FirstRun.IN_PROGRESS.equals(FirstRun.load(prefs).status)){FirstRun.save(prefs,FirstRun.startOver());prefs.edit().remove(TurnOnChoice.GUIDE).apply();}guidedSetupOpen=true;FirstRun.start(this,null);}));
             button("Just one part",()->EditLock.ask(this,()->new AlertDialog.Builder(this).setTitle("Run one part").setItems(new String[]{"Your remote","Your apps","Your films and TV"},
                 (d,n)->{guidedSetupOpen=true;FirstRun.start(this,new String[]{FirstRun.REMOTE,FirstRun.APPS,FirstRun.LIBRARY}[n]);}).setNegativeButton("Cancel",null).show()));
             text("Short, optional steps over Home: the remote, your apps, and your films and TV. Nothing you've chosen is lost.",15);}
@@ -642,20 +637,10 @@ public final class SettingsActivity extends Screen {
         c.setContentDescription(name+", "+(c.isChecked()?"On":"Off"));c.setOnFocusChangeListener((v,f)->c.setContentDescription(name+", "+(c.isChecked()?"On":"Off")));
         return c;
     }
-    /** Spec 28.3 onboarding: explain, let Android ask, then confirm what actually happened. */
-    private void homeSetup(){
-        new AlertDialog.Builder(this).setTitle("Make Unified TV the Home screen").setMessage("Pressing Home will open Unified TV instead of the original TV interface. The original interface stays on the TV, and you can switch back at any time from this screen.\n\nYour TV will ask you to choose: pick Unified TV.")
-            .setPositiveButton("Continue",(d,w)->{homeAsked=true;settingsPass();
-                // No dialog, Home settings or chooser on this TV: nothing can be chosen, so nothing is left switched on.
-                if(DefaultHome.offer(this)==DefaultHome.Route.NONE){homeAsked=false;DefaultHome.withdraw(this);DefaultHome.fixed(this,true);note(DefaultHome.KEPT_WORDS);show(APPEARANCE);}})
-            .setNegativeButton("Cancel",null).show();
-    }
-    private boolean homeAsked;
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==DefaultHome.REQUEST)homeChecked();}
-    @Override protected void onResume(){super.onResume();if(homeAsked)homeChecked();if(guidedSetupOpen){guidedSetupOpen=false;refresh();}
-        if(overlayAsked){overlayAsked=false;TurnOn.sync(this);refresh();}}
-    /** Back from Android's "Display over other apps" screen: the row shows whatever was chosen there. */
-    private boolean overlayAsked;
+    @Override protected void onResume(){super.onResume();if(guidedSetupOpen){guidedSetupOpen=false;refresh();}
+        if(turnOnOpen){turnOnOpen=false;refresh();}}
+    /** Back from When the TV turns on: the row's chip shows what is true now. */
+    private boolean turnOnOpen;
     /** Only one panel at a time (OnePanel): this sheet hides while a setup panel is open over it, and comes back after. */
     private final OnePanel panels=new OnePanel();
     @Override public void startActivityForResult(Intent intent,int code,Bundle options){
@@ -665,31 +650,6 @@ public final class SettingsActivity extends Screen {
     @Override protected void onPostResume(){super.onPostResume();panels.show(sheet,calm());}
     /** True when the sheet is on screen: not hidden under another panel (OnePanel). */
     boolean panelShown(){return sheet!=null&&sheet.isAttachedToWindow()&&sheet.getVisibility()==View.VISIBLE&&sheet.getAlpha()>0&&!panels.hidden();}
-    /**
-     * OD-23 "Open Unified TV when the TV turns on" (launcher app; Home button not Unified TV's): one row behind the adult
-     * PIN, its state said honestly (On, Needs permission, Off). The permission is Android's "Display over other apps",
-     * used only to come to the front: the TV's own screen for it when there is one, otherwise a one-time computer step.
-     */
-    private void turnOnRow(){
-        TurnOn.State s=TurnOn.state(this);
-        button(TurnOn.TITLE+": "+s.words,()->EditLock.ask(this,this::turnOnChange));
-        text(TurnOn.EXPLAIN,15);
-        if(s==TurnOn.State.NEEDS_PERMISSION)text(TurnOn.permissionScreen(this)!=null?TurnOn.PERMISSION_WORDS+" Press the row to open that setting."
-            :TurnOn.PERMISSION_WORDS+" "+TurnOn.NO_SCREEN_WORDS+" "+TurnOn.adb(this),15);
-    }
-    /** Behind the PIN: Off becomes On (asking for the permission if it is missing), On becomes Off. */
-    private void turnOnChange(){
-        TurnOn.State s=TurnOn.state(this);
-        if(s==TurnOn.State.ON){TurnOn.enabled(this,false);TurnOn.sync(this);show(APPEARANCE);return;}
-        if(s==TurnOn.State.OFF){TurnOn.enabled(this,true);TurnOn.sync(this);show(APPEARANCE);if(TurnOn.permitted(this))return;}
-        Intent screen=TurnOn.permissionScreen(this);
-        AlertDialog.Builder ask=new AlertDialog.Builder(this).setTitle(TurnOn.TITLE)
-            .setNeutralButton("Switch it off",(d,w)->{TurnOn.enabled(this,false);TurnOn.sync(this);show(APPEARANCE);});
-        if(screen!=null)ask.setMessage(TurnOn.PERMISSION_WORDS).setNegativeButton("Cancel",null)
-            .setPositiveButton("Open the TV's setting",(d,w)->{settingsPass();overlayAsked=true;try{startActivity(screen);}catch(RuntimeException e){overlayAsked=false;note(TurnOn.NO_SCREEN_WORDS+" "+TurnOn.adb(this));}});
-        else ask.setMessage(TurnOn.PERMISSION_WORDS+"\n\n"+TurnOn.NO_SCREEN_WORDS+"\n"+TurnOn.adb(this)).setPositiveButton("OK",null);
-        ask.show();
-    }
     /**
      * A feature's next step, from What this TV can do (Capabilities.GO_*): its category inside this sheet, its phone setup,
      * or its own screen. Kids settings and phone setup are behind the adult PIN, as everywhere else.
@@ -709,14 +669,6 @@ public final class SettingsActivity extends Screen {
             default:break;
         }
     }
-    /**
-     * Back from Android's choice (any result): Unified TV's own Home comes to the front at once, so the owner is never
-     * left on another Home, and Home reports what Android recorded (DefaultHome.settle: an unchosen entry is withdrawn).
-     */
-    private void homeChecked(){
-        if(!homeAsked)return;homeAsked=false;
-        try{startActivity(DefaultHome.backHome(this));overridePendingTransition(0,0);}catch(RuntimeException e){DefaultHome.settle(this,s->{note(DefaultHome.words(s));if(overlay.category()==APPEARANCE)show(APPEARANCE);});}
-    }
     private void original(){
         boolean ours=DefaultHome.isDefault(this);
         java.util.List<String> choices=new java.util.ArrayList<>();choices.add("Open original interface for now");if(ours)choices.add("Make original interface the default");choices.add("Cancel");
@@ -729,7 +681,7 @@ public final class SettingsActivity extends Screen {
     }
     private void connection(String key){startActivity(new Intent(this,ServiceDiscoveryActivity.class).putExtra("key",key));}
     /** An adult is here behind the PIN: if Kids is on, the Kids guard lets system screens opened from here stay a while. */
-    private void settingsPass(){if(Profiles.kids(this))getSharedPreferences("unified-tv-preview",0).edit().putLong(KidsGuard.PASS,System.currentTimeMillis()+KidsGuard.PASS_MS).apply();}
+    private void settingsPass(){KidsGuard.grantPass(this);}
 
     // --- SET-025 preview and revert
     /** A change that could make Settings unreadable or unusable is a preview: it goes back by itself unless kept. */

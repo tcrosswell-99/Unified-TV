@@ -106,9 +106,11 @@ public class HomeTakeoverJourneyTest {
     // --- take over
     @Test public void takingOverExplainsFirstRecordsThenAsksForTheHomeButton() throws Exception {
         Assume.assumeTrue("launcher app only", launcher());
+        TurnOn.enabled(app, true);   // "Open Unified TV (quick)" was chosen before
         try (ActivityController<HomeTakeoverActivity> c = open(true)) {
             HomeTakeoverActivity a = c.get();
             assertTrue(words(root(a)).contains(HomeTakeoverActivity.INTRO));
+            assertTrue("the review build reminder, before anything", words(root(a)).contains(HomeTakeoverActivity.REVIEW_BUILD_WORDS));
             assertTrue("the way back is said before anything", words(root(a)).contains(HomeTakeoverActivity.WAY_BACK));
             assertTrue("nothing yet", tv.commands.isEmpty());
             press(a, "Start");
@@ -124,6 +126,7 @@ public class HomeTakeoverJourneyTest {
             assertEquals(STOCK, HomeTakeover.turnedOff(app));
             assertTrue("the link is closed when done", tv.closed);
             assertTrue(words(root(a)).contains("Unified TV is the Home screen"));
+            assertFalse("When the TV turns on: option 3 done, so OD-23's switch is off (not needed)", TurnOn.enabled(app));
             press(a, "Next");
             assertTrue("the debugging-off check", words(root(a)).contains("Turn off USB debugging"));
             assertNotNull(find(root(a), "Check that it's off"));
@@ -230,9 +233,15 @@ public class HomeTakeoverJourneyTest {
         try (ActivityController<SettingsActivity> c = Robolectric.buildActivity(SettingsActivity.class).setup()) {
             SettingsActivity a = c.get(); idle();
             category(a, "Appearance & Home");
-            assertNotNull("the way back is prominent here too", find(root(a), HomeTakeoverActivity.RETURN_TITLE));
-            assertNull("not offered again while it holds Home", find(root(a), HomeTakeoverActivity.TAKE_TITLE));
-            assertNull(find(root(a), "Make Unified TV the Home screen"));
+            assertNull("no duplicate rows in Appearance & Home", find(root(a), HomeTakeoverActivity.RETURN_TITLE));
+            assertNotNull("one row: When the TV turns on", starting(root(a), TurnOnChoice.TITLE));
+        }
+        try (ActivityController<TurnOnChoiceActivity> c = Robolectric.buildActivity(TurnOnChoiceActivity.class).setup()) {
+            TurnOnChoiceActivity a = c.get(); idle();
+            assertNotNull("the way back is prominent on the page", find(root(a), HomeTakeoverActivity.RETURN_TITLE));
+            assertTrue("the TV's own Home is off: option 3", String.valueOf(starting(root(a), TurnOnChoice.Option.HOME.title).getContentDescription()).endsWith(TurnOnChoice.CHOSEN));
+            assertNull(find(root(a), TurnOnChoiceActivity.ANDROID_CHOICE));
+            assertTrue(words(root(a)).contains(HomeTakeoverActivity.REVIEW_BUILD_WORDS));
         }
         assertTrue("record unchanged by looking", HomeTakeover.stockOff(app));
         assertTrue(record().delete()); stockHome(true);
@@ -248,8 +257,15 @@ public class HomeTakeoverJourneyTest {
         try (ActivityController<SettingsActivity> c = Robolectric.buildActivity(SettingsActivity.class).setup()) {
             SettingsActivity a = c.get(); idle();
             category(a, "Appearance & Home");
-            assertTrue(words(root(a)).contains(SettingsActivity.TAKE_NOTE));
-            press(a, HomeTakeoverActivity.TAKE_TITLE);
+            assertNull("only on When the TV turns on", find(root(a), HomeTakeoverActivity.TAKE_TITLE));
+            category(a, TurnOnChoice.TITLE);
+            Intent page = Shadows.shadowOf(a).getNextStartedActivity();
+            assertEquals(TurnOnChoiceActivity.class.getName(), page.getComponent().getClassName());
+        }
+        try (ActivityController<TurnOnChoiceActivity> c = Robolectric.buildActivity(TurnOnChoiceActivity.class).setup()) {
+            TurnOnChoiceActivity a = c.get(); idle();
+            assertTrue(words(root(a)).contains(TurnOnChoice.Option.HOME.line));
+            press(a, TurnOnChoice.Option.HOME.title);
             Intent started = Shadows.shadowOf(a).getNextStartedActivity();
             assertEquals(HomeTakeoverActivity.class.getName(), started.getComponent().getClassName());
             assertEquals(HomeTakeoverActivity.TAKE, started.getStringExtra(HomeTakeoverActivity.MODE));
@@ -419,7 +435,9 @@ public class HomeTakeoverJourneyTest {
             category(a, "Appearance & Home");
             assertNull(find(root(a), HomeTakeoverActivity.TAKE_TITLE));
             assertNull(find(root(a), HomeTakeoverActivity.RETURN_TITLE));
+            assertNull(starting(root(a), TurnOnChoice.TITLE));
         }
+        assertNull("nor the choice's page", app.getPackageManager().resolveActivity(new Intent(app, TurnOnChoiceActivity.class), 0));
         try (ActivityController<UnifiedPreviewActivity> c = Robolectric.buildActivity(UnifiedPreviewActivity.class).setup()) {
             idle(); assertTrue(hasHome(c.get()));
         }

@@ -8,6 +8,13 @@ import static org.junit.Assert.*;
 public class FirstRunTest {
     @Test public void fiveStepsInOrder(){
         assertEquals(Arrays.asList("welcome","remote","apps","library","finish"),FirstRun.STEPS);
+        // The launcher app adds When the TV turns on, after the apps and films steps, just before the summary.
+        assertEquals(Arrays.asList("welcome","remote","apps","library","turnOn","finish"),FirstRun.LAUNCHER_STEPS);
+        assertEquals(FirstRun.STEPS,FirstRun.steps(false));assertEquals(FirstRun.LAUNCHER_STEPS,FirstRun.steps(true));
+        assertEquals(FirstRun.TURN_ON,FirstRun.next(FirstRun.LIBRARY,FirstRun.LAUNCHER_STEPS));assertEquals(FirstRun.FINISH,FirstRun.next(FirstRun.TURN_ON,FirstRun.LAUNCHER_STEPS));
+        assertEquals(FirstRun.TURN_ON,FirstRun.previous(FirstRun.FINISH,FirstRun.LAUNCHER_STEPS));
+        assertEquals("Continue the guided setup (step 5 of 6)",FirstRun.status(FirstRun.at(FirstRun.parse(null),FirstRun.TURN_ON),FirstRun.LAUNCHER_STEPS));
+        assertNull("not a part on its own: Settings has its page",FirstRun.part(FirstRun.TURN_ON));
         assertEquals(FirstRun.REMOTE,FirstRun.next(FirstRun.WELCOME));assertEquals(FirstRun.FINISH,FirstRun.next(FirstRun.LIBRARY));assertNull(FirstRun.next(FirstRun.FINISH));
         assertNull(FirstRun.previous(FirstRun.WELCOME));assertEquals(FirstRun.APPS,FirstRun.previous(FirstRun.LIBRARY));
         assertEquals("an unknown step starts at Welcome",FirstRun.WELCOME,FirstRun.next("nowhere"));

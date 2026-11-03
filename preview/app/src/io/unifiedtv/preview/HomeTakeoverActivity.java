@@ -21,8 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * OD-28, launcher app only: Settings > Appearance & Home > Take over the Home button, and Return to the original TV
- * interface (also in Updates & About > Advanced, and on Home's safe screen). Adults only, behind the PIN when one is set.
+ * OD-28, launcher app only: Settings > Appearance & Home > When the TV turns on > Make Unified TV the TV's Home (instant),
+ * and Return to the original TV interface (on that page, in Updates & About > Advanced, and on Home's safe screen). Adults only, behind the PIN when one is set.
  * The glass sidebar over a still Home (OD-19). The steps are HomeTakeover's; this page only shows them and asks.
  *
  * <p>Take over: Unified TV's Home entry is switched on, then the same session-only link to this TV's own ADB as the
@@ -37,17 +37,23 @@ import java.util.concurrent.Executors;
  */
 public final class HomeTakeoverActivity extends GlassScreen {
     static final String MODE = "mode", TAKE = "take", RETURN = "return";
+    /** Optional: why Return was opened (When the TV turns on: option 1 or 2 chosen while Unified TV holds Home). */
+    static final String REASON = "reason";
     static final String TAKE_TITLE = "Take over the Home button", RETURN_TITLE = "Return to the original TV interface";
     static final String PREVIEW_WORDS = "This is the Unified TV preview. It never changes the Home button; the separate Unified TV app can.";
     static final String INTRO = "Make the Home button on your remote open Unified TV. Unified TV first asks Android directly. If this TV keeps its own Home in front anyway, Unified TV can turn the TV's own Home off: never removed, only after you confirm, and only on a TV the tested lists cover.";
-    static final String WAY_BACK = "The way back is always in Settings > Appearance & Home > Return to the original TV interface.";
+    static final String WAY_BACK = "The way back is always in Settings > Appearance & Home > When the TV turns on > Return to the original TV interface.";
+    /** Owner, 3 November 2026: said before anything changes and once it has. */
+    static final String REVIEW_BUILD_WORDS = "Before uninstalling a review build, choose Return to the original TV interface.";
     static final String ADB_WORDS = "Unified TV uses this TV's network debugging, which must already be on. It talks only to this TV, and only while this page is open. "
         + "The first time, the TV asks \"Allow USB debugging?\": tick \"Always allow from this computer\", then choose OK.";
     static final String PRESS_HOME = "Press the Home button on your remote now.";
     static final String NO_LINK = "Network debugging is off, so Unified TV can't turn the TV's own Home back on by itself. Do one of these, then choose Check again:";
 
-    static void open(Context c, boolean take) {
+    static void open(Context c, boolean take) { open(c, take, null); }
+    static void open(Context c, boolean take, String reason) {
         Intent i = new Intent(c, HomeTakeoverActivity.class).putExtra(MODE, take ? TAKE : RETURN);
+        if (reason != null) i.putExtra(REASON, reason);
         if (!(c instanceof android.app.Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         c.startActivity(i);
     }
@@ -92,6 +98,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
         text(INTRO, 20);
         text(ADB_WORDS, 17);
         text(WAY_BACK, 17);
+        text(REVIEW_BUILD_WORDS, 17);
         button("Start", this::takeNow).requestFocus();
         button("Not now", this::finish);
     }
@@ -129,7 +136,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
         handBackEntry();
         screen("The Home button stays as it is", null, null);
         card(); text(why, 18);
-        text("Unified TV can still open when the TV turns on: Settings > Appearance & Home > " + TurnOn.TITLE + ".", 17);
+        text("Unified TV can still open when the TV turns on: Settings > Appearance & Home > " + TurnOnChoice.TITLE + " > " + TurnOnChoice.Option.QUICK.title + ".", 17);
         button("Close", this::finish).requestFocus();
     }
 
@@ -141,7 +148,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
         text("This TV puts its own Home, " + name + " (" + home + "), ahead of other Home screens, so Android's own choice isn't enough.", 18);
         text("Unified TV can turn " + name + " off. It stays on the TV and can be turned back on at any time. Before it changes anything, Unified TV saves an undo record, the same one the Optional clean-up uses.", 17);
         text("Nothing else is turned off. On some TCL TVs, with the TV's own Home off, a few of the remote's app buttons may stop working; the TV's Settings still open from Unified TV.", 17);
-        text("Ways back: in Unified TV, Settings > Appearance & Home > Return to the original TV interface. " + HomeTakeover.tvOnlySteps(name) + " From a computer: " + HomeTakeover.pcFix(home), 16);
+        text("Ways back: in Unified TV, Settings > Appearance & Home > " + TurnOnChoice.TITLE + " > Return to the original TV interface. " + HomeTakeover.tvOnlySteps(name) + " From a computer: " + HomeTakeover.pcFix(home), 16);
         button("Turn off " + name + " and use Unified TV", this::takeOverNow).requestFocus();
         button("Not now", () -> { closeLink(); handBackEntry(); finish(); });
     }
@@ -189,10 +196,12 @@ public final class HomeTakeoverActivity extends GlassScreen {
     /** Unified TV answers Home now (read from the TV): the link closes, then debugging off, then the Home button test. */
     private void taken(boolean gentle) {
         closeLink();
+        TurnOnChoice.homeTaken(this);   // the Home button opens Unified TV now: "Open Unified TV (quick)" isn't needed
         screen("Unified TV is the Home screen", "Read again from the TV", null);
         card();
         text(gentle ? "Android now opens Unified TV when you press Home. Nothing was turned off." : "The TV's own Home is off, and Android now opens Unified TV when you press Home.", 18);
         text(WAY_BACK, 17);
+        text(REVIEW_BUILD_WORDS, 17);
         button("Next", () -> finishPage(this::pressHome)).requestFocus();
     }
 
@@ -201,7 +210,7 @@ public final class HomeTakeoverActivity extends GlassScreen {
         screen(PRESS_HOME, "Checking for 20 seconds", null);
         card();
         progress = busy("Waiting for the Home button…");
-        text("Unified TV should come to the front. If the TV's own Home appears instead, come back here or choose Settings > Appearance & Home > Return to the original TV interface.", 17);
+        text("Unified TV should come to the front. If the TV's own Home appears instead, come back here or choose Settings > Appearance & Home > " + TurnOnChoice.TITLE + " > Return to the original TV interface.", 17);
         HomeTakeover.expect(this);
         waitingSince = HomeTakeover.now();
         clock.postDelayed(this::waitForHome, 500);
@@ -213,8 +222,9 @@ public final class HomeTakeoverActivity extends GlassScreen {
         clock.postDelayed(this::waitForHome, 500);
     }
     private void worked() {
+        TurnOnChoice.homeTaken(this);
         screen("It works", null, null);
-        card(); text(HomeTakeover.WORKED, 18); text(WAY_BACK, 17);
+        card(); text(HomeTakeover.WORKED, 18); text(WAY_BACK, 17); text(REVIEW_BUILD_WORDS, 17);
         button("Done", this::finish).requestFocus();
     }
     void didnt() {
@@ -235,6 +245,8 @@ public final class HomeTakeoverActivity extends GlassScreen {
         lost = off == null ? HomeTakeover.disabledStock(this) : null;
         screen(RETURN_TITLE, "Appearance & Home", null);
         card();
+        String reason = getIntent().getStringExtra(REASON);
+        if (reason != null) text(reason, 20);
         text("The Home button will open the TV's own Home again. Unified TV stays installed and opens from the TV's apps.", 20);
         if (off != null) { text("Unified TV turned " + HomeTakeover.label(off) + " (" + off + ") off. It will be turned back on first.", 17); text(ADB_WORDS, 17); }
         if (lost != null) { text(HomeTakeover.label(lost) + " (" + lost + ") is turned off, and Unified TV has no record of it (its storage may have been cleared). It will be turned back on first.", 17); text(ADB_WORDS, 17); }

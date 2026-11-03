@@ -94,7 +94,7 @@ public class TurnOnTest {
         assertEquals("not available in the preview",Capabilities.State.UNSUPPORTED_ON_DEVICE,c.state);assertTrue(c.words.contains("preview"));
         f.launcherApp=true;c=Capabilities.evaluate(f,Capabilities.TURN_ON);
         assertEquals(Capabilities.State.PERMISSION_REQUIRED,c.state);assertTrue(c.words.contains("Display over other apps"));assertEquals(Capabilities.GO_APPEARANCE,c.go);
-        f.overlays=true;c=Capabilities.evaluate(f,Capabilities.TURN_ON);assertEquals(Capabilities.State.AVAILABLE,c.state);assertTrue(c.words.contains("Switch it on"));
+        f.overlays=true;c=Capabilities.evaluate(f,Capabilities.TURN_ON);assertEquals(Capabilities.State.AVAILABLE,c.state);assertTrue(c.words.contains("Open Unified TV (quick)"));assertTrue(c.words.contains("When the TV turns on"));
         f.turnOn=true;c=Capabilities.evaluate(f,Capabilities.TURN_ON);assertTrue(c.words.startsWith("On."));assertTrue(c.words.contains("Home button still opens the TV's own"));
         f.isHome=true;f.overlays=false;c=Capabilities.evaluate(f,Capabilities.TURN_ON);assertEquals(Capabilities.State.AVAILABLE,c.state);assertTrue(c.words.contains("Not needed"));
         assertEquals("this build's own answer",launcher()?Capabilities.State.PERMISSION_REQUIRED:Capabilities.State.UNSUPPORTED_ON_DEVICE,Capabilities.check(app,Capabilities.TURN_ON).state);
@@ -175,8 +175,8 @@ public class TurnOnTest {
         assertEquals("with nothing in the way it does",TurnOn.Skip.NONE,wakeWith(()->{}));assertHomeCameForward();
     }
 
-    // --- Settings > Appearance & Home > Home button
-    private static View root(SettingsActivity a){return a.findViewById(android.R.id.content);}
+    // --- Settings > Appearance & Home > When the TV turns on > Open Unified TV (quick): OD-23's switch, on that page only
+    private static View root(android.app.Activity a){return a.findViewById(android.R.id.content);}
     private static Button starting(View v,String prefix){if(v instanceof Button&&v.isShown()&&((Button)v).getText().toString().startsWith(prefix))return (Button)v;
         if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){Button b=starting(((ViewGroup)v).getChildAt(i),prefix);if(b!=null)return b;}return null;}
     private static boolean says(View v,String part){if(v instanceof TextView&&!(v instanceof Button)&&v.isShown()&&((TextView)v).getText().toString().contains(part))return true;
@@ -185,7 +185,9 @@ public class TurnOnTest {
     private static SettingsActivity appearance(org.robolectric.android.controller.ActivityController<SettingsActivity> c){
         SettingsActivity a=c.get();Button row=starting(root(a),"Appearance & Home");assertNotNull(row);press(row);assertEquals(SettingsOverlay.Phase.DETAIL,a.overlay().page());return a;
     }
-    private static Button row(SettingsActivity a){return starting(root(a),TurnOn.TITLE);}
+    private static Button quick(android.app.Activity a){return starting(root(a),TurnOnChoice.Option.QUICK.title);}
+    private static Button ownHome(android.app.Activity a){return starting(root(a),TurnOnChoice.Option.OWN_HOME.title);}
+    private static boolean ticked(Button b){return b!=null&&String.valueOf(b.getContentDescription()).endsWith(", "+TurnOnChoice.CHOSEN);}
     private static AlertDialog latest(){AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();assertNotNull("a dialog",d);return d;}
 
     @Test public void thePreviewNeverShowsOrStartsIt(){
@@ -195,31 +197,32 @@ public class TurnOnTest {
         assertNull("no watcher in the preview",s.getNextStartedService());
         assertEquals(TurnOn.Skip.NOT_LAUNCHER,TurnOn.decide(TurnOn.read(app)));
         try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){SettingsActivity a=appearance(c);
-            assertNull("no switch in the preview",row(a));assertFalse(says(root(a),TurnOn.EXPLAIN));
+            assertNull("no choice in the preview",starting(root(a),TurnOnChoice.TITLE));assertNull(starting(root(a),TurnOn.TITLE));assertFalse(says(root(a),TurnOn.EXPLAIN));
             assertTrue(says(root(a),"This is the Unified TV preview"));}
     }
     @Test public void theSwitchNeedsTheAdultPinAndSaysWhatItNeeds()throws Exception{
         Assume.assumeTrue("launcher app only",launcher());
         prefs().edit().putString("pin",Pins.record(PIN)).commit();
         org.robolectric.shadows.ShadowApplication s=Shadows.shadowOf((android.app.Application)app);
-        try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){SettingsActivity a=appearance(c);
-            Button r=row(a);assertNotNull("the switch is in Home button",r);assertEquals(TurnOn.TITLE+": Off",r.getText().toString());
-            assertTrue("the plain explanation",says(root(a),TurnOn.EXPLAIN));
-            press(r);AlertDialog pin=latest();assertEquals("Adult access",String.valueOf(Shadows.shadowOf(pin).getTitle()));
-            Pins.type(pin,"0000");assertFalse("a wrong PIN changes nothing",TurnOn.enabled(app));assertEquals(TurnOn.TITLE+": Off",row(a).getText().toString());
-            press(row(a));Pins.type(latest(),PIN);
-            assertTrue(TurnOn.enabled(app));assertEquals("said honestly",TurnOn.TITLE+": Needs permission",row(a).getText().toString());
+        try(var c=Robolectric.buildActivity(TurnOnChoiceActivity.class).setup()){TurnOnChoiceActivity a=c.get();idle(0);
+            assertTrue("off by default: the TV's own Home",ticked(ownHome(a)));assertFalse(ticked(quick(a)));
+            assertTrue("one plain line",says(root(a),"The TV's own Home shows for a moment, then Unified TV comes to the front."));
+            press(quick(a));AlertDialog pin=latest();assertEquals("Adult access",String.valueOf(Shadows.shadowOf(pin).getTitle()));
+            Pins.type(pin,"0000");assertFalse("a wrong PIN changes nothing",TurnOn.enabled(app));assertTrue(ticked(ownHome(a)));
+            press(quick(a));Pins.type(latest(),PIN);
+            assertTrue(TurnOn.enabled(app));assertTrue("ticked",ticked(quick(a)));
+            assertTrue("said plainly that it isn't working yet",says(root(a),TurnOnChoice.PERMISSION_MISSING.trim()));
             assertNull("nothing runs without the permission",s.getNextStartedService());
             // This (Robolectric) TV has no "Display over other apps" screen: the one-time computer step, with the real package.
             String adb="adb shell appops set "+app.getPackageName()+" SYSTEM_ALERT_WINDOW allow";
             assertEquals(adb,TurnOn.adb(app));assertTrue(says(root(a),adb));
-            AlertDialog how=latest();assertEquals(TurnOn.TITLE,String.valueOf(Shadows.shadowOf(how).getTitle()));assertTrue(String.valueOf(Shadows.shadowOf(how).getMessage()).contains(adb));
+            AlertDialog how=latest();assertEquals(TurnOnChoice.Option.QUICK.title,String.valueOf(Shadows.shadowOf(how).getTitle()));assertTrue(String.valueOf(Shadows.shadowOf(how).getMessage()).contains(adb));
             how.getButton(AlertDialog.BUTTON_POSITIVE).performClick();idle(0);
-            // Allowed from the computer: Home's next start (or Settings) starts the watcher, and the row says On.
+            // Allowed from the computer: Home's next start (or this page) starts the watcher, and the page stops warning.
             ShadowSettings.setCanDrawOverlays(true);TurnOn.sync(app);assertNotNull(s.getNextStartedService());
-            a.refresh();idle(0);assertEquals(TurnOn.TITLE+": On",row(a).getText().toString());assertFalse(says(root(a),adb));
-            press(row(a));Pins.type(latest(),PIN);
-            assertFalse("switched off",TurnOn.enabled(app));assertEquals(TurnOn.TITLE+": Off",row(a).getText().toString());
+            c.pause().resume();idle(0);assertEquals(TurnOn.State.ON,TurnOn.state(app));assertTrue(ticked(quick(a)));assertFalse(says(root(a),adb));
+            press(ownHome(a));Pins.type(latest(),PIN);
+            assertFalse("switched off",TurnOn.enabled(app));assertTrue(ticked(ownHome(a)));
             Intent stopped=s.getNextStoppedService();assertNotNull("the watcher stops",stopped);assertEquals(TurnOnService.class.getName(),stopped.getComponent().getClassName());
         }
     }
@@ -230,25 +233,26 @@ public class TurnOnTest {
         Shadows.shadowOf(app.getPackageManager()).addResolveInfoForIntent(screen,ri);
         assertNotNull(TurnOn.permissionScreen(app));
         TurnOn.enabled(app,true);
-        try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){SettingsActivity a=appearance(c);
-            assertEquals(TurnOn.TITLE+": Needs permission",row(a).getText().toString());assertTrue(says(root(a),"Press the row to open that setting"));
-            press(row(a));
+        try(var c=Robolectric.buildActivity(TurnOnChoiceActivity.class).setup()){TurnOnChoiceActivity a=c.get();idle(0);
+            assertTrue(ticked(quick(a)));assertTrue(says(root(a),"Press "+TurnOnChoice.Option.QUICK.title+" to open that setting"));
+            press(quick(a));
             AlertDialog how=latest();assertFalse("no computer step when the TV has the screen",String.valueOf(Shadows.shadowOf(how).getMessage()).contains("adb"));
             how.getButton(AlertDialog.BUTTON_POSITIVE).performClick();idle(0);
             Intent opened=Shadows.shadowOf(a).getNextStartedActivity();assertNotNull(opened);assertEquals(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,opened.getAction());
-            // Allowed there, and back: the row says On.
-            ShadowSettings.setCanDrawOverlays(true);c.pause().resume();idle(0);assertEquals(TurnOn.TITLE+": On",row(a).getText().toString());
+            // Allowed there, and back: nothing more to say.
+            ShadowSettings.setCanDrawOverlays(true);c.pause().resume();idle(0);assertTrue(ticked(quick(a)));assertFalse(says(root(a),TurnOnChoice.PERMISSION_MISSING.trim()));
             // No adult PIN set on this TV: an adult switches it off with one press.
-            press(row(a));assertFalse(TurnOn.enabled(app));assertEquals(TurnOn.TITLE+": Off",row(a).getText().toString());
+            press(ownHome(a));assertFalse(TurnOn.enabled(app));assertTrue(ticked(ownHome(a)));
         }
     }
-    @Test public void hiddenOnceTheHomeButtonOpensUnifiedTv(){
+    @Test public void notNeededOnceTheHomeButtonOpensUnifiedTv(){
         Assume.assumeTrue("launcher app only",launcher());
         ResolveInfo ri=new ResolveInfo();ri.activityInfo=new ActivityInfo();ri.activityInfo.packageName=app.getPackageName();ri.activityInfo.name="io.unifiedtv.preview.HomeEntry";
         Shadows.shadowOf(app.getPackageManager()).addResolveInfoForIntent(DefaultHome.homeIntent(),ri);
         assertTrue(DefaultHome.isDefault(app));assertFalse(TurnOn.offered(app));
         TurnOn.enabled(app,true);ShadowSettings.setCanDrawOverlays(true);assertFalse("nothing runs while Home is Unified TV",TurnOn.active(app));
-        try(var c=Robolectric.buildActivity(SettingsActivity.class).setup()){SettingsActivity a=appearance(c);
-            assertTrue(says(root(a),"The Home button opens Unified TV."));assertNull("not offered",row(a));}
+        try(var c=Robolectric.buildActivity(TurnOnChoiceActivity.class).setup()){TurnOnChoiceActivity a=c.get();idle(0);
+            assertTrue(says(root(a),"The Home button opens Unified TV."));
+            assertTrue("Unified TV holds Home: option 3, whatever OD-23's switch says",ticked(starting(root(a),TurnOnChoice.Option.HOME.title)));assertFalse(ticked(quick(a)));}
     }
 }

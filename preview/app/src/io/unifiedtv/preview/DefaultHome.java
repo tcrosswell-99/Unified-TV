@@ -86,6 +86,7 @@ final class DefaultHome {
         confirmState(a,s->{
             if(s==State.NOT&&offered(a))withdraw(a);
             fixed(a,s==State.KEPT);
+            if(s==State.OURS)TurnOnChoice.homeTaken(a);   // the Home button opens Unified TV: OD-23 isn't needed
             done.accept(s);
         });
     }

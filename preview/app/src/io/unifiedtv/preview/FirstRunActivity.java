@@ -15,6 +15,8 @@ import java.util.Locale;
  * SET-010 guided setup: five short, optional steps in the Settings sidebar over a still Home (OD-19, a GlassScreen):
  * Welcome, the remote (SET-071 key help as one glance, with a live demonstration), your apps (Build My TV), your films
  * and TV (the media server; no address is ever typed) and Finish (what is on Home now, and what was set up or skipped).
+ * The launcher app has one more, just before Finish: When the TV turns on (TurnOnChoice; the same three options as
+ * Settings, or "Skip — choose later in Settings"), and Finish lists what was chosen. The preview never shows it.
  * Each step's first line says what to do there, or that there is nothing to do. "Skip the guided setup" is on every step
  * with something to choose (the remote step is a look only, so it has just Back and Next), and Back (or Left with nothing
  * further left) goes one step back, never out of Unified TV, so nobody is trapped; progress is saved at every step, so
@@ -26,21 +28,27 @@ public final class FirstRunActivity extends GlassScreen {
     /** Intent extra: one part only (FirstRun.REMOTE, APPS or LIBRARY), or absent for the whole guided setup. */
     static final String ONLY="only";
     private String step,only;private TextView demo;
+    /** This app's steps: the launcher app adds When the TV turns on before Finish (FirstRun.LAUNCHER_STEPS). */
+    private List<String> steps;
+    /** When the TV turns on: the choice itself, as on the Settings page. */
+    private TurnOnChoice.Flow wake;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         // Never in Kids: the setup changes the household's Home, so it is for Adults only.
         if(Profiles.kids(this)){finish();return;}
+        steps=FirstRun.steps(this);
+        wake=new TurnOnChoice.Flow(this,this::show);wake.picked=()->TurnOnChoice.answered(this,TurnOnChoice.GUIDE_CHOSEN);
         only=FirstRun.part(getIntent().getStringExtra(ONLY));
         if(only!=null){step=only;return;}
         // Where it was: this screen's own saved step after a restart, else the saved progress, else Welcome.
         FirstRun.State saved=FirstRun.load(prefs);
         String kept=state==null?null:state.getString("step");
-        step=FirstRun.STEPS.contains(kept)?kept:FirstRun.IN_PROGRESS.equals(saved.status)?saved.step:FirstRun.WELCOME;
+        step=steps.contains(kept)?kept:FirstRun.IN_PROGRESS.equals(saved.status)&&steps.contains(saved.step)?saved.step:FirstRun.WELCOME;
         FirstRun.save(prefs,FirstRun.at(saved,step));
     }
     /** Drawn on every return, so Build My TV's or the library's progress shows as soon as the household comes back. */
-    @Override protected void onResume(){super.onResume();if(!isFinishing())show();}
+    @Override protected void onResume(){super.onResume();if(isFinishing())return;if(FirstRun.TURN_ON.equals(step))wake.resumed();show();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("step",step);}
     String step(){return step;}
 
@@ -54,7 +62,7 @@ public final class FirstRunActivity extends GlassScreen {
     /** Back: one step back; from Welcome (or a single part) it leaves. Leaving Welcome this way counts as "not now". */
     @Override public void onBackPressed(){
         if(only!=null){close();return;}
-        String before=FirstRun.previous(step);
+        String before=FirstRun.previous(step,steps);
         if(before!=null){go(before);return;}
         FirstRun.State s=FirstRun.load(prefs);if(FirstRun.IN_PROGRESS.equals(s.status))FirstRun.save(prefs,FirstRun.skipped(s));
         close();
@@ -70,11 +78,13 @@ public final class FirstRunActivity extends GlassScreen {
     // informs can be focused, so a row never looks like a task when it isn't one.
     private void show(){
         demo=null;
-        String sub=only!=null?"One part of the guided setup":"Step "+(FirstRun.STEPS.indexOf(step)+1)+" of "+FirstRun.STEPS.size()+" · optional";
+        if(isFinishing())return;
+        String sub=only!=null?"One part of the guided setup":"Step "+(steps.indexOf(step)+1)+" of "+steps.size()+" · optional";
         switch(step){
             case FirstRun.REMOTE:remote(sub);break;
             case FirstRun.APPS:apps(sub);break;
             case FirstRun.LIBRARY:library(sub);break;
+            case FirstRun.TURN_ON:turnOn(sub);break;
             case FirstRun.FINISH:finishPage(sub);break;
             default:welcome(sub);break;
         }
@@ -121,6 +131,21 @@ public final class FirstRunActivity extends GlassScreen {
         next();
         skipRow();
     }
+    /**
+     * When the TV turns on (launcher app only): the three options, the one true now ticked; choosing one does it there and
+     * then (option 3 opens the Home takeover with its PIN and explanation). Next appears once one was chosen here; Skip
+     * leaves everything as it is.
+     */
+    private void turnOn(String sub){
+        page(TurnOnChoice.TITLE,sub);card();
+        text(TurnOnChoice.GUIDE_INTRO,18);
+        android.widget.Button ticked=wake.options();
+        if(TurnOnChoice.GUIDE_CHOSEN.equals(prefs.getString(TurnOnChoice.GUIDE,""))){
+            column=body;card();android.widget.Button next=row("Next",null,true,()->go(FirstRun.next(step,steps)));focusOn(next);}
+        else if(ticked!=null)focusOn(ticked);
+        group("Not now");card();
+        row(TurnOnChoice.SKIP,null,false,()->{TurnOnChoice.answered(this,TurnOnChoice.GUIDE_SKIPPED);go(FirstRun.next(step,steps));});
+    }
     /** What Home has now, by name, and what was set up (or skipped) along the way. */
     private void finishPage(String sub){
         page("All set",sub);card();
@@ -134,6 +159,7 @@ public final class FirstRunActivity extends GlassScreen {
         int photos=HubBuilder.photoFolders(this);
         text("Photos: "+(photos>0?(photos==1?"1 folder chosen":photos+" folders chosen"):SKIPPED),15);
         text("Smart home: "+(HubBuilder.homeAssistant(this)?"Home Assistant is set up":SKIPPED),15);
+        if(steps.contains(FirstRun.TURN_ON))text(TurnOnChoice.summary(this),15);
         column=body;
         text("Run any of this again from Settings > Updates & About > Guided setup.",15);
         row("Go to Home",null,false,this::done);
@@ -150,7 +176,7 @@ public final class FirstRunActivity extends GlassScreen {
         try{startActivity(new Intent(this,DlnaLibraryActivity.class).putExtra("setup",true));}catch(RuntimeException e){note("Films & TV setup couldn't open");}
     }
     /** "Next", or "Done" for a single part, which then closes. */
-    private void next(){if(only!=null)row("Done",null,false,this::close);else row("Next",null,true,()->go(FirstRun.next(step)));}
+    private void next(){if(only!=null)row("Done",null,false,this::close);else row("Next",null,true,()->go(FirstRun.next(step,steps)));}
     private void skipRow(){if(only!=null)return;group("Not now");card();row("Skip the guided setup",null,false,this::skipAll);}
     /** The remote's buttons as a two-column glance: each pair is words to read, never something to press. */
     private void glance(List<RemoteHelp.Key> keys){

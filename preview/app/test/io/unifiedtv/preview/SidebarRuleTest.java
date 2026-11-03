@@ -37,7 +37,7 @@ public class SidebarRuleTest {
         "BuildMyTvActivity",         // Build My TV: choosing services and arranging Home (wide)
         "CleanupActivity",           // Updates & About > Advanced > Optional clean-up (wide for its list)
         "ConnectionsActivity",       // signing in to a media server by typing (advanced)
-        "FirstRunActivity",          // the guided setup (SET-010): Welcome, remote, apps, media server, finish
+        "FirstRunActivity",          // the guided setup (SET-010): Welcome, remote, apps, media server, (launcher app) when the TV turns on, finish
         "GalleryActivity",           // Gallery settings (its slideshow is shown full screen in place of the sheet)
         "HomeTakeoverActivity",      // launcher app only (launcher/AndroidManifest.xml): Take over the Home button, and the way back (OD-28)
         "KidsActivity",              // Profiles & Family > Kids settings
@@ -51,6 +51,7 @@ public class SidebarRuleTest {
         "QuickConnectActivity",      // signing in with your phone
         "RemoteCheckActivity",       // Check your remote's buttons
         "ServiceDiscoveryActivity",  // finding the media server on the home network
+        "TurnOnChoiceActivity",      // launcher app only (launcher/AndroidManifest.xml): Appearance & Home > When the TV turns on
         "VpnActivity"));             // OD-29: Unified TV's own VPN (On/Off, country, connect at start), from the shield or Settings
 
     /** Settings that draw the module 13 sheet themselves, or have no page at all; still the sidebar theme. */

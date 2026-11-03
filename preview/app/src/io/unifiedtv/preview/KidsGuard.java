@@ -41,6 +41,8 @@ final class KidsGuard {
         return approved!=null&&approved.contains(pkg)?ALLOW:RETURN;
     }
     static boolean pass(long until,long now){return now<until&&until-now<=PASS_MS;}
+    /** In Kids, an adult who has just unlocked a step that opens the TV's own settings gets the short pass for them. */
+    static void grantPass(android.content.Context c){if(Profiles.kids(c))c.getSharedPreferences(HouseholdSettings.PREFS,0).edit().putLong(PASS,System.currentTimeMillis()+PASS_MS).apply();}
     /** The keyboard's package from Android's "package/.Service" setting. */
     static String keyboard(String setting){if(setting==null)return "";int slash=setting.indexOf('/');return slash>0?setting.substring(0,slash):"";}
     /** Whether Android's list of switched-on accessibility services includes this one (full or short class form). */

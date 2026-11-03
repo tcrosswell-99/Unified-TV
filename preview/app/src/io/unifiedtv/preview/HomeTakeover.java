@@ -287,7 +287,7 @@ final class HomeTakeover {
     static void cancel(Context c) { prefs(c).edit().remove(PENDING).remove(ARRIVED).commit(); }
 
     static final String WORKED = "Done. The Home button now opens Unified TV.";
-    static final String DIDNT = "Pressing Home didn't open Unified TV. To undo, open Settings > Appearance & Home > Return to the original TV interface.";
+    static final String DIDNT = "Pressing Home didn't open Unified TV. To undo, open Settings > Appearance & Home > When the TV turns on > Return to the original TV interface.";
 
     /**
      * Unified TV's Home came to the front ({@code byHome}: by the Home button) while the check waits: it worked. Opened

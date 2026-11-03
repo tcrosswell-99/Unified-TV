@@ -67,7 +67,7 @@ final class RemoteHelp {
     static String home(boolean launcherApp,boolean isHome){
         if(!launcherApp)return "Opens the TV's own Home screen. This preview never becomes the Home screen; open Unified TV again from the TV's apps.";
         if(isHome)return "Brings you back to Unified TV, with the same app in focus.";
-        return "Opens the TV's own Home screen, because Unified TV isn't this TV's Home screen yet. You can choose it in Appearance & Home > Home button.";
+        return "Opens the TV's own Home screen, because Unified TV isn't this TV's Home screen yet. You can choose it in Settings > Appearance & Home > When the TV turns on.";
     }
 
     /** The guided setup's live demonstration: what the button just pressed does on Home; null for a button it doesn't explain. */

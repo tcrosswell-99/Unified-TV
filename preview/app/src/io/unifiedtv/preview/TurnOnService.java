@@ -52,7 +52,7 @@ public final class TurnOnService extends Service {
         if(manager!=null)manager.createNotificationChannel(new NotificationChannel(CHANNEL,TurnOn.TITLE,NotificationManager.IMPORTANCE_LOW));
         Intent settings=new Intent(this,SettingsActivity.class).putExtra("category",SettingsActivity.APPEARANCE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent open=PendingIntent.getActivity(this,OPEN_SETTINGS,Launch.viaHandOver(this,settings),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);   // never past Home, never closing what's open
-        startForeground(NOTIFICATION,new Notification.Builder(this,CHANNEL).setContentTitle(TurnOn.TITLE).setContentText("On. Change it in Settings > Appearance & Home.")
+        startForeground(NOTIFICATION,new Notification.Builder(this,CHANNEL).setContentTitle(TurnOn.TITLE).setContentText("On. Change it in Settings > Appearance & Home > When the TV turns on.")
             .setSmallIcon(android.R.drawable.ic_lock_power_off).setOngoing(true).setContentIntent(open).build());
         screen=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){heard(i==null?null:i.getAction());}};
         IntentFilter f=new IntentFilter(Intent.ACTION_SCREEN_OFF);f.addAction(Intent.ACTION_SCREEN_ON);f.addAction(Intent.ACTION_USER_PRESENT);

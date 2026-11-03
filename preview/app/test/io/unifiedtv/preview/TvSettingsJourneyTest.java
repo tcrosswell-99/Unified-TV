@@ -166,7 +166,7 @@ public class TvSettingsJourneyTest {
             assertEquals(FirstRun.IN_PROGRESS,FirstRun.load(prefs()).status);
             FirstRun.save(prefs(),FirstRun.at(FirstRun.load(prefs()),FirstRun.LIBRARY));
             c.pause().resume();idle();
-            assertNotNull("the row says where it was left",find(root(a),"Continue the guided setup (step 4 of 5)"));
+            assertNotNull("the row says where it was left",find(root(a),"Continue the guided setup (step 4 of "+FirstRun.steps(app).size()+")"));
             press(a,"Just one part");Shadows.shadowOf(dialog()).clickOnItem(1);idle();
             Intent part=Shadows.shadowOf(a).getNextStartedActivity();assertEquals(FirstRunActivity.class.getName(),part.getComponent().getClassName());
             assertEquals(FirstRun.APPS,part.getStringExtra(FirstRunActivity.ONLY));

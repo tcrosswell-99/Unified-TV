@@ -94,7 +94,7 @@ final class Capabilities {
                 if(!f.launcherApp)return c(id,"Unified TV as the Home screen",State.UNSUPPORTED_ON_DEVICE,"This is the Unified TV preview, which never becomes the Home screen, so the Home button always opens the TV's own. The separate Unified TV app can.",null);
                 if(!f.homeRole)return c(id,"Unified TV as the Home screen",State.UNSUPPORTED_ON_DEVICE,"This TV doesn't let an app be chosen as its Home screen, so the Home button opens the TV's own.",null);
                 if(f.isHome)return c(id,"Unified TV as the Home screen",State.AVAILABLE,"The Home button opens Unified TV. You can switch back to the TV's own Home screen at any time.",GO_APPEARANCE);
-                return c(id,"Unified TV as the Home screen",State.SETUP_REQUIRED,"The Home button still opens the TV's own Home screen. Choose Unified TV in Appearance & Home > Home button.",GO_APPEARANCE);
+                return c(id,"Unified TV as the Home screen",State.SETUP_REQUIRED,"The Home button still opens the TV's own Home screen. Choose it in Appearance & Home > When the TV turns on.",GO_APPEARANCE);
             case LIBRARY:
                 if(!f.librarySetUp)return c(id,"Your Films & TV",State.SETUP_REQUIRED,"No media server is chosen yet. Unified TV looks for one on your home network; you never type an address.",GO_LIBRARY);
                 if(f.libraryProblem!=null)return c(id,"Your Films & TV",State.TEMPORARILY_UNAVAILABLE,"Set up, but the last check didn't work: "+f.libraryProblem,GO_LIBRARY);
@@ -146,8 +146,8 @@ final class Capabilities {
                 // OD-23: launcher app only; "Display over other apps" is used solely to come to the front (module 03: no keys).
                 if(!f.launcherApp)return c(id,"Open when the TV turns on",State.UNSUPPORTED_ON_DEVICE,"Not available in the Unified TV preview. The separate Unified TV app can come to the front when the TV starts or wakes.",null);
                 if(f.isHome)return c(id,"Open when the TV turns on",State.AVAILABLE,"Not needed: the Home button opens Unified TV, so the TV already starts on it.",GO_APPEARANCE);
-                if(!f.overlays)return c(id,"Open when the TV turns on",State.PERMISSION_REQUIRED,"Needs \"Display over other apps\" for Unified TV, used only to come to the front. Appearance & Home > Home button explains how.",GO_APPEARANCE);
-                return c(id,"Open when the TV turns on",State.AVAILABLE,f.turnOn?"On. When the TV starts or wakes from standby, Unified TV comes to the front; the Home button still opens the TV's own.":"Allowed, and off. Switch it on in Appearance & Home > Home button.",GO_APPEARANCE);
+                if(!f.overlays)return c(id,"Open when the TV turns on",State.PERMISSION_REQUIRED,"Needs \"Display over other apps\" for Unified TV, used only to come to the front. Appearance & Home > When the TV turns on explains how.",GO_APPEARANCE);
+                return c(id,"Open when the TV turns on",State.AVAILABLE,f.turnOn?"On. When the TV starts or wakes from standby, Unified TV comes to the front; the Home button still opens the TV's own.":"Allowed, and off. Choose Open Unified TV (quick) in Appearance & Home > When the TV turns on.",GO_APPEARANCE);
             case REMOTE_CHECK:
                 return f.reviewBuild?c(id,"Remote button check",State.AVAILABLE,"Lists every button your remote sends. Nothing leaves the TV.",GO_CONNECTIONS)
                     :c(id,"Remote button check",State.UNSUPPORTED_ON_DEVICE,"Only in the Unified TV review build, so remote buttons are never recorded in an everyday build.",null);
