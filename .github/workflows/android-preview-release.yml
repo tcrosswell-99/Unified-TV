@@ -20,8 +20,37 @@ jobs:
         with:
           packages: platforms;android-35 build-tools;35.0.0
       - uses: gradle/actions/setup-gradle@v4
+      # Owner decision (25 October 2026): no signing key or password is ever stored on GitHub, not even as encrypted
+      # repository secrets. CI therefore only test-signs (each runner's own debug key); the household launcher is
+      # signed on the owner's own computer (docs/SIGNING.md), and a test-signed launcher is never published.
       - name: Tests, lint, APK and manifest verification
-        run: bash preview/build.sh
+        id: build
+        run: |
+          set -euo pipefail
+          echo "signing=test" >> "$GITHUB_OUTPUT"
+          bash preview/build.sh
+      - name: Record the signing certificate (public digest only)
+        env:
+          SIGNING: ${{ steps.build.outputs.signing }}
+        run: |
+          set -euo pipefail
+          cert() { "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+          launcher=$(cert preview/out/UnifiedTV-Launcher.apk); preview=$(cert preview/out/UnifiedTV-Preview.apk)
+          test -n "$launcher" && test -n "$preview"
+          {
+            if [ "$SIGNING" = durable ]; then
+              echo "Signing: durable Unified TV launcher key (UnifiedTV-Launcher.apk)."
+              echo "Launcher updates install over earlier launchers signed with this same certificate, keeping settings."
+            else
+              echo "Signing: TEST-SIGNED: may not update over a differently signed install."
+              echo "The launcher is signed with a CI runner's debug key. Do not install it as the household launcher:"
+              echo "a later durably signed launcher could not update it. Never uninstall or clear a configured app to make it fit."
+            fi
+            echo "Launcher certificate SHA-256: $launcher"
+            echo "Preview (UnifiedTV-Preview.apk, never durably signed) certificate SHA-256: $preview"
+            echo "Check before installing: python3 preview/tools/install_preview.py UnifiedTV-Launcher.apk --check"
+          } > preview/out/SIGNING.txt
+          cat preview/out/SIGNING.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -31,16 +60,29 @@ jobs:
             preview/app/build/test-results/
           retention-days: 30
       - name: Assemble versioned release files
+        env:
+          SIGNING: ${{ steps.build.outputs.signing }}
         run: |
           mkdir release
+          # v3.4 module 08: the household launcher uses the durable key from its first install. A test-signed
+          # launcher is never published as a release file; the preview (never durably signed) always is.
+          if [ "$SIGNING" = durable ]; then cp preview/out/UnifiedTV-Launcher.apk release/
+          else echo "No durable key: UnifiedTV-Launcher.apk is not published in this release."; fi
           cp preview/out/UnifiedTV-Preview.apk release/
           cp preview/out/SHA256SUMS.txt release/
-          cp preview/out/manifest.txt release/
-          cp docs/PRODUCT_SPEC.md release/Unified-TV-Specification.md
+          cp preview/out/manifest.txt release/manifest-preview.txt
+          cp preview/out/manifest-launcher.txt release/
+          cp docs/SIGNING.md release/Signing-and-key-custody.md
+          cp preview/out/SIGNING.txt release/
+          cp docs/SPEC.md release/Unified-TV-Specification.md
+          cp docs/PRODUCT_SPEC.md release/Unified-TV-Detailed-Requirements.md
           cp docs/FEATURE_STATUS.md release/Unified-TV-Feature-Status.md
           cp docs/AI_HANDOVER.md release/Unified-TV-AI-Handover.md
-          cp docs/PREVIEW_0_4_RELEASE.md release/Release-notes.md
-          cp scripts/windows/Install-Preview-0.4.txt release/Windows-sideload.txt
+          # Signing label first; trailing double spaces keep its lines apart in Markdown.
+          { sed 's/$/  /' preview/out/SIGNING.txt; echo; cat docs/PREVIEW_0_5_RELEASE.md; } > release/Release-notes.md
+          cp docs/PREVIEW_0_5_TESTS.md release/Preview-0.5-on-TV-checks.md
+          cp docs/ACCEPTANCE_REGISTER.csv release/Acceptance-register.csv
+          cp scripts/windows/Install-Preview-0.5.txt release/Windows-sideload.txt
           cd preview/app/build
           zip -qr ../../../release/Android-test-and-lint-reports.zip reports test-results
       - uses: actions/upload-artifact@v4
@@ -64,4 +106,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" --verify-tag --prerelease --title "Unified TV $RELEASE_TAG" --notes-file release/Release-notes.md release/*
+          title="Unified TV $RELEASE_TAG (hardware-unverified)"
+          if grep -q '^Signing: TEST-SIGNED' release/SIGNING.txt; then title="$title (test-signed)"; fi
+          gh release create "$RELEASE_TAG" --verify-tag --prerelease --title "$title" --notes-file release/Release-notes.md release/*

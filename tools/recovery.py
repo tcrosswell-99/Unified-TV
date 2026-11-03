@@ -41,6 +41,14 @@ SETTINGS = ("window_animation_scale", "transition_animation_scale", "animator_du
 # This project's own launcher. When it already owned Home before debloating, restoring Home to it
 # would leave the stock launcher off, so restore goes back to the stock one instead.
 CUSTOM_LAUNCHER = "com.gathin.tvhome"
+# Unified TV's own Home (io.unifiedtv.launcher and its review build) is treated the same way: a record taken while it
+# owned Home must not hand Home back to an app that may since have been uninstalled.
+UNIFIED_HOME_RE = re.compile(r"io\.unifiedtv\.[A-Za-z0-9_.]+")
+
+
+def own_launcher(package):
+    """This project's launcher or Unified TV's: never the Home a restore puts back."""
+    return package == CUSTOM_LAUNCHER or bool(UNIFIED_HOME_RE.fullmatch(package or ""))
 VERSION = 1
 DEFAULT_PORT = "5555"
 # Set to restore a TV that has no record by enabling every listed package (the pre-#239 behaviour).
@@ -294,13 +302,19 @@ def query_packages(dev):
     return installed, disabled
 
 
+def is_chooser(component):
+    """Android's own chooser, which resolve-activity names when no Home is the default
+    (android/com.android.internal.app.ResolverActivity). It is not a Home to put back: set-home-activity refuses it."""
+    return bool(component) and (component.split("/", 1)[0] == "android" or component.endswith("ResolverActivity"))
+
+
 def query_home(dev):
     answer = shell(dev, "cmd package resolve-activity --brief -a android.intent.action.MAIN -c "
                         "android.intent.category.HOME")
     candidate = answer.splitlines()[-1].strip() if answer else ""
     # Android answers "android" (the chooser) when nothing handles HOME; that is not a component and
     # must never be written into a set-home-activity command.
-    return candidate if HOME_RE.fullmatch(candidate) else None
+    return candidate if HOME_RE.fullmatch(candidate) and not is_chooser(candidate) else None
 
 
 def connect():
@@ -450,11 +464,14 @@ def restore_commands(list_path, stock, raw_host):
         commands.append(f"pm enable {fallback}")
 
     home = record.get("home")
-    if home and home.split("/", 1)[0] != CUSTOM_LAUNCHER:
+    if is_chooser(home):
+        # A record taken while Android's chooser answered Home (written before query_home knew it): nothing to replay.
+        home = None
+    if home and not own_launcher(home.split("/", 1)[0]):
         commands.append(f"cmd package set-home-activity --user 0 {home}")
     else:
         # Nothing handled HOME before cleanup (fresh TV, chooser only), or this project's launcher
-        # did, so there is no stock component to replay; ask the TV to resolve the stock launcher the
+        # (or Unified TV) did, so there is no stock component to replay; ask the TV to resolve the stock launcher the
         # way restore.sh always did.
         commands.append(f"cmd package set-home-activity --user 0 $(cmd package resolve-activity "
                         f"--brief -a android.intent.action.MAIN -c android.intent.category.HOME "

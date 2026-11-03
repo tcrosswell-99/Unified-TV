@@ -1,0 +1,441 @@
+{
+  "about": "Generated from examples/*/debloat.txt by preview/tools/cleanup_lists.py. Do not edit by hand.",
+  "family": {
+    "brand": "TCL",
+    "build": "RP1A.200622.001",
+    "device": "BeyondTV4",
+    "release": "11"
+  },
+  "profiles": [
+    {
+      "fingerprints": [
+        "TCL/BeyondTV6/BeyondTV4:11/RP1A.200622.001/AR10"
+      ],
+      "id": "tcl-50c725k",
+      "keep": [
+        "com.google.android.apps.mediashell",
+        "com.google.android.backdrop",
+        "com.google.android.tungsten.setupwraith",
+        "com.tcl.MultiScreenInteraction_TV",
+        "com.tcl.autopair",
+        "com.tcl.initsetup",
+        "com.tcl.inputmethod.international",
+        "com.tcl.miracast",
+        "com.tcl.providers.config",
+        "com.tcl.settings",
+        "com.tcl.system.server",
+        "com.tcl.tcl_bt_rcu_service",
+        "com.tcl.tv",
+        "com.tcl.tvinput",
+        "com.tcl.usercenter",
+        "com.tcl.versionUpdateApp"
+      ],
+      "packages": [
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.tv.tclhome_passive",
+          "note": "pushes TCL content to the home screen"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.channelplus",
+          "note": "TCL Live FAST channels"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.overseasappshow",
+          "note": "promotes apps in the TCL menu"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.esticker",
+          "note": "store demo sticker"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.messagebox",
+          "note": "TCL notifications"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.bi",
+          "note": "TCL analytics"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.tcl.notereminder",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "android.autoinstalls.config.tcl.device",
+          "note": "silent installs of preloaded apps"
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.google.android.partnersetup",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads, promos and telemetry",
+          "name": "com.google.android.feedback",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.google.android.onetimeinitializer",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.google.android.syncadapters.calendar",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.tcl.dashboard",
+          "note": "stock quick-settings panel"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.tcl.browser",
+          "note": "TCL browser; also the biggest of these (~180 MB with data)"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.tcl.gallery",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.tcl.smartalexa",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.google.android.katniss",
+          "note": "Google voice assistant (~175 MB of RAM in use); off by choice"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.google.android.marvin.talkback",
+          "note": "accessibility screen reader; off by choice"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.google.android.tts",
+          "note": "speech engine, only used by TalkBack"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.google.android.play.games",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "com.netflix.ninja",
+          "note": "streaming apps off by choice"
+        },
+        {
+          "group": "Preloaded apps and by-choice extras",
+          "name": "au.com.stan.and",
+          "note": ""
+        }
+      ],
+      "product": "BeyondTV6",
+      "source": "examples/tcl-50c725k/debloat.txt",
+      "stockLauncher": "com.google.android.tvlauncher",
+      "title": "TCL 50C725K"
+    },
+    {
+      "fingerprints": [
+        "TCL/G03_4K_GB/BeyondTV4:11/RP1A.200622.001/AR09"
+      ],
+      "id": "tcl-55c725",
+      "keep": [
+        "com.google.android.apps.mediashell",
+        "com.google.android.tv.assistant",
+        "com.google.android.tv.remote.service",
+        "com.tcl.autopair",
+        "com.tcl.gamebar",
+        "com.tcl.initsetup",
+        "com.tcl.inputmethod.international",
+        "com.tcl.micmanager",
+        "com.tcl.miracast",
+        "com.tcl.providers.config",
+        "com.tcl.settings",
+        "com.tcl.suspension",
+        "com.tcl.system.server",
+        "com.tcl.t_solo",
+        "com.tcl.tcl_bt_rcu_service",
+        "com.tcl.tv",
+        "com.tcl.tvinput",
+        "com.tcl.versionUpdateApp",
+        "com.tcl.xian.StartandroidService"
+      ],
+      "packages": [
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.tv.tclhome_passive",
+          "note": "pushes TCL content to the home screen at boot"
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.waterfall.overseas",
+          "note": "\"TCL Channel\" content browser"
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.channelplus",
+          "note": "TCL Live FAST channels"
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.overseasappshow",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.partnercustomizer",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.esticker",
+          "note": "store demo sticker"
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.messagebox",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.tcl.bi",
+          "note": "TCL analytics"
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.google.android.partnersetup",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "android.autoinstalls.config.google.gtvpai",
+          "note": ""
+        },
+        {
+          "group": "TCL and Google content, ads and promos",
+          "name": "com.google.android.feedback",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.google.android.onetimeinitializer",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.google.android.syncadapters.calendar",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "org.chromium.webview_shell",
+          "note": "AOSP WebView test browser"
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.tcl.android.webview",
+          "note": "TCL WebView; TV Settings and TCL apps still work without it"
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.tcl.guard",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.tcl.keyhelp",
+          "note": ""
+        },
+        {
+          "group": "Background services not needed",
+          "name": "com.tcl.useragreement",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.google.android.videos",
+          "note": "Google TV / Play Movies"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.google.android.play.games",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.google.android.marvin.talkback",
+          "note": ""
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.tcl.ocean.instructions",
+          "note": "e-manual"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.tcl.ui_mediaCenter",
+          "note": "re-enable to play media from USB drives"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.tcl.MultiScreenInteraction_TV",
+          "note": "TCL T-Cast (phone casting/remote, Firebase); Chromecast kept"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "tv.wuaki.apptv",
+          "note": "Rakuten TV"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.tcl.dashboard",
+          "note": "stock quick-settings panel; the gear key is remapped, see README.md"
+        },
+        {
+          "group": "Preloaded apps",
+          "name": "com.google.android.apps.tv.dreamx",
+          "note": "ambient mode; set screensaver_components first, see README.md"
+        },
+        {
+          "group": "Google TV setup wizard",
+          "name": "com.google.android.tungsten.setupwraith",
+          "note": ""
+        }
+      ],
+      "product": "G03_4K_GB",
+      "source": "examples/tcl-55c725/debloat.txt",
+      "stockLauncher": "com.google.android.apps.tv.launcherx",
+      "title": "TCL 55C725"
+    },
+    {
+      "fingerprints": [],
+      "id": "tcl-65c725",
+      "keep": [
+        "com.tcl.autopair",
+        "com.tcl.factory.view",
+        "com.tcl.initsetup",
+        "com.tcl.inputmethod.international",
+        "com.tcl.providers.config",
+        "com.tcl.settings",
+        "com.tcl.system.server",
+        "com.tcl.tcl_bt_rcu_service",
+        "com.tcl.tv",
+        "com.tcl.tvinput"
+      ],
+      "packages": [
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.bi",
+          "note": "TCL analytics (BI service, deviceinfo, ParamProvider)"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.dashboard",
+          "note": "TCL dashboard/promo backend (G10 example keeps it)"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.esticker",
+          "note": "sticker/emoji overlay"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.partnercustomizer",
+          "note": "partner/customization channel, promo rows"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.useragreement",
+          "note": "end-user agreement screen, done with it after setup"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.messagebox",
+          "note": "TCL message/promo box"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.overseasappshow",
+          "note": "\"recommended apps\" showcase"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "com.tcl.android.webview",
+          "note": "falls back to com.google.android.webview anyway"
+        },
+        {
+          "group": "TCL telemetry, promos and preload plumbing",
+          "name": "android.autoinstalls.config.tcl.device",
+          "note": "partner-app auto installer config"
+        },
+        {
+          "group": "Google recommendation/attribution plumbing",
+          "name": "com.google.android.tvrecommendations",
+          "note": "home-screen recommendation rows (pointless under a custom launcher)"
+        },
+        {
+          "group": "Google recommendation/attribution plumbing",
+          "name": "com.google.android.partnersetup",
+          "note": "partner-app attribution"
+        },
+        {
+          "group": "Google recommendation/attribution plumbing",
+          "name": "com.google.android.feedback",
+          "note": "\"send feedback\" app"
+        },
+        {
+          "group": "Google recommendation/attribution plumbing",
+          "name": "com.google.android.onetimeinitializer",
+          "note": "one-time setup leftovers"
+        },
+        {
+          "group": "Extras",
+          "name": "com.tcl.guard",
+          "note": "TCL online support"
+        },
+        {
+          "group": "Extras",
+          "name": "com.tcl.keyhelp",
+          "note": "remote-key help overlays"
+        },
+        {
+          "group": "Extras",
+          "name": "com.tcl.tv.tclhome_passive",
+          "note": "pushes TCL content to the TCL home at boot"
+        },
+        {
+          "group": "Extras",
+          "name": "com.google.android.syncadapters.calendar",
+          "note": ""
+        },
+        {
+          "group": "Extras",
+          "name": "com.google.android.tungsten.setupwraith",
+          "note": "Google first-run wizard, setup already done"
+        },
+        {
+          "group": "Off by choice on this unit",
+          "name": "com.tcl.assistant",
+          "note": "TCL voice assistant — comment out if you use the mic button"
+        }
+      ],
+      "product": null,
+      "source": "examples/tcl-65c725/debloat.txt",
+      "stockLauncher": "com.google.android.tvlauncher",
+      "title": "TCL 65C725"
+    }
+  ]
+}

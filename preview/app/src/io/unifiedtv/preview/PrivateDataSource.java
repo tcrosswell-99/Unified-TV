@@ -2,13 +2,17 @@ package io.unifiedtv.preview;
 
 import android.net.Uri;
 import androidx.media3.common.C;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.datasource.*;
 import org.json.JSONObject;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.util.*;
 
-/** Stream only from the explicitly configured server. Redirects cannot forward credentials. */
+/**
+ * Stream only from the explicitly configured server. Redirects cannot forward credentials.
+ * Errors carry a Media3 reason code for plain wording and never the stream address, so nothing private reaches a log.
+ */
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 final class PrivateDataSource extends BaseDataSource {
     private final JSONObject config; private HttpURLConnection connection; private InputStream in; private Uri uri; private long left;private boolean transferring;
@@ -17,25 +21,40 @@ final class PrivateDataSource extends BaseDataSource {
         transferInitializing(spec);uri=spec.uri;
         return connect(spec);
     }
+    /** DLNA streams use the home network even under a VPN, as browsing does; account servers keep their scoped headers. */
+    private HttpURLConnection open(String path)throws Exception{
+        if(!config.optBoolean("dlna"))return LocalApi.open(config,path,"GET");
+        java.net.URL url=Endpoint.resolve(config.getString("base"),path).toURL();android.net.Network net=DlnaClient.lan;
+        HttpURLConnection c=(HttpURLConnection)(net!=null?net.openConnection(url):url.openConnection());
+        c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setInstanceFollowRedirects(false);c.setRequestMethod("GET");return c;
+    }
     private long connect(DataSpec spec)throws IOException{
         try{
             java.net.URI target=java.net.URI.create(spec.uri.toString());
             String path=target.getRawPath()+(target.getRawQuery()==null?"":"?"+target.getRawQuery());
-            if(!Endpoint.resolve(config.getString("base"),path).toString().equals(target.toString()))throw new IOException("Foreign stream host refused");
-            connection=LocalApi.open(config,path,"GET");
+            if(!Endpoint.resolve(config.getString("base"),path).toString().equals(target.toString()))throw new DataSourceException("Foreign stream host refused",PlaybackException.ERROR_CODE_IO_NO_PERMISSION);
+            connection=open(path);
             if(spec.position>0||spec.length!=C.LENGTH_UNSET)connection.setRequestProperty("Range","bytes="+spec.position+"-"+(spec.length==C.LENGTH_UNSET?"":spec.position+spec.length-1));
             int code=connection.getResponseCode();
-            if(code!=200&&code!=206)throw new IOException("Stream unavailable");
+            if(code==404||code==410)throw new DataSourceException("Stream not found",PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND);
+            if(code==416)throw new DataSourceException("Stream position unavailable",PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE);
+            if(code!=200&&code!=206)throw new DataSourceException("Stream unavailable",PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS);
             in=connection.getInputStream();
             if(spec.position>0&&code==200){long skip=spec.position;while(skip>0){long n=in.skip(skip);if(n==0){if(in.read()==-1)throw new EOFException();n=1;}skip-=n;}}
             long content=connection.getContentLengthLong();left=spec.length!=C.LENGTH_UNSET?spec.length:content<0?C.LENGTH_UNSET:Math.max(0,content-(code==200?spec.position:0));
             transferStarted(spec);transferring=true;return left;
-        }catch(Exception e){close();throw new IOException("Unable to open private media stream");}
+        }catch(DataSourceException e){close();throw e;}
+        catch(java.net.SocketTimeoutException e){close();throw new DataSourceException("Media stream timed out",PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT);}
+        catch(IOException e){close();throw new DataSourceException("Unable to open private media stream",PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED);}
+        catch(Exception e){close();throw new DataSourceException("Unable to open private media stream",PlaybackException.ERROR_CODE_IO_UNSPECIFIED);}
     }
     @Override public int read(byte[] b,int offset,int length)throws IOException{
         if(length==0)return 0;if(left==0)return C.RESULT_END_OF_INPUT;
-        int n=in.read(b,offset,left==C.LENGTH_UNSET?length:(int)Math.min(length,left));
-        if(n==-1){if(left>0)throw new EOFException("Media stream ended early");return C.RESULT_END_OF_INPUT;}if(left!=C.LENGTH_UNSET)left-=n;bytesTransferred(n);return n;
+        int n;
+        try{n=in.read(b,offset,left==C.LENGTH_UNSET?length:(int)Math.min(length,left));}
+        catch(java.net.SocketTimeoutException e){throw new DataSourceException("Media stream timed out",PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT);}
+        catch(IOException e){throw new DataSourceException("Media stream interrupted",PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED);}
+        if(n==-1){if(left>0)throw new DataSourceException("Media stream ended early",PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED);return C.RESULT_END_OF_INPUT;}if(left!=C.LENGTH_UNSET)left-=n;bytesTransferred(n);return n;
     }
     @Override public Uri getUri(){return uri;}
     @Override public Map<String,List<String>> getResponseHeaders(){return connection==null?Collections.emptyMap():connection.getHeaderFields();}

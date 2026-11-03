@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Unified TV DLNA discovery proof of concept. PROTOTYPE, separate package (UTVDLNAPOC), not the Unified TV app.
+     No addresses, tokens or household data belong in this file. -->
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src http://127.0.0.1:18731; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Unified TV DLNA probe</title>
+  <link rel="stylesheet" href="css/poc.css">
+</head>
+<body>
+  <main>
+    <h1>Unified TV DLNA discovery probe</h1>
+    <p class="note">Prototype test, separate from Unified TV. It looks for media servers on this TV's home network and lists their top folders. It changes nothing on the TV or the NAS.</p>
+    <ol id="steps"></ol>
+    <section id="servers" hidden></section>
+    <pre id="summary"></pre>
+    <pre id="log" hidden></pre>
+    <p class="keys">OK: run again &middot; Down: show or hide the service log &middot; Back: stop the probe and close</p>
+  </main>
+  <script src="js/report.js"></script>
+  <script src="js/poc.js"></script>
+</body>
+</html>

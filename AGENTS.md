@@ -1,6 +1,6 @@
 # Working on Unified TV
 
-This independent GitHub fork is **not** the original CleanYourTV project. Read [README.md](README.md), [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) and [docs/ROADMAP.md](docs/ROADMAP.md) before changing code.
+This independent GitHub fork is **not** the original CleanYourTV project. Read [README.md](README.md), [docs/SPEC.md](docs/SPEC.md) (the current specification; detail in [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md)), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) and [docs/ROADMAP.md](docs/ROADMAP.md) before changing code.
 
 **North star: Content first, underlying technology hidden.**
 
@@ -57,11 +57,12 @@ This section describes the inherited CleanYourTV and CleanYourTV UI tooling as i
 | `examples/` | One folder per tested TV model (`debloat.txt`, sometimes notes and a `config.json`), indexed in `examples/README.md`. Upstream evidence, not Unified TV support claims. |
 | `launcher/` | Inherited reference launcher `com.gathin.tvhome`: plain Java, `minSdk` 26, no `INTERNET` permission. |
 | `launcher-ui/` | Inherited CleanYourTV UI app `io.cleanyourtv.ui`, built without Gradle by `launcher-ui/build.sh`. |
-| `preview/` | The separate Unified TV Android Preview `io.unifiedtv.preview` (no HOME intent; the factory Home stays in place). Read [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md) and [docs/AI_HANDOVER.md](docs/AI_HANDOVER.md) before changing it. |
+| `preview/` | One codebase, two separately installed apps (Gradle flavours): the Unified TV Preview `io.unifiedtv.preview` (no HOME intent at all; never uninstalled or re-signed) and the Unified TV launcher `io.unifiedtv.launcher` (a HOME entry that ships switched off until the owner chooses it; signed with the owner's durable key, see [docs/SIGNING.md](docs/SIGNING.md)). Read [docs/SPEC.md](docs/SPEC.md) and [docs/ACCEPTANCE_REGISTER.csv](docs/ACCEPTANCE_REGISTER.csv) before changing it. |
+| `samsung/` | The native Tizen web app for the Samsung Frame (2021): plain ES2015, no framework, Node tests in `samsung/test/`. CI builds an **unsigned, test-only** `.wgt`; only the owner can sign it, with their own Samsung certificates. The Samsung Home-button experiment in [docs/SAMSUNG_HOME_PROPOSAL.md](docs/SAMSUNG_HOME_PROPOSAL.md) is a proposal: never run it without the owner's explicit approval. |
 | `addons/` | Optional module-card apps, each its own Gradle project, never built into the launcher. |
 | `themes/`, `tools/`, `tests/` | Theme folders (keys in `themes/README.md`); the ADB client `tools/tv.py` and scripts; the Python `unittest` suite. |
 | `docs/` | Unified TV design docs (`docs/PRODUCT_SPEC.md`, `docs/HOME_VIEW.md`, `docs/IDEAS.md`), `docs/TROUBLESHOOTING.md`, `docs/devices/` and the inherited [workflows](#workflows-inherited). |
-| `.github/workflows/` | `ci.yml` (tests, launcher build and APK size gate, standalone preview APK, launcher-ui build), `android-preview-release.yml` (prerelease from an `android-preview-v*` tag), `addons.yml`, `maintainer-bot.yml`, `sync-upstream.yml` (manual-review guidance only). |
+| `.github/workflows/` | `ci.yml` (tests, launcher build and APK size gate, standalone preview APK, launcher-ui build), `samsung.yml` (Frame web app tests and unsigned package), `android-preview-release.yml` (prerelease from an `android-preview-v*` tag), `addons.yml`, `maintainer-bot.yml`, `sync-upstream.yml` (manual-review guidance only). |
 | `.github/maintainer/MAINTAINER.md` | Inherited upstream review policy, kept for reference. Review it before adopting it for Unified TV. |
 
 ### Checks CI runs
@@ -71,7 +72,8 @@ This section describes the inherited CleanYourTV and CleanYourTV UI tooling as i
 | Python suite | `python3 -m venv tools/venv`, `tools/venv/bin/pip install -r tools/requirements.txt`, then `python3 -m unittest discover -s tests -v`. On pushes to `main`, CI sets `CLEANYOURTV_STRICT=1`, which also checks the TV-model count in `README.cleanyourtv.md`. |
 | Launcher | JDK 17, Android SDK platform 34, build-tools 34.0.0. In `launcher/`: `./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease`. Lint stays at zero errors. Optional release signing: set all four of `UNIFIEDTV_KEYSTORE`, `UNIFIEDTV_KEYSTORE_PASSWORD`, `UNIFIEDTV_KEY_ALIAS` and `UNIFIEDTV_KEY_PASSWORD` (Gradle properties or environment variables); otherwise the debug key signs it. Never commit a keystore. |
 | APK size gate | `launcher/app/build/outputs/apk/release/app-release.apk` must be under 524,288 B (512 KB). Do not change the gate or lower `minSdk` (26) in a feature PR. The size rule applies only to the inherited lightweight launcher, not the separate media preview. |
-| Android Preview | JDK 17, Android SDK platform 35, build-tools 35.0.0. `bash preview/build.sh` runs unit tests, lint and the APK build, verifies the signature and checks there is no HOME intent. Keep the non-HOME identity and secret-storage protections, and document every untested integration. |
+| Android Preview | JDK 17, Android SDK platform 35, build-tools 35.0.0. `bash preview/build.sh` runs both apps' unit tests and lint, builds the preview, the launcher and a launcher review build (`.devicecheck`), verifies each signature and package, and runs `preview/tools/home_check.py`: the preview may have no HOME intent; the launcher's must ship switched off. Keep those identities and the secret-storage protections, never put a key in the repository or CI logs, and document every untested integration. |
+| Samsung Frame | Node 22: `node --test samsung/test/*.test.js`, then `bash samsung/build.sh` (standard-library Python) must produce `samsung/out/UnifiedTV-Frame-unsigned.wgt`. `samsung.yml` runs both. `samsung/src/palettes.json` must match `AmbientMesh.java` (a test checks). Never commit a certificate, a signed `.wgt` or anything under `samsung/out/`. |
 | Launcher UI | In `launcher-ui/`: `bash build.sh` with the example settings (no TMDB key, throwaway signing key) must produce a non-empty `CleanYourTV-UI.apk`. |
 | Add-ons | `addons.yml` builds only the add-ons a change touches: `./gradlew --no-daemon testReleaseUnitTest assembleRelease` when the add-on has unit tests, otherwise `assembleRelease`. |
 

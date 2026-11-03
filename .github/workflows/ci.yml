@@ -77,6 +77,17 @@ jobs:
             preview/out/manifest.txt
           retention-days: 14
           if-no-files-found: error
+      # The launcher review build (io.unifiedtv.launcher.devicecheck) installs beside the preview and the real launcher
+      # and can be removed without touching either. Test-signed: never the durable key, never a release.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedTV-Launcher-review
+          path: |
+            preview/out/UnifiedTV-Launcher-review.apk
+            preview/out/SHA256SUMS.txt
+            preview/out/manifest-launcher-review.txt
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -21,6 +21,13 @@ class Screen extends Activity {
     }
     TextView text(String s,int size) { TextView t=new TextView(this); t.setText(s); t.setTextColor(Color.WHITE); t.setTextSize(size); t.setPadding(8,6,8,8); column.addView(t); return t; }
     Button button(String s,Runnable action) {
+        Button b=styled(s,action);
+        LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2); layout.setMargins(0,dp(5),0,dp(5)); column.addView(b,layout);
+        if(autoFocusButtons&&column.findFocus()==null)b.requestFocus();
+        return b;
+    }
+    /** The standard focusable button, not yet placed: for cards and rows that lay themselves out. */
+    Button styled(String s,Runnable action) {
         Button b=new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(20); b.setMinHeight(58);
         android.graphics.drawable.StateListDrawable background=new android.graphics.drawable.StateListDrawable();
         GradientDrawable focused=new GradientDrawable(); focused.setColor(0xfff3f6ff); focused.setCornerRadius(dp(8)); focused.setStroke(dp(3),0xff88b7ff);
@@ -31,8 +38,6 @@ class Screen extends Activity {
         b.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_pressed},new int[]{}},new int[]{0xff101827,0xff101827,Color.WHITE}));
         b.setPadding(dp(16),dp(10),dp(16),dp(10));
         b.setOnClickListener(v->action.run());
-        LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2); layout.setMargins(0,dp(5),0,dp(5)); column.addView(b,layout);
-        if(autoFocusButtons&&column.findFocus()==null)b.requestFocus();
         return b;
     }
     EditText field(String label,String value,boolean secret) {

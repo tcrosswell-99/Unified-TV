@@ -1,19 +1,19 @@
-# Additional architecture proposal: decisions
+# Specification reconciliation
 
-The owner's pasted proposal was reviewed against the full v1.8 draft and prior v1.7 decision record. The full specification becomes v1.9 draft. This is requirements reconciliation, not a hardware completion claim.
+The current, authoritative specification is [SPEC.md](SPEC.md) (v3.3, 25 October 2026). Its detailed requirements are in [PRODUCT_SPEC.md](PRODUCT_SPEC.md), corrected in place; the v3.3 corrections are listed in [SPEC_CHANGES_v3.3.md](SPEC_CHANGES_v3.3.md). Requirement status lives only in [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv). Older specifications are history in [archive/](archive/README.md) and must not be used as instructions.
 
-| Proposal | Latest decision |
+## v1.9 proposal decisions (still valid, now part of SPEC.md)
+
+| Proposal | Decision |
 | --- | --- |
-| Adult / Child profiles | Adopt separate local media accounts and server-enforced permissions. Require an adult PIN to return from Child or edit. Changing launcher profile does not switch SmartTube or another app's account. Android and external apps are outside this boundary. |
-| Embedded ExoPlayer | Implement a Media3 preview trial with direct server streams and real progress reports. Keep VLC compatibility comparison in the release plan until actual files, codecs, subtitles and seek pass. No VLC dock tile. |
-| Accurate Continue Watching | Report actual embedded-player position. Do not label a row Continue Watching until server persistence and interrupted-playback tests pass. |
-| Fixed dock allowlist | Preserve agreed Add, Remove and Move, optionally PIN protected. Six choices are defaults, not a compulsory ceiling. |
-| Replace native Samsung features | Preserve native Frame Art Mode and Samsung TV Plus. An Android FAST app can be an additional installed shortcut, not a silent replacement. |
-| Split tunnelling guarantees no leaks / zero delay | Treat as a routing configuration to prove. ConnectivityManager cannot prove NordVPN ownership, exit country or firewall enforcement. A foreground scrim cannot stop another app's traffic. Preview keeps Live TV blocked. |
-| Silent NordVPN Intents | Do not invent unsupported commands. Opening VPN settings differs from connecting and verifying protection. |
-| Background AirPro LITE | Correct name: AirPin LITE. Provide setup; do not auto-start or show an operational icon without supported status and reboot evidence. |
-| Hardware symbiosis | Adopt: delegate Wi-Fi, Bluetooth, sound, CEC and OLED care to native settings. No automatic package changes. |
-| Local voice plus cloud discovery | Retain as a future two-tier option. Speech recognition has latency and hardware constraints; no zero-latency guarantee or cloud key in APK. |
-| Ambient app fallbacks | Only original brand-aware imagery behind a highlighted app. Scenic imagery belongs to neutral/gallery states. |
-
-New acceptance work: profile isolation through browsing/playback, PIN boundary, restricted server account validation, actual progress round-trip, native settings access, refused credential redirects, bounded network/image loading. Hardware evidence remains mandatory for Ring, VPN, Samsung, audio and performance claims.
+| Adult / Child profiles | Separate local media accounts with server-enforced permissions; adult PIN to return from Child or edit. Changing launcher profile does not switch SmartTube or other app accounts. |
+| Embedded ExoPlayer | Media3 with direct server streams and real progress reports. VLC is excluded from the product and playback path; no VLC tile. |
+| Continue Watching | Only after server persistence and interrupted-playback tests pass. |
+| Dock | Add, Remove and Move, optionally PIN protected. Six choices are defaults, not a ceiling. |
+| Native Samsung features | Preserve native Frame Art Mode and Samsung TV Plus; never silently replace them. |
+| Split tunnelling | A routing configuration to prove, not a guarantee. Live TV stays blocked until route and drop are proven. |
+| NordVPN intents | No invented silent-connect commands. |
+| AirPin LITE | Correct name (not "AirPro"); setup only; no operational icon without real status. |
+| Hardware settings | Delegate Wi-Fi, Bluetooth, sound, CEC and OLED care to native settings. |
+| Voice | Optional two-tier local plus cloud; no zero-latency claim; no cloud key in an APK. |
+| Ambient fallbacks | Only brand-aware imagery behind a highlighted app; scenic imagery for neutral states only. |

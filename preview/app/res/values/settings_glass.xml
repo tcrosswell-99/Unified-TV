@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings Liquid Glass overlay (spec v3.4 module 13). SettingsActivity is translucent so Home stays visible and still
+     behind it; the sheet's own slide in from the right is a view animation in SettingsActivity, because Android 10+ gives
+     translucent activities the platform's translucent window transition whatever windowAnimationStyle says, and a view
+     animation can honour Reduce motion. Confirmation dialogs use the same dark glass, centred above the sheet. -->
+<resources>
+  <style name="SettingsGlassTheme" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:colorBackgroundCacheHint">@null</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:windowFullscreen">true</item>
+    <item name="android:windowContentOverlay">@null</item>
+    <item name="android:backgroundDimEnabled">false</item>
+    <item name="android:alertDialogTheme">@style/SettingsGlassDialog</item>
+  </style>
+  <style name="SettingsGlassDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+    <item name="android:windowBackground">@drawable/settings_glass_dialog</item>
+    <item name="android:backgroundDimAmount">0.4</item>
+    <item name="android:colorAccent">#FFCFE3FF</item>
+  </style>
+</resources>
