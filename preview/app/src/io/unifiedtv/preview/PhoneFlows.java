@@ -382,6 +382,7 @@ final class PhoneFlows {
             }
         }
         private String form(PhoneSetupServer.Request r, String problem) {
+            if (problem != null) { PhoneSetupServer.lastRefusal = service.name + ": " + problem; PhoneSetupServer.lastRefusalAt = System.currentTimeMillis(); }
             StringBuilder b = new StringBuilder(PhonePages.error(problem)).append("<p>").append(PhonePages.esc(service.phoneIntro)).append("</p>");
             // Numbered steps; the sign-up ("Get a free key") is the one prominent link, and the paste box is on this same page.
             String[] steps = new String[service.steps.length];

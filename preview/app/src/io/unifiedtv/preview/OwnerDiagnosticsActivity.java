@@ -52,6 +52,7 @@ public final class OwnerDiagnosticsActivity extends GlassScreen {
             // Owner's TCL, run 93: which phone-setup step failed last, in plain words (no address, no secret).
             String problem=prefs.getString(PhoneSetup.HA_PROBLEM,"");
             out.append("\nLast phone setup problem: ").append(problem.isEmpty()?"none":problem+", "+OwnerChecks.when(this,prefs.getLong(PhoneSetup.HA_PROBLEM_AT,0)));
+            String refusal=PhoneSetupServer.lastRefusal;out.append("\nLast phone page refusal: ").append(refusal==null?"none since the app started":refusal+", "+OwnerChecks.when(this,PhoneSetupServer.lastRefusalAt));
             JSONObject names=house.optJSONObject("names");
             out.append("\nDoorbell: ").append(name(names,"door",house.optString("door"))).append("\nPerson sensor: ").append(name(names,"person",house.optString("person"))).append("\nCamera: ").append(name(names,"camera",house.optString("camera")));
             out.append("\nLast doorbell event on this TV: ").append(prefs.getString("householdLastEvent","none")).append(", ").append(OwnerChecks.when(this,prefs.getLong("householdLastEventAt",0)));

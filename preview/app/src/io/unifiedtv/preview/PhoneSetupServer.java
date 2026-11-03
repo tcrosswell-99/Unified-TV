@@ -130,6 +130,13 @@ final class PhoneSetupServer {
         thread = new Thread(this::loop, "phone-setup"); thread.setDaemon(true); thread.start();
     }
 
+    /** The last page the phone was refused with and when (Owner diagnostics; the words only, never a path or value). */
+    static volatile String lastRefusal; static volatile long lastRefusalAt;
+    private Response refused(int status, String title, String html) {
+        lastRefusal = status + " " + title; lastRefusalAt = clock.getAsLong();
+        return Response.status(status, html);
+    }
+
     /** Short address for typing ("http://" + the TV's home-network address + ":" + port); asks for the code. */
     String origin() { return origin; }
     /** The full address in the QR code, with the one-time secret. */
@@ -174,34 +181,34 @@ final class PhoneSetupServer {
     /** One request on one connection; true when the flow finished successfully. */
     private boolean serve(Socket socket) throws IOException {
         OutputStream out = socket.getOutputStream();
-        if (++requests > MAX_REQUESTS) { write(out, Response.status(429, PhonePages.message("Too many requests", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
+        if (++requests > MAX_REQUESTS) { write(out, refused(429, "Too many requests", PhonePages.message("Too many requests", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
         Request r;
         try { r = read(socket.getInputStream(), socket.getInetAddress()); }
-        catch (IllegalArgumentException e) { write(out, Response.status(400, PhonePages.message("Something went wrong", "Reload the page and try again."))); return false; }
+        catch (IllegalArgumentException e) { write(out, refused(400, "Something went wrong", PhonePages.message("Something went wrong", "Reload the page and try again."))); return false; }
         if (r == null) return false;
-        if (!host(r.headers.getOrDefault("host", ""), bind, server.getLocalPort())) { write(out, Response.status(400, PhonePages.message("Wrong address", "Scan the code on the TV again."))); return false; }
-        if (!"GET".equals(r.method) && !"POST".equals(r.method)) { write(out, Response.status(405, PhonePages.message("Not allowed", ""))); return false; }
+        if (!host(r.headers.getOrDefault("host", ""), bind, server.getLocalPort())) { write(out, refused(400, "Wrong address", PhonePages.message("Wrong address", "Scan the code on the TV again."))); return false; }
+        if (!"GET".equals(r.method) && !"POST".equals(r.method)) { write(out, refused(405, "Not allowed", PhonePages.message("Not allowed", ""))); return false; }
         String origin = r.headers.get("origin");
-        if (r.post() && !originAllowed(origin, r.path)) { write(out, Response.status(403, PhonePages.message("Not allowed", "Scan the code on the TV again and try once more."))); return false; }
+        if (r.post() && !originAllowed(origin, r.path)) { write(out, refused(403, "Not allowed", PhonePages.message("Not allowed", "Scan the code on the TV again and try once more."))); return false; }
         r.origin = this.origin; r.session = this.origin + "/" + token;
         if (r.path.equals("/favicon.ico")) { write(out, Response.status(404, "")); return false; }
         // The short typed address: the code shown on the TV, then on to the session's own pages.
         if (r.path.equals("/")) {
             if (!r.post()) { write(out, Response.page(PhonePages.code(null))); return false; }
-            if (++submits > MAX_SUBMITS) { write(out, Response.status(429, PhonePages.message("Too many tries", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
+            if (++submits > MAX_SUBMITS) { write(out, refused(429, "Too many tries", PhonePages.message("Too many tries", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
             if (same(r.param("code").replaceAll("\\s", ""), code)) { write(out, Response.redirect("/" + token + "/")); return false; }
-            if (++codeTries >= MAX_CODE_TRIES) { write(out, Response.status(403, PhonePages.message("Too many tries", "That code was stopped. Start phone setup again on the TV for a new one."))); finish(End.LOCKED); return false; }
+            if (++codeTries >= MAX_CODE_TRIES) { write(out, refused(403, "Too many tries", PhonePages.message("Too many tries", "That code was stopped. Start phone setup again on the TV for a new one."))); finish(End.LOCKED); return false; }
             write(out, Response.status(403, PhonePages.code("That code didn't match. Check the 6 digits on the TV and try again."))); return false;
         }
         String prefix = "/" + token;
         if (!(r.path.equals(prefix) || r.path.startsWith(prefix + "/")) || !same(r.path.substring(1, 1 + token.length()), token)) {
-            write(out, Response.status(404, PhonePages.message("Page not found", "Scan the code on the TV again.")));
+            write(out, refused(404, "Page not found", PhonePages.message("Page not found", "Scan the code on the TV again.")));
             if (++bad > MAX_BAD) finish(End.LOCKED);
             return false;
         }
         String action = r.path.length() <= prefix.length() + 1 ? "" : r.path.substring(prefix.length() + 1);
-        if (!action.matches("[a-z/]{0,32}") || action.endsWith("/")) { write(out, Response.status(404, PhonePages.message("Page not found", ""))); if (++bad > MAX_BAD) finish(End.LOCKED); return false; }
-        if (r.post() && ++submits > MAX_SUBMITS) { write(out, Response.status(429, PhonePages.message("Too many tries", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
+        if (!action.matches("[a-z/]{0,32}") || action.endsWith("/")) { write(out, refused(404, "Page not found", PhonePages.message("Page not found", ""))); if (++bad > MAX_BAD) finish(End.LOCKED); return false; }
+        if (r.post() && ++submits > MAX_SUBMITS) { write(out, refused(429, "Too many tries", PhonePages.message("Too many tries", "Start phone setup again on the TV."))); finish(End.LOCKED); return false; }
         if (!opened) { opened = true; if (events != null) try { events.opened(); } catch (RuntimeException ignored) {} }
         Response response;
         try { response = flow.handle(action, r); }
@@ -215,12 +222,14 @@ final class PhoneSetupServer {
      * A form post's Origin (owner's TCL, 28 October 2026: every save from the phone said "Not allowed"). Browsers send
      * {@code Origin: null} for a same-page form post when the page's referrer policy is {@code no-referrer}, which these
      * pages used to send; pages now say {@code same-origin}, so the real origin comes back. Accepted: no Origin, this
-     * TV's own origin (Host rules), and {@code null} only on a path inside the session (the one-time secret in the path
-     * already proves the page came from this TV). Refused: any other site.
+     * TV's own origin (Host rules), and any Origin on a path inside the session (the one-time secret in the path already
+     * proves the page came from this TV). Refused: another site posting to the short typed address.
      */
     private boolean originAllowed(String origin, String path) {
         if (origin == null || origin.equals(this.origin)) return true;
-        if (origin.trim().equalsIgnoreCase("null")) return token != null && path.length() > token.length() && same(path.substring(1, 1 + token.length()), token);
+        // Inside the session the one-time secret in the path already proves the page came from this TV (no other site can
+        // know it), so any Origin a phone's browser sends there is accepted (owner's TCL, 3 November 2026: saves still failed).
+        if (token != null && path.length() > token.length() && same(path.substring(1, 1 + token.length()), token)) return true;
         return origin.regionMatches(true, 0, "http://", 0, 7) && host(origin.substring(7), bind, server.getLocalPort());
     }
 

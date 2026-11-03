@@ -78,7 +78,7 @@ public class PhoneSetupServerTest {
         assertEquals(404, send("GET", "/AAAAAAAAAAAAAAAAAAAAAA/", host(), null).status);
         assertEquals("a token prefix is not the token", 404, send("GET", tokenPath().substring(0, 10), host(), null).status);
         assertEquals(400, send("GET", tokenPath(), "evil.example:80", null).status);
-        assertEquals("a foreign Origin can't post", 403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: http://evil.example").status);
+        assertEquals("a foreign Origin can't post to the short address", 403, send("POST", "/", host(), "code=000000", "Origin: http://evil.example").status);
         assertEquals("Origin: null outside the session can't post", 403, send("POST", "/AAAAAAAAAAAAAAAAAAAAAA/save", host(), "ok=yes", "Origin: null").status);
         assertEquals(405, send("PUT", tokenPath(), host(), null).status);
         assertNull("nothing has ended", ended.get());
@@ -88,6 +88,12 @@ public class PhoneSetupServerTest {
     @Test public void aPhonesNullOriginInsideTheSessionMayPost() throws Exception {
         start(true);
         assertNotEquals(403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: null").status);
+    }
+
+    /** Inside the session the secret path is the proof: whatever Origin the phone's browser sends (owner's TCL, 3 Nov 2026). */
+    @Test public void anyOriginInsideTheSessionMayPost() throws Exception {
+        start(true);
+        assertNotEquals(403, send("POST", tokenPath() + "save", host(), "ok=yes", "Origin: http://192.168.1.20:8080").status);
     }
 
     @Test public void thisTvsOwnOriginMayPost() throws Exception {
