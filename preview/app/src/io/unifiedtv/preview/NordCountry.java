@@ -11,8 +11,9 @@ import java.util.regex.Pattern;
  * sent. Shown only while NordVPN reports connected AND Android reports a VPN (VpnGate); it says where NordVPN's server
  * is, nothing more: it is never a claim that Live TV, or anything else, is protected.
  *
- * <p>OD-26 (owner, 27 October 2026): the same notification's word, connected or not ({@link #connected}), is one of the
- * ways LiveTvProtection tells that the VPN Android reports is NordVPN's. Only that yes/no is kept, in memory.
+ * <p>OD-26 (as amended 3 November 2026): the same notification's word, connected or not ({@link #connected}), only words
+ * an open Live TV ("NordVPN is connected to …"). It never refuses Live TV, which opens on any VPN Android reports with
+ * NordVPN installed (LiveTvProtection). Only that yes/no is kept, in memory.
  */
 final class NordCountry {
     private NordCountry() {}
@@ -54,7 +55,7 @@ final class NordCountry {
      * NordVPN's word in its notification texts. FALSE when any text says it is not connected (checked first: "Not
      * connected", "Disconnected", "Unprotected", "No connection", "Connecting", "Paused"). TRUE only for NordVPN's explicit
      * "Connected to <country>" or a title or text that is exactly "Connected" or "VPN connected". Otherwise null (unsure:
-     * another NordVPN notice, a promotion, new wording), which LiveTvProtection never treats as connected.
+     * another NordVPN notice, a promotion, new wording), which is never worded as NordVPN being connected.
      */
     static Boolean status(CharSequence... texts) {
         if (stopped(texts)) return Boolean.FALSE;

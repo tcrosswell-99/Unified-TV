@@ -111,9 +111,8 @@ final class Capabilities {
                     :c(id,"NordVPN",State.SETUP_REQUIRED,"Not installed. Install it from the TV's app store if it offers it.",GO_LIVE_TV);
             case LIVE_TV:
                 if(f.livePackage==null||f.livePackage.isEmpty())return c(id,"Live TV",State.SETUP_REQUIRED,"No single Live TV app was recognised on this TV.",GO_LIVE_TV);
-                if(f.liveState==LiveTvProtection.State.OPEN)return c(id,"Live TV",State.AVAILABLE,"NordVPN is connected, so Live TV opens. If NordVPN drops, Unified TV covers Live TV; it isn't a kill switch.",GO_LIVE_TV);
-                if(f.liveState==LiveTvProtection.State.NO_NORDVPN)return c(id,"Live TV",State.SETUP_REQUIRED,"Live TV opens when NordVPN is connected, and NordVPN isn't installed.",GO_LIVE_TV);
-                if(f.liveState==LiveTvProtection.State.UNSURE)return c(id,"Live TV",State.PERMISSION_REQUIRED,"Another VPN app is installed, so Unified TV needs notification access to see that NordVPN is the one connected.",GO_LIVE_TV);
+                if(f.liveState==LiveTvProtection.State.OPEN)return c(id,"Live TV",State.AVAILABLE,"A VPN is connected, so Live TV opens. If NordVPN drops, Unified TV covers Live TV; it isn't a kill switch.",GO_LIVE_TV);
+                if(f.liveState==LiveTvProtection.State.NO_NORDVPN)return c(id,"Live TV",State.SETUP_REQUIRED,"Live TV opens when a VPN is connected, and NordVPN isn't installed.",GO_LIVE_TV);
                 return c(id,"Live TV",State.TEMPORARILY_UNAVAILABLE,"Locked until NordVPN is connected.",GO_LIVE_TV);
             case HOME_ASSISTANT:
                 if(!f.haSaved)return c(id,"Home Assistant",State.SETUP_REQUIRED,"Not set up. You set it up on your phone, from a code on the TV.",GO_HOME_ASSISTANT);

@@ -22,9 +22,10 @@ import java.util.List;
  * ignored the moment it arrives, and only NordVPN's country code is kept, in memory. Nothing is stored or sent anywhere.
  * Without NordVPN it asks to be disconnected as soon as Android connects it, as before.
  *
- * OD-26 (owner, 27 October 2026): the same notification's connected-or-not word (NordCountry.connected) tells
- * LiveTvProtection that the VPN Android reports is NordVPN's, and a "disconnected" word while Live TV runs asks the Live
- * TV safety net (LiveTvGuard) to look again.
+ * OD-26 (as amended 3 November 2026): the same notification's connected-or-not word (NordCountry.connected) only words
+ * an open Live TV ("NordVPN is connected to …"); it never refuses Live TV, which opens on any VPN Android reports. A
+ * change in that word is a nudge for the Live TV safety net (LiveTvGuard) and a waiting Connect (NordConnect) to read
+ * Android's VPN state again; they decide on that alone.
  */
 public final class MediaWatch extends NotificationListenerService {
     @Override public void onListenerConnected() {
@@ -53,7 +54,7 @@ public final class MediaWatch extends NotificationListenerService {
         Boolean says = NordCountry.status(texts);
         if (says == null) return;
         NordCountry.connected = says;
-        if (!says) LiveTvGuard.nordStopped();   // the safety net looks again (it decides with the same rule)
+        if (!says) LiveTvGuard.nordStopped();   // the safety net reads Android's VPN state again (the same rule)
         else NordConnect.nordSaid();            // a Connect for Live TV waiting on NordVPN looks again
     }
 

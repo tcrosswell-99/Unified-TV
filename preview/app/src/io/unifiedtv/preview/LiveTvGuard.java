@@ -16,7 +16,8 @@ import android.os.*;
  *
  * <p>How it watches, with no polling: Android's own VPN network callback (lost, back), and NordVPN's own notification
  * saying it is not connected (MediaWatch, when allowed). Each signal waits {@link #SETTLE_MS} (a VPN lost while it
- * reconnects is not a drop) and then asks the same rule that opened Live TV ({@link LiveTvProtection#now}). One small
+ * reconnects is not a drop) and then asks the same rule that opened Live TV ({@link LiveTvProtection#now}): a drop is
+ * Android no longer reporting a VPN (OD-26 as amended 3 November 2026); NordVPN's notification only prompts the look. One small
  * foreground service with a quiet notification, as TurnOnService: no wakelock, no screen, nothing drawn until a drop.
  *
  * <p>It stops when the Live TV session is over: any Unified TV screen other than the cover comes to the front (Home

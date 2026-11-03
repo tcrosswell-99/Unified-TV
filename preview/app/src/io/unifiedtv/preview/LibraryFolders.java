@@ -110,6 +110,21 @@ final class LibraryFolders {
     }
     /** Only what is needed to reach a server again. */
     static JSONObject serverOnly(JSONObject from){JSONObject s=new JSONObject();try{for(String k:new String[]{"name","location","control","service","udn"})s.put(k,from.optString(k));s.put("enabled",true);}catch(JSONException ignored){}return s;}
+    /**
+     * The same media server (same UDN, never matched by name) answering at a new address or port: both records take its
+     * new address and keep their folders, so the saved list of titles (LibraryIndex, kept by UDN) is still this server's.
+     * True when a record changed.
+     */
+    static boolean relocate(Context c,JSONObject moved)throws Exception{
+        if(moved==null||moved.optString("udn").trim().isEmpty()||moved.optString("control").isEmpty())return false;
+        Store s=store(c);boolean changed=false;
+        for(String id:new String[]{STORE,KidsPolicy.STORE}){
+            JSONObject r;try{r=s.read(id);}catch(Exception e){continue;}
+            if(r==null||r.length()==0||!sameServer(r,moved)||r.optString("control").equals(moved.optString("control")))continue;
+            r.put("control",moved.optString("control")).put("location",moved.optString("location"));s.save(id,r);changed=true;
+        }
+        return changed;
+    }
     /** Saves both records; no folders left means no library (and no Kids folders). */
     static void save(Context c,JSONObject server,List<Folder> folders)throws Exception{
         Store s=store(c);JSONObject before;try{before=s.read(KidsPolicy.STORE);}catch(Exception e){before=new JSONObject();}

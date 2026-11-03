@@ -270,7 +270,7 @@ public final class CleanupActivity extends GlassScreen {
         String[] steps = {
             "Open each streaming app you use and play something for a few seconds.",
             "Press Home, Back, the volume and app buttons on the remote, and try its microphone if you use voice.",
-            "Open NordVPN and check it connects. Live TV opens only while NordVPN is connected.",
+            "Open NordVPN and check it connects. Live TV opens only while a VPN is connected.",
             "Switch to each HDMI input: check the picture and the sound, including the soundbar.",
             "If you use the doorbell, check its alerts still appear.",
             "Put the TV in standby with the remote, wait a few seconds, and wake it again."};

@@ -46,7 +46,7 @@ public class RoundTripTest {
         try { pm.addIntentFilterForActivity(c, f); } catch (Exception e) { throw new AssertionError(e); }
     }
     private static LiveTvProtection.Facts facts(VpnGate.State vpn) {
-        LiveTvProtection.Facts f = new LiveTvProtection.Facts(); f.vpn = vpn; f.nordInstalled = true; f.onlyNordCanVpn = true; return f;
+        LiveTvProtection.Facts f = new LiveTvProtection.Facts(); f.vpn = vpn; f.nordInstalled = true; return f;
     }
     private static String words(View v) { StringBuilder b = new StringBuilder(); if (v instanceof TextView && v.isShown()) b.append(((TextView) v).getText()).append('\n'); if (v instanceof ViewGroup) for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) b.append(words(((ViewGroup) v).getChildAt(i))); return b.toString(); }
     private static Button find(View v, String text) { if (v instanceof Button && v.isShown() && ((Button) v).getText().toString().equals(text)) return (Button) v; if (v instanceof ViewGroup) for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) { Button b = find(((ViewGroup) v).getChildAt(i), text); if (b != null) return b; } return null; }
@@ -166,7 +166,7 @@ public class RoundTripTest {
             assertNotNull(row); row.performClick(); idle(500);
             String w = words(a.getWindow().getDecorView());
             assertTrue(w, w.contains(NordConnect.AUTO_TIP));
-            assertNotNull(find(a.getWindow().getDecorView(), VpnGate.DEBUG_ACCESS)); assertNull("no dead button", find(a.getWindow().getDecorView(), "Allow notification access"));
+            assertNotNull(find(a.getWindow().getDecorView(), NotificationAccessActivity.DEBUG_ACCESS)); assertNull("no dead button", find(a.getWindow().getDecorView(), "Allow notification access"));
             assertTrue(w.contains(MediaWatch.pcCommand(app())));
         }
     }

@@ -52,17 +52,19 @@ final class OwnerChecks {
         if(folders==0)return who+": description read; top level shows no folders. Not offered.";
         return who+": description read; the top level couldn't be browsed. Not offered.";
     }
-    /** Live TV's state by OD-26's rule, in plain words: "open" only while NordVPN is connected, and never called protected. */
+    /** Live TV's state by OD-26's rule, in plain words: "open" only while a VPN is connected, and never called protected. */
     static String liveTv(String vpnLabel,boolean routed,LiveTvProtection.State state){
         String vpn=vpnLabel+(routed?"; this app's traffic uses the VPN.":"; this app's traffic does not use a VPN.");
         return vpn+" Live TV: "+LiveTvProtection.word(state)+". "+LiveTvProtection.message(state);
     }
+    /** OD-26 as amended (3 November 2026): what decides, and what is only shown. */
+    static final String INFO_ONLY="Live TV opens on any VPN Android reports while NordVPN is installed; the notice and the VPN apps are information only.";
     /** What the rule read, for the owner's checks on the TV: the facts behind "open" or "locked", and the safety net. */
     static String liveFacts(LiveTvProtection.Facts f,java.util.Collection<String> vpnApps,boolean watching,String lastDrop){
         String says=f.nordSays==null?"says nothing":f.nordSays?"says connected":"says not connected";
         return "NordVPN installed: "+(f.nordInstalled?"yes":"no")+". Notification access: "+(f.notificationAccess?"allowed":"not allowed")
             +". NordVPN's notice: "+(f.notificationAccess?says:"not readable")+". Apps that can run a VPN: "+(vpnApps==null||vpnApps.isEmpty()?"none found":String.join(", ",vpnApps))
-            +". Live TV safety net: "+(watching?"watching":"not running")+(lastDrop==null?"":"; last drop: "+lastDrop)+".";
+            +". "+INFO_ONLY+" Live TV safety net: "+(watching?"watching":"not running")+(lastDrop==null?"":"; last drop: "+lastDrop)+".";
     }
     /** The same, with the apps left out of "can run a VPN" and why (LiveTvProtection.ignoredBecause). */
     static String liveFacts(LiveTvProtection.Facts f,java.util.Collection<String> vpnApps,java.util.Map<String,String> ignored,boolean watching,String lastDrop){

@@ -24,7 +24,7 @@ import android.content.pm.PackageManager;
 final class Launch {
     /**
      * Opens the app, or explains why not; null when it opened, "" when the Live TV sheet explains. Live TV opens only by
-     * LiveTvProtection's one rule (OD-26: NordVPN connected), and then the safety net (LiveTvGuard) watches it.
+     * LiveTvProtection's one rule (OD-26 as amended: a VPN connected, NordVPN installed), and then the safety net (LiveTvGuard) watches it.
      */
     static String open(Activity a,String pkg,String label){return open(a,pkg,label,false);}
     /** A short visit to a utility app (AirPin, NordVPN) that the household comes straight back from: see the class notes. */

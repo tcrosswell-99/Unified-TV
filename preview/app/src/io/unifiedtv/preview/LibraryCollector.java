@@ -29,6 +29,8 @@ final class LibraryCollector {
     /** Said wherever its progress shows (owner, build run 99: "would Back stop it?"). */
     static final String BACKGROUND="This carries on in the background — you can press Back.";
     static final String KEY_HINT="Add your free TMDB key to see posters";
+    /** The quiet line while a library already on this TV is checked for new and removed titles (owner, 3 November 2026). */
+    static final String CHECKING="Checking for new films…";
     /** Listeners hear about changes at most this often. */
     static final long NOTIFY_MS=500;
     /** At most this many posters are kept on the TV ahead of time (about 50 MB); the rest arrive as tiles are shown. */
@@ -41,23 +43,30 @@ final class LibraryCollector {
         final Phase phase;final int found,postersDone,postersTotal,problem;final boolean noKey,paused,stale;
         /** Which run of the job this is (1, 2…): a screen tells a run it has already seen finish from a new one. */
         final int pass;
+        /**
+         * Scanning a library already kept on this TV: the saved titles stay on screen ({@code found} is their number and
+         * doesn't move), and the only words are {@link #CHECKING}. Never "Finding your films… 0 so far" over a full list.
+         */
+        final boolean checking;
         Status(int pass,Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem){
-            this.pass=pass;this.phase=phase;this.found=Math.max(0,found);this.postersDone=Math.max(0,postersDone);this.postersTotal=Math.max(0,postersTotal);this.noKey=noKey;this.paused=paused;this.stale=stale;this.problem=problem;}
-        Status paused(boolean p){return new Status(pass,phase,found,postersDone,postersTotal,noKey,p,stale,problem);}
+            this(pass,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,false);}
+        Status(int pass,Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem,boolean checking){
+            this.pass=pass;this.phase=phase;this.found=Math.max(0,found);this.postersDone=Math.max(0,postersDone);this.postersTotal=Math.max(0,postersTotal);this.noKey=noKey;this.paused=paused;this.stale=stale;this.problem=problem;this.checking=checking&&phase==Phase.SCANNING;}
+        Status paused(boolean p){return new Status(pass,phase,found,postersDone,postersTotal,noKey,p,stale,problem,checking);}
         boolean scanning(){return phase==Phase.SCANNING;}
         boolean busy(){return phase==Phase.SCANNING||phase==Phase.POSTERS;}
         /** "Finding your films… 120 so far" or "Getting posters: 80 of 200"; empty when nothing is under way. */
         String progress(){
-            String p=phase==Phase.SCANNING?(found==0?"Finding your films…":"Finding your films… "+number(found)+" so far")
+            String p=phase==Phase.SCANNING?(checking?CHECKING:found==0?"Finding your films…":"Finding your films… "+number(found)+" so far")
                 :phase==Phase.POSTERS?"Getting posters: "+number(postersDone)+" of "+number(postersTotal):"";
             return p.isEmpty()||!paused?p:p+" (resting while the TV needs its memory)";
         }
         /** The library's and Settings' line: the progress and that it carries on by itself. Empty when idle. */
-        String line(){String p=progress();return p.isEmpty()?"":p+". "+BACKGROUND;}
+        String line(){String p=progress();return p.isEmpty()||checking?p:p+". "+BACKGROUND;}
         /** The setup sheet's line after Save. */
         String setup(){
             switch(phase){
-                case SCANNING:return progress()+" — you can carry on.";
+                case SCANNING:return checking?progress():progress()+" — you can carry on.";
                 case POSTERS:return "Found "+videos(found)+". "+progress()+".";
                 case DONE:return "Found "+videos(found)+(postersTotal>0&&postersDone>=postersTotal?". Posters are ready.":".");
                 case FAILED:return "The media server isn't answering just now. Unified TV tries again when you open Your Films & TV.";
@@ -66,6 +75,7 @@ final class LibraryCollector {
         }
         /** Home's row (owner, build run 99): never a bare "View all" while the list is being made. */
         String home(){
+            if(checking)return progress();
             if(phase==Phase.SCANNING)return (found==0?"Scanning your film and TV library…":"Scanning your film and TV library — "+videos(found)+" found so far.")+" You can keep watching.";
             if(phase==Phase.POSTERS)return progress()+". You can keep watching.";
             return "";
@@ -164,13 +174,36 @@ final class LibraryCollector {
         if(!lib.ready){set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
         try{DlnaClient.lan=LocalDiscovery.lan(app);}catch(RuntimeException ignored){}
         passCancels=cancels.get();Thread.interrupted();   // a cancel before this pass is not this pass's
-        passes++;set(make(Phase.SCANNING,0,0,0,false,false,false,0));
-        LibraryIndex.Index index;
-        try{index=LibraryIndex.refresh(app,lib,false,(titles,folders)->set(make(Phase.SCANNING,titles,0,0,false,status.paused,false,0)));}
-        catch(InterruptedIOException e){Thread.currentThread().interrupt();set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
-        catch(Exception e){set(make(Phase.FAILED,0,0,0,false,false,true,e instanceof DlnaClient.Failure?((DlnaClient.Failure)e).kind:DlnaClient.Failure.UNREACHABLE));return;}
+        // A library already on this TV stays on screen while it is checked: one quiet line, no count from zero.
+        LibraryIndex.Index saved=LibraryIndex.cached(app,lib);boolean checking=LibraryIndex.settled(saved,lib);int have=saved.size();
+        passes++;set(make(Phase.SCANNING,checking?have:0,0,0,false,false,false,0,checking));
+        LibraryIndex.Progress progress=checking?null:(titles,folders)->set(make(Phase.SCANNING,titles,0,0,false,status.paused,false,0));
+        LibraryIndex.Index index=null;Exception failed=null;
+        for(int attempt=0;;attempt++){
+            failed=null;
+            try{index=LibraryIndex.refresh(app,lib,false,progress);}
+            catch(InterruptedIOException e){Thread.currentThread().interrupt();set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
+            catch(Exception e){failed=e;}
+            int kind=failed!=null?LibraryIndex.kind(failed):index.problem;
+            if(attempt>0||kind!=DlnaClient.Failure.UNREACHABLE||cancels.get()!=passCancels)break;
+            // Not answering at its saved address: the same server (same UDN) on a new address or port keeps its list.
+            LibraryFolders.Library moved=relocated(lib);if(moved==null)break;lib=moved;
+        }
+        if(failed!=null){set(make(Phase.FAILED,0,0,0,false,false,true,failed instanceof DlnaClient.Failure?((DlnaClient.Failure)failed).kind:DlnaClient.Failure.UNREACHABLE));return;}
         if(cancels.get()!=passCancels){set(make(Phase.IDLE,0,0,0,false,false,false,0));return;}
         posters(lib,index);
+    }
+    /** Finds the media server again on the home network (DlnaClient.relocate on a TV, a fake in tests). */
+    interface Relocator{org.json.JSONObject find(Context c,org.json.JSONObject source)throws Exception;}
+    static volatile Relocator relocator=DlnaClient::relocate;
+    /** The library at the server's new address (saved for Adults and Kids), or null when it wasn't found elsewhere. */
+    private LibraryFolders.Library relocated(LibraryFolders.Library lib){
+        try{org.json.JSONObject moved=relocator.find(app,lib.source);if(moved==null||!LibraryFolders.relocate(app,moved))return null;
+            EventLog.record(app,EventLog.CONNECTION,"Media server found at a new address; the saved library was kept");
+            LibraryFolders.Library again=LibraryFolders.library(LibraryFolders.read(app,LibraryFolders.STORE),LibraryFolders.read(app,KidsPolicy.STORE),false);
+            return again.ready?again:null;}
+        catch(InterruptedIOException e){Thread.currentThread().interrupt();return null;}
+        catch(Exception e){return null;}
     }
     private boolean superseded(int at){if(epoch.get()!=at)return true;synchronized(lock){return again;}}
     /** Every tile not looked up yet, in the library's own row order, a few at a time behind whatever is on screen. */
@@ -237,6 +270,8 @@ final class LibraryCollector {
 
     private Status make(Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem){
         return new Status(passes,phase,found,postersDone,postersTotal,noKey,paused,stale,problem);}
+    private Status make(Phase phase,int found,int postersDone,int postersTotal,boolean noKey,boolean paused,boolean stale,int problem,boolean checking){
+        return new Status(passes,phase,found,postersDone,postersTotal,noKey,paused,stale,problem,checking);}
 
     // --- telling the screens
     private void set(Status s){

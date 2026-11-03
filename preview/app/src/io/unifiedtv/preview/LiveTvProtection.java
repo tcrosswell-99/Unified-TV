@@ -4,23 +4,19 @@ import android.content.pm.*;
 import java.util.*;
 
 /**
- * OD-26 (owner, 27 October 2026): Live TV opens when NordVPN is connected. This replaces SET-063's "automatic verification
- * only" (OD-21/25 October), under which Live TV never opened on Android: a third-party app cannot see another app's
- * routing, and Android's "block connections without VPN" setting is readable only by a device or profile owner.
+ * OD-26 (owner, 27 October 2026; amended 3 November 2026): Live TV opens when a VPN is connected. The 27 October rule
+ * also asked Unified TV to prove the VPN was NordVPN's, and on the owner's TCL it couldn't (another app able to run a VPN,
+ * no notification-access screen), so Live TV never opened with NordVPN connected. The owner: "if a VPN is connected, it's
+ * connected. So use that."
  *
  * <p>The one rule, for every route into Live TV (the dock tile, Apps, voice, the Settings sheet and anything Launch.open
- * recognises as Live TV), and for the safety net while Live TV runs (LiveTvGuard): Live TV opens only while Android reports
- * a VPN AND that VPN is NordVPN's. It is NordVPN's when NordVPN is installed and either
- * <ul>
- * <li>NordVPN's own notification says it is connected (read by MediaWatch with the notification access the household
- *     allowed; NordCountry), or</li>
- * <li>without that word, NordVPN is the only app on the TV that can run a VPN at all (the only one declaring
- *     android.net.VpnService), so the VPN Android reports can only be NordVPN's.</li>
- * </ul>
- * Another VPN app installed and no notification access: Unified TV can't tell which VPN is on, so Live TV stays locked
- * and says so. NordVPN's own notification saying it is not connected (disconnected, connecting, paused) always locks.
+ * recognises as Live TV), and for the safety net while Live TV runs (LiveTvGuard): Live TV opens while Android reports a
+ * VPN on any network (VpnGate.inspect, validated or not) and NordVPN is installed. Nothing else decides: other apps that
+ * can run a VPN, a system VPN service, notification access and NordVPN's own notification are shown in Owner diagnostics
+ * as information only. NordVPN's notification (when Unified TV may read it) only adds its country and the word
+ * "NordVPN is connected" to what the household sees; it never refuses Live TV.
  *
- * <p>This is not a kill switch, and nothing here may call it one (AGENTS.md rule 8): if NordVPN drops while Live TV plays,
+ * <p>This is not a kill switch, and nothing here may call it one (AGENTS.md rule 8): if the VPN drops while Live TV plays,
  * Android does not block Live TV's connection (unless the owner also set up Android's always-on block,
  * docs/VPN_PROTECTION.md). Unified TV covers Live TV and asks for NordVPN again (LiveTvGuard, LiveTvCoverActivity).
  * {@link #decide} is pure and tested with made-up facts (LiveTvProtectionTest).
@@ -28,84 +24,71 @@ import java.util.*;
 final class LiveTvProtection {
     private LiveTvProtection(){}
     enum State {
-        OPEN("open"),CHECKING("checking"),DISCONNECTED("disconnected"),NO_NORDVPN("locked"),UNSURE("locked"),NOT_NORDVPN("locked"),ERROR("error");
+        OPEN("open"),CHECKING("checking"),DISCONNECTED("disconnected"),NO_NORDVPN("locked"),ERROR("error");
         /** The word Settings and Owner diagnostics show ("Live TV: open"). */
         final String word;
         State(String word){this.word=word;}
     }
     static final String NORDVPN="com.nordvpn.android";
-    /** OD-26 in the household's words. */
-    static final String RULE="Live TV opens when NordVPN is connected.";
+    /** OD-26 as amended, in the household's words. */
+    static final String RULE="Live TV opens when a VPN is connected.";
     static final String COVERS="If NordVPN drops while Live TV is on, Unified TV covers Live TV and asks you to reconnect NordVPN.";
     /** Honest limit, said wherever the rule is explained (AGENTS.md rule 8: a status alone is not a kill switch). */
     static final String NOT_A_KILL_SWITCH="This isn't a kill switch: if NordVPN drops, Live TV's connection isn't blocked by Android.";
 
     /** What was read at the moment of deciding. Plain fields so tests can make up any TV. */
     static final class Facts {
-        /** What Android reports: CONNECTED when any network carries a VPN. */
+        /** What Android reports: CONNECTED when any network carries a VPN. The only fact besides nordInstalled that decides. */
         VpnGate.State vpn=VpnGate.State.UNKNOWN;
         boolean nordInstalled;
+        // Information only (Owner diagnostics, and the words of an open Live TV): none of these ever refuses Live TV.
         /** The household allowed Unified TV to see notifications (MediaWatch). */
         boolean notificationAccess;
         /** NordVPN's own notification: TRUE says connected, FALSE says not connected, null said nothing (or no access). */
         Boolean nordSays;
-        /** NordVPN is the only app on this TV that can run a VPN ({@link #onlyNord}). */
-        boolean onlyNordCanVpn;
-        /** The name of another app that can run a VPN, for the plain reason (UNSURE); null when none or unknown. */
+        /** The country NordVPN's notification says it is connected to (NordCountry), or null. */
+        String country;
+        /** The name of another app that can run a VPN, or null when none. */
         String otherVpn;
-        /**
-         * An enabled system VPN service with no app to open (the TV's own plumbing, a TCL data saver, say) is on the TV. It
-         * isn't counted as "another VPN app", but it could be the VPN that is up, so NordVPN's own word is then needed:
-         * the rule never opens on "NordVPN is the only VPN app" alone (review, rule 8: fail closed).
-         */
+        /** An enabled system VPN service with no app to open (a TCL data saver, say) is on the TV. */
         boolean systemVpn;
     }
-    /** The facts the last decision used ({@link #now}): message() names the other VPN app from them. */
+    /** The facts the last decision used ({@link #now}): message() words an open Live TV from them. */
     static volatile Facts last;
     /** Tests only: the facts {@link #now} uses instead of reading the TV. */
     static volatile Facts forTests;
 
-    /** Pure: the one rule. */
+    /** Pure: the one rule. A VPN up and NordVPN installed opens Live TV; nothing else is asked. */
     static State decide(Facts f){
         if(f==null)return State.ERROR;
         if(!f.nordInstalled)return State.NO_NORDVPN;
-        if(f.vpn==VpnGate.State.CHECKING)return State.CHECKING;
-        if(f.vpn==VpnGate.State.DISCONNECTED)return State.DISCONNECTED;
-        if(f.vpn!=VpnGate.State.CONNECTED)return State.ERROR;
-        // A VPN is up. Whose? NordVPN's own word first, where the household lets Unified TV see it.
-        if(f.notificationAccess&&Boolean.FALSE.equals(f.nordSays))return State.DISCONNECTED;
-        if(f.notificationAccess&&Boolean.TRUE.equals(f.nordSays))return State.OPEN;
-        // No word from NordVPN: the VPN is NordVPN's only if nothing else on this TV could have started one.
-        if(f.onlyNordCanVpn&&!f.systemVpn)return State.OPEN;
-        return f.notificationAccess?State.NOT_NORDVPN:State.UNSURE;
+        switch(f.vpn){
+            case CONNECTED:return State.OPEN;
+            case CHECKING:return State.CHECKING;
+            case DISCONNECTED:return State.DISCONNECTED;
+            default:return State.ERROR;
+        }
     }
     static boolean opens(State s){return s==State.OPEN;}
     /** While Live TV runs: the rule no longer holds (CHECKING is a moment's wait, not a drop). */
     static boolean dropped(State s){return s!=State.OPEN&&s!=State.CHECKING;}
     static String word(State s){return s.word;}
     /**
-     * Owner's TCL, build run 99: "VPN connected" and "can't tell which VPN" read as a contradiction. Both are true, so the
-     * reason says how: a VPN is connected, and another named app could be running it.
+     * Pure: the words for an open Live TV. "NordVPN is connected" (with its country) only when NordVPN's own notification
+     * says so; otherwise just that a VPN is connected. Either way Live TV is open.
      */
-    static String unsure(String other){
-        return "Live TV is locked. A VPN is connected, but Unified TV can't confirm it's NordVPN because "+(other==null||other.trim().isEmpty()?"another app":other.trim())
-            +" can also run a VPN. Allow notification access so Unified TV can see NordVPN's own \"Connected\" notice.";
+    static String opened(Facts f){
+        boolean nordSaid=f!=null&&f.notificationAccess&&Boolean.TRUE.equals(f.nordSays);
+        String country=nordSaid&&f.country!=null?NordCountry.name(f.country):"";
+        return (nordSaid?"NordVPN is connected"+(country.isEmpty()?"":" to "+country)+".":"A VPN is connected.")+" If NordVPN drops, Unified TV will cover Live TV.";
     }
-    static String message(State s){Facts l=last;switch(s){
-        case OPEN:return "NordVPN is connected. If NordVPN drops, Unified TV will cover Live TV.";
-        case CHECKING:return "Checking NordVPN…";
+    static String message(State s){switch(s){
+        case OPEN:return opened(last);
+        case CHECKING:return "Checking the VPN…";
         case DISCONNECTED:return "Live TV is locked. Connect NordVPN first.";
-        case NO_NORDVPN:return "Live TV is locked. It opens when NordVPN is connected, and NordVPN isn't installed on this TV.";
-        case UNSURE:return unsure(l==null?null:l.otherVpn);
-        case NOT_NORDVPN:return "Live TV is locked. A VPN is connected, but NordVPN doesn't say it's connected. Connect NordVPN first.";
+        case NO_NORDVPN:return "Live TV is locked. Install NordVPN on this TV and connect it first.";
         default:return "Live TV is locked. Unified TV couldn't read the TV's connection. Try again.";
     }}
-    /** Pure: of the apps that can run a VPN, NordVPN is there and is the only one. */
-    static boolean onlyNord(Collection<String> vpnApps){
-        if(vpnApps==null||!vpnApps.contains(NORDVPN))return false;
-        for(String p:vpnApps)if(!NORDVPN.equals(p))return false;
-        return true;
-    }
 
     // --- Android
     static String version(Context c,String pkg){if(pkg==null||pkg.isEmpty())return "";try{String v=c.getPackageManager().getPackageInfo(pkg,0).versionName;return v==null?"":v;}catch(Exception e){return "";}}
@@ -117,7 +100,7 @@ final class LiveTvProtection {
             for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){String pkg=r.activityInfo.packageName;if(Endpoint.protectedApp(pkg,String.valueOf(r.loadLabel(pm)),""))found.add(pkg);}
         return found.size()==1?found.iterator().next():"";
     }
-    /** The apps that can run a VPN, and the ones left out with why (Owner diagnostics). */
+    /** The apps that can run a VPN, and the ones left out with why: Owner diagnostics only, never the decision. */
     static final class VpnApps {
         final Set<String> counted=new LinkedHashSet<>();final Map<String,String> ignored=new LinkedHashMap<>();final Map<String,String> labels=new HashMap<>();
     }
@@ -126,7 +109,7 @@ final class LiveTvProtection {
      * app with no Home-screen entry is the TV's own plumbing (a TCL data saver, say), not a VPN the household chose.
      * NordVPN always counts while enabled.
      */
-    static final String OFF="turned off",PLUMBING="part of the TV's system, with no app to open: NordVPN's own notice is needed";
+    static final String OFF="turned off",PLUMBING="part of the TV's system, with no app to open";
     static String ignoredBecause(String pkg,boolean enabled,boolean system,boolean launchable){
         if(!enabled)return OFF;
         if(NORDVPN.equals(pkg))return null;
@@ -157,11 +140,12 @@ final class LiveTvProtection {
         Facts f=new Facts();f.vpn=VpnGate.inspect(c);
         VpnApps detail=vpnAppsDetail(c);Set<String> apps=detail.counted;
         f.nordInstalled=apps.contains(NORDVPN)||LocalDiscovery.nordVpn(c);
-        f.onlyNordCanVpn=onlyNord(apps);
+        // Information only, for Owner diagnostics: never part of the decision.
         for(String p:apps)if(!NORDVPN.equals(p)){f.otherVpn=detail.labels.get(p);break;}
-        for(java.util.Map.Entry<String,String> e:detail.ignored.entrySet())if(PLUMBING.equals(e.getValue())){f.systemVpn=true;if(f.otherVpn==null)f.otherVpn=detail.labels.get(e.getKey());break;}
+        f.systemVpn=detail.ignored.containsValue(PLUMBING);
         f.notificationAccess=MediaWatch.granted(c);
         f.nordSays=f.notificationAccess?NordCountry.connected:null;
+        f.country=f.notificationAccess?NordCountry.code:null;
         return f;
     }
     /** The rule now, for any route into Live TV and for the safety net while it runs. */

@@ -15,7 +15,8 @@ import android.widget.Toast;
  * Connect still opens NordVPN. But when Connect comes from a refused Live TV launch, Unified TV remembers it: for up to
  * {@link #WINDOW_MS} it listens to Android's own VPN network callback (and NordVPN's notification, MediaWatch), and as
  * soon as the one rule (LiveTvProtection) lets Live TV open, Unified TV comes back by itself (Comeback; "Display over other
- * apps") and opens Live TV with a short "NordVPN connected — opening Live TV". If the household comes back first, the same
+ * apps") and opens Live TV with a short "NordVPN connected — opening Live TV" (the rule: a VPN connected, OD-26 as amended
+ * 3 November 2026; NordVPN's notification is only a nudge to look again). If the household comes back first, the same
  * happens then; if the rule still refuses, the sheet says why. No polling: one callback, one timeout.
  */
 final class NordConnect {

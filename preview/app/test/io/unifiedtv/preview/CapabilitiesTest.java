@@ -77,7 +77,6 @@ public class CapabilitiesTest {
         f.haConnected=true;assertEquals(Capabilities.State.AVAILABLE,state(f,Capabilities.HOME_ASSISTANT));
         f.liveState=LiveTvProtection.State.OPEN;assertEquals("no single Live TV app",Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
         f.livePackage="tv.example.live";f.liveState=LiveTvProtection.State.DISCONNECTED;assertEquals("locked until NordVPN is connected",Capabilities.State.TEMPORARILY_UNAVAILABLE,state(f,Capabilities.LIVE_TV));
-        f.liveState=LiveTvProtection.State.UNSURE;assertEquals("another VPN app: notification access",Capabilities.State.PERMISSION_REQUIRED,state(f,Capabilities.LIVE_TV));
         f.liveState=LiveTvProtection.State.NO_NORDVPN;assertEquals(Capabilities.State.SETUP_REQUIRED,state(f,Capabilities.LIVE_TV));
         f.liveState=LiveTvProtection.State.OPEN;assertEquals(Capabilities.State.AVAILABLE,state(f,Capabilities.LIVE_TV));
         LiveTvProtectionTest.neverClaimsAKillSwitch(Capabilities.evaluate(f,Capabilities.LIVE_TV).words);

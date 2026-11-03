@@ -27,7 +27,7 @@ public final class SettingsActivity extends Screen {
     static final String[] CATEGORIES={"Appearance & Home","Library & Media","Profiles & Family","Apps & Shortcuts","Notifications & Doorbell","Smart Home","Live TV & Network Protection","Connections & Devices","Privacy & Data","Updates & About"};
     static final int APPEARANCE=0,LIBRARY=1,PROFILES=2,APPS=3,NOTIFICATIONS=4,SMART_HOME=5,LIVE_TV=6,CONNECTIONS=7,PRIVACY=8,ABOUT=9;
     /** One-line subtitles (module 13 §C wording where it gives one). */
-    private static final String[] BLURBS={"Make it yours","Your films and shows","Who's watching, the adult PIN and Kids","Choose what lives on Home","Doorbell, reminders and smoke or carbon monoxide alarms","Home Assistant and your team's fixtures","Live TV opens when NordVPN is connected","This TV's own settings, AirPlay and voice","What's kept on this TV and how it's protected","Version, licences and advanced checks"};
+    private static final String[] BLURBS={"Make it yours","Your films and shows","Who's watching, the adult PIN and Kids","Choose what lives on Home","Doorbell, reminders and smoke or carbon monoxide alarms","Home Assistant and your team's fixtures","Live TV opens when a VPN is connected","This TV's own settings, AirPlay and voice","What's kept on this TV and how it's protected","Version, licences and advanced checks"};
     /** Module 13 §C 00: small group labels over the root rows (module 12 order: 4, 4, 2). */
     private static final String[] GROUPS={"Personalise","Connected services","System"};private static final int[] GROUP_START={0,4,8};
     /** Tasks inside a category: a wider sheet for complex ones, the same width for a collapsed Advanced section. */
@@ -495,7 +495,7 @@ public final class SettingsActivity extends Screen {
     // --- Smart Home (SetupPages: Home Assistant status first, set up on the phone; football; Advanced in the sheet)
     private void smartHome(){setup.smartHome();}
 
-    // --- Live TV & Network Protection (OD-26: Live TV opens when NordVPN is connected; not a kill switch)
+    // --- Live TV & Network Protection (OD-26 as amended 3 November 2026: Live TV opens when a VPN is connected; not a kill switch)
     private void liveTv(){
         String live=LiveTvProtection.livePackage(this);LiveTvProtection.State state=LiveTvProtection.now(this);
         TextView word=text("Live TV: "+LiveTvProtection.word(state),20);word.setFocusable(false);
@@ -503,13 +503,13 @@ public final class SettingsActivity extends Screen {
         text(live.isEmpty()?"No single Live TV app was recognised on this TV.":"Live TV app: "+live,15);
         button("Check again",()->{VpnGate.invalidate();show(LIVE_TV);});
         button("NordVPN",()->VpnGate.show(this));
-        // NordVPN's own "Connected" notice (MediaWatch, NordCountry): how Unified TV tells NordVPN's VPN from another app's.
+        // NordVPN's own "Connected" notice (MediaWatch, NordCountry): only the country flag beside the shield; Live TV doesn't need it.
         if(LocalDiscovery.nordVpn(this)&&!MediaWatch.granted(this)){
-            text("Allow notification access so Unified TV can see NordVPN's own \"Connected\" notice. Without it, Live TV opens only while NordVPN is the only VPN app on this TV, and no country flag shows beside the shield on Home. The same access makes Now Playing work for Amazon Music.",15);
+            text("Allow notification access to show the country NordVPN is connected to, as a small flag beside the shield on Home. Live TV doesn't need it. The same access makes Now Playing work for Amazon Music.",15);
             // Owner's TCL, build run 99: no notification-access screen. Then through the TV's debugging prompt, or a computer.
             Intent screen=MediaWatch.accessScreen(this);
             if(screen!=null)button("Allow notification access",()->Launch.unlocked(this,screen,"This TV doesn't offer notification access"));
-            else{if(NotificationAccessActivity.available(this))button(VpnGate.DEBUG_ACCESS,()->NotificationAccessActivity.open(this));
+            else{if(NotificationAccessActivity.available(this))button(NotificationAccessActivity.DEBUG_ACCESS,()->NotificationAccessActivity.open(this));
                 text("This TV has no notification-access screen. From a computer with ADB instead: "+MediaWatch.pcCommand(this),14).setTypeface(android.graphics.Typeface.MONOSPACE);}
         }
         text(NordConnect.AUTO_TIP,15);

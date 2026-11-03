@@ -115,7 +115,8 @@ public class LibraryJourneyTest {
             until("the loading indicator",()->says(a,"Finding your films and TV"));
             View spinner=a.getWindow().getDecorView().findViewWithTag("spinner");assertNotNull(spinner);assertTrue(spinner instanceof ProgressBar);assertTrue(spinner.isShown());
             server.gate.countDown();
-            until("rows",()->a.catalogue()!=null&&!all(a.getWindow().getDecorView(),PosterView.class).isEmpty());
+            // Titles show page by page as they are found (3 November 2026); the Kids folder is walked after Video.
+            until("rows, Kids too",()->a.catalogue()!=null&&!all(a.getWindow().getDecorView(),PosterView.class).isEmpty()&&LibraryJourneyTest.says(a,"Kids"));
             assertEquals(DlnaLibraryActivity.Kind.ROWS,a.page());
             List<String> labels=new ArrayList<>();for(TextView t:all(a.getWindow().getDecorView(),TextView.class))labels.add(t.getText().toString());
             assertTrue(labels.toString(),labels.stream().anyMatch(s->s.startsWith("Films")));assertTrue(labels.stream().anyMatch(s->s.startsWith("Kids")));

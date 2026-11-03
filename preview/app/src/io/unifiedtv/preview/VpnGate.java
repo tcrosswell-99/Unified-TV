@@ -7,8 +7,9 @@ import android.view.*;
 import android.widget.*;
 
 /**
- * What Android reports about a VPN, for Home's shield and the Live TV sheet. A VPN being up is not proof of whose it is,
- * of any app's routing, or of a kill switch: whether Live TV opens is LiveTvProtection's one rule (OD-26).
+ * What Android reports about a VPN, for Home's shield and the Live TV sheet. A VPN being up says nothing of whose it is,
+ * of any app's routing, or of a kill switch. Whether Live TV opens is LiveTvProtection's one rule (OD-26 as amended on
+ * 3 November 2026: any VPN connected, with NordVPN installed).
  */
 final class VpnGate {
     enum State {CONNECTED,DISCONNECTED,CHECKING,UNKNOWN}
@@ -67,30 +68,29 @@ final class VpnGate {
         if(why!=null&&!why.isEmpty())Toast.makeText(a,why,Toast.LENGTH_LONG).show();
         return why==null;
     }
-    static final String TRY_AGAIN="Try again",DEBUG_ACCESS="Turn on access using the TV's debugging prompt",ALLOW_ACCESS="Allow access";
+    static final String TRY_AGAIN="Try again",RECHECKING="Checking…";
+    /** How long "Checking…" stays on the sheet before the fresh answer, so a press of Try again visibly re-checks. */
+    static final long RECHECK_MS=500;
     static void show(Activity a){show(a,null,null);}
     /**
-     * The Live TV sheet: what the one rule (LiveTvProtection, OD-26) says now, in plain words, and never a dead end (owner's
-     * TCL, build run 99). When only notification access would let Unified TV tell whose VPN is up: "Turn on access using the
-     * TV's debugging prompt" when the TV has no notification-access screen, else "Allow access"; otherwise Connect (opens
-     * NordVPN). Then Try again and Cancel. {@code livePkg}/{@code label}: the Live TV launch that was refused (null from
-     * Settings); Try again runs it once the rule opens, and after Connect or access Unified TV carries on into Live TV by
-     * itself (NordConnect, Comeback). A waiting step keeps only those two strings, never a screen.
+     * The Live TV sheet: what the one rule (LiveTvProtection, OD-26 as amended 3 November 2026) says now, in plain words, and
+     * never a dead end. Connect (opens NordVPN), Try again and Cancel. {@code livePkg}/{@code label}: the Live TV launch that
+     * was refused (null from Settings); after Connect, Unified TV carries on into Live TV by itself once a VPN is connected
+     * (NordConnect, Comeback). Try again reads Android's VPN state afresh: "Checking…", then the answer, and Live TV opens
+     * at once if the rule now allows it. A waiting step keeps only those two strings, never a screen.
      */
     static void show(Activity a,String livePkg,String label){
         Runnable retry=livePkg==null?null:()->NordConnect.open(a,livePkg,label);
-        Comeback.Step carryOn=on->{NordConnect.open(on,livePkg,label);return true;};
         LiveTvProtection.State now=LiveTvProtection.now(a);
         java.util.List<String> names=new java.util.ArrayList<>();java.util.List<Runnable> actions=new java.util.ArrayList<>();
         Dialog[] dialog=new Dialog[1];TextView[] state=new TextView[1];
-        if(now==LiveTvProtection.State.UNSURE){
-            android.content.Intent screen=MediaWatch.accessScreen(a);
-            if(screen==null){if(NotificationAccessActivity.available(a)){names.add(DEBUG_ACCESS);actions.add(()->{dialog[0].dismiss();if(livePkg!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,carryOn);NotificationAccessActivity.open(a);});}}
-            else{names.add(ALLOW_ACCESS);actions.add(()->{dialog[0].dismiss();if(livePkg!=null)Comeback.arm(a,NotificationAccessActivity.WINDOW_MS,carryOn);Launch.system(a,screen,"This TV doesn't offer notification access");});}
-        }else{names.add("Connect");actions.add(()->{dialog[0].dismiss();if(connect(a)&&livePkg!=null)NordConnect.after(a,livePkg,label);});}
-        names.add(TRY_AGAIN);actions.add(()->{invalidate();LiveTvProtection.State again=LiveTvProtection.now(a);
-            if(LiveTvProtection.opens(again)&&retry!=null){dialog[0].dismiss();retry.run();}
-            else state[0].setText(statusLabel(inspect(a))+" · "+LiveTvProtection.message(again));});
+        names.add("Connect");actions.add(()->{dialog[0].dismiss();if(connect(a)&&livePkg!=null)NordConnect.after(a,livePkg,label);});
+        names.add(TRY_AGAIN);actions.add(()->{TextView words=state[0];if(words==null)return;
+            invalidate();words.setText(RECHECKING);
+            words.postDelayed(()->{if(!dialog[0].isShowing())return;
+                LiveTvProtection.State again=LiveTvProtection.now(a);
+                if(LiveTvProtection.opens(again)&&retry!=null){dialog[0].dismiss();retry.run();}
+                else words.setText(statusLabel(inspect(a))+" · "+LiveTvProtection.message(again));},RECHECK_MS);});
         names.add("Cancel");actions.add(()->dialog[0].dismiss());
         dialog[0]=sheet(a,"Live TV",LiveTvProtection.message(now),names,actions,state);
     }

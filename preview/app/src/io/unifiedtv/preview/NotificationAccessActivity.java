@@ -25,13 +25,14 @@ import java.util.concurrent.Executors;
  * key and "Allow USB debugging?" prompt) to send exactly one command, {@code cmd notification allow_listener
  * <this app>/io.unifiedtv.preview.MediaWatch} (AdbCommands refuses any other listener), checks with Android that access is
  * now on, closes the link and guides the owner to turn network debugging off, then checks it is off. MediaWatch is the one
- * listener for NordVPN's "Connected" notice (Live TV, the flag) and Now Playing (Amazon Music and other apps).
+ * listener for NordVPN's "Connected" notice (the flag beside the shield; Live TV doesn't need it) and Now Playing (Amazon
+ * Music and other apps). Reached from Settings (Live TV &amp; Network Protection).
  */
 public final class NotificationAccessActivity extends GlassScreen {
     static final String TITLE = "Notification access";
-    /** How long a refused Live TV launch waits for this page to finish (Comeback). */
-    static final long WINDOW_MS = 600_000;
-    static final String WHY = "Notification access lets Unified TV see NordVPN's own \"Connected\" notice, so Live TV can open and NordVPN's country shows beside the shield, "
+    /** Settings' button for this page, on a TV with no notification-access screen. */
+    static final String DEBUG_ACCESS = "Turn on access using the TV's debugging prompt";
+    static final String WHY = "Notification access lets Unified TV see NordVPN's own \"Connected\" notice, so NordVPN's country shows beside the shield, "
         + "and see what Amazon Music or another app is playing, for Now Playing. Only NordVPN's notification is read; nothing is stored or sent.";
     static final String NO_SCREEN = "This TV has no screen for notification access, so Unified TV can turn it on through the TV's network debugging, which must already be on. "
         + "It talks only to this TV, and only while this page is open. The first time, the TV asks \"Allow USB debugging?\": tick \"Always allow from this computer\", then choose OK.";
@@ -55,7 +56,7 @@ public final class NotificationAccessActivity extends GlassScreen {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         worker = Executors.newSingleThreadExecutor();
-        page(TITLE, "Live TV and Now Playing");
+        page(TITLE, "NordVPN's flag and Now Playing");
         if (MediaWatch.granted(this)) { done(); return; }
         card(); text("Adult access is needed for this.", 20);
         button("Unlock", () -> EditLock.ask(this, this::intro)); button("Back", this::finish);
@@ -63,7 +64,7 @@ public final class NotificationAccessActivity extends GlassScreen {
     }
 
     void intro() {
-        page(TITLE, "Live TV and Now Playing");
+        page(TITLE, "NordVPN's flag and Now Playing");
         card();
         text(WHY, 18);
         if (!available(this)) {   // a build this list doesn't know: never a crash, the computer route only
