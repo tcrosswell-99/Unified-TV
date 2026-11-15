@@ -31,7 +31,7 @@ final class DockRepair {
     static String name(String id,Map<String,String> launchable){
         switch(id){case "smartutube":return DockLabels.name("smartutube",DockLabels.youtube(launchable.keySet()));case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC iPlayer";
             case "music":return "Music";case "live":return "Live TV";case "xbox":return "Xbox";case "tvplus":return "Samsung TV Plus";case DockPolicy.LIBRARY:return "Library";default:break;}
-        String l=launchable.get(id);return l==null||l.trim().isEmpty()?id:l;
+        return DockLabels.shown(id,launchable.get(id));
     }
     /** Installed apps that could take a missing tile's place: not on Home already (by tile id), sorted by name. */
     static List<String> candidates(String room,List<String> dock,Map<String,String> launchable){

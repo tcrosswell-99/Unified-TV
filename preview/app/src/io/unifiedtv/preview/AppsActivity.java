@@ -36,7 +36,7 @@ public final class AppsActivity extends Screen {
         page("Apps");text(kids?"Apps an adult has allowed for Kids. Ask an adult to add more.":"Hold OK on an app to add it to Home or remove it.",17);
         PackageManager pm=getPackageManager();Map<String,ResolveInfo> apps=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
-            for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=String.valueOf(r.loadLabel(pm));if(!apps.containsKey(label+"\u0000"+r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r);}
+            for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=DockLabels.shown(r.activityInfo.packageName,String.valueOf(r.loadLabel(pm)));if(!apps.containsKey(label+"\u0000"+r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r);}
         List<String> home=onHome();Set<String> seen=new HashSet<>();LinearLayout row=null;int n=0;View target=null;
         // Unified TV's own shortcuts (no app of their own) come first, so a removed one can always be put back.
         List<String> own=DockPolicy.shortcuts(room);

@@ -225,7 +225,7 @@ public class GuidedSetupClarityTest {
                     assertEquals("Tick the apps you want on Home. The others stay in Apps.",line);
                     for(String f:focusables(b.body))assertTrue("only things that do something are focusable: "+f,
                         f.startsWith("Netflix")||f.startsWith("Prime Video")||f.startsWith("Get ")||f.startsWith("Next: ")||f.equals("All categories"));
-                    TextView rest=saying(b.body,"Not on this TV: Disney+, BBC iPlayer, Apple TV.");assertNotNull("the rest is one line of names",rest);assertFalse(rest.isFocusable());
+                    TextView rest=saying(b.body,"Not on this TV: Disney+, BBC iPlayer, Apple TV, ITVX, Freeview Play.");assertNotNull("the rest is one line of names",rest);assertFalse(rest.isFocusable());
                     assertTrue("a tick shows what is on Home now",button(b.body,"Netflix").getText().toString().contains("✓  On Home"));
                     Button prime=button(b.body,"Prime Video");assertTrue(prime.getText().toString(),prime.getText().toString().contains("In Apps"));
                     prime.performClick();idle();

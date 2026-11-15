@@ -135,7 +135,7 @@ final class DockCapacity {
     static String name(Context c,String id){
         switch(id){case "smartutube":return DockLabels.name(id,youtube(c));case "netflix":return "Netflix";case "disney":return "Disney+";case "bbc":return "BBC";case "live":return "Live TV";
             case "music":return "Music";case "xbox":return "Xbox";case "tvplus":return "Samsung TV Plus";case DockPolicy.LIBRARY:return "Library";default:break;}
-        try{android.content.pm.PackageManager pm=c.getPackageManager();return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(id,0)));}catch(Exception e){return id;}
+        try{android.content.pm.PackageManager pm=c.getPackageManager();return DockLabels.shown(id,String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(id,0))));}catch(Exception e){return DockLabels.shown(id,null);}
     }
     /**
      * Settings > Appearance & Home > Dock & Icons > Dock size, for the current profile. 6 -> 8 saves at once. 8 -> 6 with

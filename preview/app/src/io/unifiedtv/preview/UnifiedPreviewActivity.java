@@ -547,7 +547,7 @@ public final class UnifiedPreviewActivity extends Activity {
                 Drawable icon;
                 try { label = String.valueOf(ri.loadLabel(pm)); icon = pm.getApplicationIcon(pkg); }
                 catch (Exception e) { continue; }
-                if (label.trim().isEmpty()) label = pkg;
+                label = DockLabels.shown(pkg, label);   // ITVX and Freeview Play by their service names
                 installed.add(new Item(pkg, label, pkg, 0xFF323E53, 0xFF161D2D, icon));
             }
             Collections.sort(installed, Comparator.comparing(it -> it.name.toLowerCase(Locale.ROOT)));

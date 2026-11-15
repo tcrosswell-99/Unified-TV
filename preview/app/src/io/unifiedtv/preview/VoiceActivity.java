@@ -237,11 +237,14 @@ public final class VoiceActivity extends Activity {
             case "music": music(text); return;
             default: break;
         }
-        String pkg = command.equals("bbc") ? "bbc.iplayer.android.tv" : command.equals("netflix") ? "com.netflix.ninja" : command.equals("disney") ? "com.disney.disneyplus" : "";
+        String pkg = command.equals("bbc") ? "bbc.iplayer.android.tv" : command.equals("netflix") ? "com.netflix.ninja" : command.equals("disney") ? "com.disney.disneyplus"
+            : command.equals("itvx") ? installed(DockLabels.ITVX_APPS) : command.equals("freeview") ? installed(DockLabels.FREEVIEW_APPS) : "";
         if (!pkg.isEmpty()) {
-            String name = command.equals("bbc") ? "BBC iPlayer" : command.equals("netflix") ? "Netflix" : "Disney+";
-            // The same gate as the dock and Apps (Live TV protection and the Kids list): voice is never a way round it.
-            if (getPackageManager().getLeanbackLaunchIntentForPackage(pkg) == null && getPackageManager().getLaunchIntentForPackage(pkg) == null) { show("“" + text + "”", name + " isn't on this TV. Open Apps to find what is."); return; }
+            String name = command.equals("bbc") ? "BBC iPlayer" : command.equals("netflix") ? "Netflix" : command.equals("disney") ? "Disney+"
+                : command.equals("itvx") ? DockLabels.ITVX : DockLabels.FREEVIEW;
+            // The same gate as the dock and Apps (Live TV protection and the Kids list): voice is never a way round it. An app
+            // with only a phone launcher (ITVX's phone build on the owner's Sony) opens too (Launch.entry).
+            if (Launch.entry(getPackageManager(), pkg) == null) { show("“" + text + "”", name + " isn't on this TV. Open Apps to find what is."); return; }
             String why = Launch.open(this, pkg, name);
             if (why == null) close(); else if (!why.isEmpty()) show("“" + text + "”", why);
             return;
@@ -249,6 +252,8 @@ public final class VoiceActivity extends Activity {
         show("“" + text + "”", "That isn't something I can do yet. Try “Open BBC”, “Open Netflix”, “Play” and an artist, “Show camera”, “Switch profile”, or “Find” and a title. General questions aren't connected yet.");
     }
 
+    /** The first of these packages that this TV can open, else the first (so the reply says it isn't on this TV). */
+    private String installed(String[] packages) { for (String p : packages) if (Launch.entry(getPackageManager(), p) != null) return p; return packages[0]; }
     /** "Play …" (OD-27): SpokenMusic, the same route as the Music page's microphone. */
     private void music(String text) {
         VoiceCommand.Music m = VoiceCommand.music(text); if (m == null) return;

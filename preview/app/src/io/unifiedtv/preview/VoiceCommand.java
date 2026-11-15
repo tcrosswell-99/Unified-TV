@@ -14,6 +14,9 @@ final class VoiceCommand {
         if(q.equals("open bbc"))return "bbc";
         if(q.equals("open netflix"))return "netflix";
         if(q.equals("open disney")||q.equals("open disney plus"))return "disney";
+        // ITVX as speech services write it ("ITVX", "ITV X", "ITV"), and its former name.
+        if(q.equals("open itvx")||q.equals("open itv x")||q.equals("open itv")||q.equals("open itv hub"))return "itvx";
+        if(q.equals("open freeview")||q.equals("open freeview play"))return "freeview";
         if(music(request)!=null)return "music";
         return "discovery";
     }
@@ -34,7 +37,7 @@ final class VoiceCommand {
         boolean maybeEcho(){return !place.isEmpty()&&!Echoes.TV.equals(place)&&!Echoes.EVERYWHERE.equals(place);}
     }
     /** Other apps a "play … on …" may name: never sent to Amazon Music or an Echo. */
-    private static final String[] OTHER_APPS={"netflix","bbc","iplayer","bbc iplayer","disney","disney plus","youtube","smarttube","spotify","live tv"};
+    private static final String[] OTHER_APPS={"netflix","bbc","iplayer","bbc iplayer","disney","disney plus","youtube","smarttube","spotify","live tv","itv","itvx","itv x","freeview","freeview play"};
     private static final String[][] FOCUS={{"the album ","ALBUM"},{"album ","ALBUM"},{"the playlist ","PLAYLIST"},{"my playlist ","PLAYLIST"},{"playlist ","PLAYLIST"},
         {"songs by ","ARTIST"},{"music by ","ARTIST"},{"the artist ","ARTIST"},{"artist ","ARTIST"},{"the song ","SONG"},{"song ","SONG"},{"the track ","SONG"}};
     private static final String[] AMAZON_MUSIC={" on amazon music"," in amazon music"," from amazon music"," with amazon music"};

@@ -10,6 +10,8 @@ Nothing in a release has been tested on a television unless the entry says so. P
 
 ### Added
 
+- **ITVX and Freeview Play on the dock:** names and white marks, listed with streaming apps, and "open ITVX" by voice; apps with only a phone launcher (like ITV's phone build) open from the dock, Apps and voice. **Not tested** on a television.
+
 - **Remote button that opens Unified TV (OD-31, launcher, opt-in):** choose a button (the TV button suggested); it opens Unified TV, and wakes it from standby with the turn-on choice. Uses an accessibility service that only reacts to that one button. **Not tested** on a television.
 - **Dock and Apps:** OK on an empty place opens "Choose an app for this place"; Replace in the hold-OK menu; SmartTube keeps its own name and mark beside YouTube; Prime Video and Apple TV marks; apps without a mark show their banner or icon; one-card Apps tiles; the dock always fits the screen. **Live TV app** setting, so an IPTV app such as ReamSmartz is Live TV and goes through the VPN gate from any route. **Not tested** on a television.
 - **Doorbell, alarms & this TV rebuilt:** finds Ring's current event entities, chooses a single doorbell and camera automatically, plain wording, Test the doorbell and Test the alarm screen, one-panel pickers. **Not tested** with a real Ring.

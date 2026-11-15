@@ -36,7 +36,7 @@ public final class KidsActivity extends GlassScreen {
         if("frame".equals(room))app("Samsung TV Plus","tvplus",approved);
         PackageManager pm=getPackageManager();Map<String,String> apps=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER})
-            for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=String.valueOf(r.loadLabel(pm));if(!apps.containsValue(r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r.activityInfo.packageName);}
+            for(ResolveInfo r:pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(category),0)){if(r.activityInfo==null||r.activityInfo.packageName.equals(getPackageName()))continue;String label=DockLabels.shown(r.activityInfo.packageName,String.valueOf(r.loadLabel(pm)));if(!apps.containsValue(r.activityInfo.packageName))apps.put(label+"\u0000"+r.activityInfo.packageName,r.activityInfo.packageName);}
         for(Map.Entry<String,String> e:apps.entrySet())app(e.getKey().substring(0,e.getKey().indexOf('\u0000')),e.getValue(),approved);
 
         group("Kids app guard");card();

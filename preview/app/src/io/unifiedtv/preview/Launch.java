@@ -87,7 +87,10 @@ final class Launch {
     }
     /**
      * The app's normal TV entry: its leanback launch screen (else its ordinary launch screen), as an explicit component.
-     * When an app lists more than one, the one that is not a settings screen (pick()).
+     * When an app lists more than one, the one that is not a settings screen (pick()). An app with only a phone launcher
+     * (no LEANBACK_LAUNCHER: ITVX's phone build, air.ITVMobilePlayer, on the owner's Sony) opens at its CATEGORY_LAUNCHER
+     * screen, the one getLaunchIntentForPackage names, with the same flags; getLaunchIntentForPackage itself is the last
+     * fallback. Home's dock, Apps, the app picker's choices and voice all open apps through here (open()).
      */
     static Intent entry(PackageManager pm,String pkg){
         for(String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER}){

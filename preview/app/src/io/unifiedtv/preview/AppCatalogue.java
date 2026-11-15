@@ -92,6 +92,13 @@ final class AppCatalogue {
         // UNVERIFIED for TV: the BBC iPlayer ids below are the ones Unified TV already recognised (DockPolicy).
         new Entry("bbc","BBC iPlayer",VIDEO,new String[]{"bbc.iplayer.android","bbc.iplayer.android.tv","uk.co.freeview.bbc"},false,false,false,"iplayer",ANDROID,TIZEN),
         new Entry("appletv","Apple TV",VIDEO,new String[]{"com.apple.atve.androidtv.appletv"},true,true,true,null,ANDROID,TIZEN),
+        // ITVX: air.ITVMobilePlayer, seen on the owner's Sony (Android TV 10) as ITV's phone build with only a phone
+        // launcher; ITV's Android TV build is listed under the same id. Not verified as a Google Play TV listing, so
+        // recognised when installed and never offered for install. Its installed name may still be "ITV Hub".
+        new Entry("itvx","ITVX",VIDEO,DockLabels.ITVX_APPS,false,false,true,"itvx",ANDROID,TIZEN),
+        // Freeview Play: uk.co.freeview.android, seen on the owner's Sony. Not verified as a Google Play TV listing. Samsung
+        // TVs carry Freeview Play in their own TV guide rather than as an app, so no Tizen app is claimed.
+        new Entry("freeview","Freeview Play",VIDEO,DockLabels.FREEVIEW_APPS,false,false,false,"freeviewplay",ANDROID),
         // YouTube and alternative viewers
         new Entry("youtube","YouTube",YOUTUBE,new String[]{"com.google.android.youtube.tv"},true,true,false,null,ANDROID,TIZEN),
         new Entry("youtubekids","YouTube Kids",YOUTUBE,new String[]{"com.google.android.youtube.tvkids"},true,true,false,null,ANDROID,TIZEN),

@@ -14,7 +14,8 @@ import android.graphics.drawable.Drawable;
  * (preview/THIRD_PARTY.md). Live TV is a television on a stand; Music a bold pair of beamed notes. Added after the owner's
  * Sony (run 106): Prime Video's lower-case wordmark with its smile arrow, Apple TV's apple and "tv", and SmartTube's own
  * mark (an outlined play triangle with a solid one inside), used when YouTube's own app is installed too, so the two
- * never look alike. The empty dock place, while focused, shows a plus ("Add an app").
+ * never look alike. Added for the owner's Sony (Android TV 10): ITVX as a lower-case "itv" with a bold "X", and Freeview
+ * Play as the words "freeview" (bold) and "play", both plain white type with no logo artwork. The empty dock place, while focused, shows a plus ("Add an app").
  *
  * Drawn for 10-foot viewing (owner, 25 October 2026: Music looked "janky", Live TV "not perfect"): one stroke weight
  * (5 to 6 design px, round ends), whole shapes rather than thin details, symmetric where the idea allows, and every glyph
@@ -105,6 +106,10 @@ final class DockGlyphs {
             case "appletv":   // Apple TV: an apple and "tv"
                 paint(icon,245,true);c.save();c.translate(cx-28,cy-4);c.drawPath(apple(),icon);c.restore();
                 text.setTextAlign(Paint.Align.LEFT);text.setTypeface(BOLD);text.setTextSize(50);text.setColor(0xFFFAFAFC);text.setAlpha(245);c.drawText("tv",cx+2,cy+16,text);break;
+            case "itvx":   // ITVX: a lower-case "itv" and a bold "X", one white word, centred as a pair
+                pair(c,"itv","X",cx,cy+19,54,116);break;
+            case "freeview":   // Freeview Play: "freeview" in bold with "play" beneath, both lower case
+                fitted(c,"freeview",cx,cy-9,30,120,true);fitted(c,"play",cx,cy+23,30,120,false);break;
             case "plus":   // an empty place while focused: OK adds an app here
                 icon.setStrokeWidth(9);c.drawLine(cx-28,cy,cx+28,cy,icon);c.drawLine(cx,cy-28,cx,cy+28,icon);break;
             default:
@@ -118,6 +123,19 @@ final class DockGlyphs {
     private static void word(Canvas c,String w,float cx,float y,float size,boolean bold){
         text.setTextAlign(Paint.Align.CENTER);text.setTypeface(bold?BOLD:REGULAR);text.setTextSize(size);
         text.setColor(0xFFFAFAFC);text.setAlpha(245);c.drawText(w,cx,y,text);
+    }
+    /** A white word centred on cx at baseline y, at {@code size} or smaller so it is never wider than {@code max}. */
+    private static void fitted(Canvas c,String w,float cx,float y,float size,float max,boolean bold){
+        text.setTypeface(bold?BOLD:REGULAR);text.setTextSize(size);float m=text.measureText(w);
+        word(c,w,cx,y,m>max&&m>0?size*max/m:size,bold);
+    }
+    /** ITVX's mark: {@code light} in the regular weight then {@code heavy} in bold, as one word centred on cx (at most max wide). */
+    private static void pair(Canvas c,String light,String heavy,float cx,float y,float size,float max){
+        text.setTextAlign(Paint.Align.LEFT);text.setColor(0xFFFAFAFC);text.setAlpha(245);
+        text.setTextSize(size);text.setTypeface(REGULAR);float a=text.measureText(light);text.setTypeface(BOLD);float b=text.measureText(heavy);
+        float gap=size*.04f,total=a+gap+b,s=total>max&&total>0?max/total:1f;
+        text.setTextSize(size*s);float x=cx-total*s/2;
+        text.setTypeface(REGULAR);c.drawText(light,x,y,text);text.setTypeface(BOLD);c.drawText(heavy,x+(a+gap)*s,y,text);
     }
     private static Path apple;
     /** Apple TV's apple, about 48 design px tall, centred on the origin: a body with a bite and a leaf. Made once. */

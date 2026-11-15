@@ -47,14 +47,41 @@ final class DockLabels {
     static final String[] YOUTUBE_APPS={"com.google.android.youtube.tv","com.google.android.youtube"};
     /** Whether YouTube's own app is among these installed packages. */
     static boolean youtube(Collection<String> installed){if(installed!=null)for(String p:YOUTUBE_APPS)if(installed.contains(p))return true;return false;}
+    /**
+     * ITVX (owner's Sony, Android TV 10): ITV's app is installed there as its phone build, air.ITVMobilePlayer (formerly ITV
+     * Hub), with only a phone launcher (CATEGORY_LAUNCHER, no LEANBACK_LAUNCHER); it opens through Launch.entry like any
+     * other app. Its installed name may still read "ITV Hub", so Unified TV names it ITVX. ITV's Android TV build is
+     * published under the same id (APKMirror's "ITVX (Android TV)" listings), so no other id is recognised: none has been
+     * seen, and none is guessed.
+     */
+    static final String ITVX="ITVX";
+    static final String[] ITVX_APPS={"air.ITVMobilePlayer"};
+    /** Freeview Play (owner's Sony): uk.co.freeview.android, named as the service calls itself. */
+    static final String FREEVIEW="Freeview Play";
+    static final String[] FREEVIEW_APPS={"uk.co.freeview.android"};
+    private static boolean among(String id,String[] apps){for(String p:apps)if(p.equals(id))return true;return false;}
     /** Unified TV's own name for one of its tiles with YouTube's own app absent (see youtube()). */
     static String name(String id){return name(id,false);}
     /** Unified TV's own name for one of its tiles, as the household sees it; null for an ordinary installed app. */
     static String name(String id,boolean youtubeInstalled){
-        switch(DockPolicy.canonical(id==null?"":id)){
+        String c=DockPolicy.canonical(id==null?"":id);
+        if(among(c,ITVX_APPS))return ITVX;
+        if(among(c,FREEVIEW_APPS))return FREEVIEW;
+        switch(c){
             case "smartutube":return youtubeInstalled?SMARTTUBE:YOUTUBE;
             default:return null;
         }
+    }
+    /**
+     * An installed app's name wherever its own label is listed (Apps, Home, Kids, the dock's names): ITVX and Freeview Play
+     * by their service names, else its label, else the package. SmartTube keeps its own label here; only its dock tile
+     * may read "YouTube" (name()).
+     */
+    static String shown(String pkg,String label){
+        String c=DockPolicy.canonical(pkg==null?"":pkg);
+        if(among(c,ITVX_APPS))return ITVX;
+        if(among(c,FREEVIEW_APPS))return FREEVIEW;
+        return label==null||label.trim().isEmpty()?pkg:label.trim();
     }
     /** The glyph with YouTube's own app absent (see youtube()). */
     static String glyph(String id){return glyph(id,false);}
@@ -62,10 +89,13 @@ final class DockLabels {
      * The glyph each tile draws (DockGlyphs), by tile id or package; "mono" for an app without one of its own (DockGlyphs
      * then draws the app's own banner or icon, or its name). SmartTube shares the YouTube symbol only while YouTube's own
      * app is absent (see YOUTUBE above). Music services each get their own, so two on Home stay apart (SET-BUILD-10).
-     * White brand marks (OD-20): YouTube, Netflix, Disney+, BBC iPlayer, Prime Video and Apple TV.
+     * White brand marks (OD-20): YouTube, Netflix, Disney+, BBC iPlayer, Prime Video, Apple TV, ITVX and Freeview Play.
      */
     static String glyph(String id,boolean youtubeInstalled){
-        switch(DockPolicy.canonical(id==null?"":id)){
+        String c=DockPolicy.canonical(id==null?"":id);
+        if(among(c,ITVX_APPS))return "itvx";
+        if(among(c,FREEVIEW_APPS))return "freeview";
+        switch(c){
             case "smartutube":return youtubeInstalled?"smarttube":"play";
             case "com.google.android.youtube.tv":case "com.google.android.youtube":case "com.google.android.youtube.tvkids":return "play";
             case "netflix":return "n";
@@ -87,5 +117,5 @@ final class DockLabels {
     }
     /** An empty dock place while it has focus: OK chooses an app for it (DockPicker). */
     static final String ADD="plus",ADD_LABEL="Add an app";
-    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","smarttube","n","arcplus","blocks","tvset","note","singlenote","eq","vinyl","controller","screen","appletv","prime","playcircle","chevron","shelf","cast","photos","house","plus","mono")));
+    static final Set<String> GLYPHS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList("play","smarttube","n","arcplus","blocks","tvset","note","singlenote","eq","vinyl","controller","screen","appletv","prime","itvx","freeview","playcircle","chevron","shelf","cast","photos","house","plus","mono")));
 }
