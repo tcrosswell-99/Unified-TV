@@ -39,6 +39,7 @@ About → ⚙ → Topics. GitHub allows 20:
 ## 6. Releases and pages
 
 - [ ] Once the current work is merged, publish a **release** from [CHANGELOG.md](../CHANGELOG.md). Say clearly what is inherited, what is new and what is untested. Do not attach an APK presented as a finished Unified TV build.
+- [ ] Create the launcher's signing key on your own computer with `python3 preview/tools/make_preview_key.py` and back it up as [SIGNING.md](SIGNING.md) says. **Never put the key or its password on GitHub, not even as repository secrets** (owner decision, 25 October 2026); if any `UNIFIEDTV_PREVIEW_*` secrets exist, delete them.
 - [ ] Optional: enable **GitHub Pages** from the `/docs` folder. Later, generate one page per TV model from `examples/` (model, Android version, what the community list covers, how to restore) so long-tail searches such as "TCL C645 remove adverts" can find it. Keep the inherited lists credited to CleanYourTV and its contributors.
 
 ## 7. Outreach

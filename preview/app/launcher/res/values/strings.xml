@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Unified TV</string>
+  <!-- OD-31: the remote button service (launcher app only). Shown in the TV's accessibility settings. -->
+  <string name="remote_button_label">Unified TV remote button</string>
+  <string name="remote_button_description">Brings Unified TV\'s Home to the front when you press the one remote button you chose in Unified TV (Settings, Appearance &amp; Home, When the TV turns on). Unified TV reacts only to that button: it doesn\'t read the screen, and every other button works as before. It does nothing while the option is off in Unified TV.</string>
+</resources>

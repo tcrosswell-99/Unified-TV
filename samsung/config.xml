@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unified TV for Samsung The Frame (2021, QE50LS03AAUXXU). Tizen web application configuration.
+
+  PLACEHOLDER IDENTITY: the package id "UTVFRAME00" and application id "UTVFRAME00.UnifiedTV" are placeholders chosen
+  for this repository. They are not tied to any Samsung account or certificate. Before the first signed install the
+  owner may keep them or replace them with ids generated in Tizen Studio; after that first install they must never
+  change, or the TV treats the update as a different app and keeps the old one (spec 12, SIGN-05).
+  No author or distributor certificate material belongs in this repository. Signing happens on the owner's computer.
+
+  Privileges (only what the code calls; see samsung/README.md):
+    internet             Home Assistant WebSocket, the NAS's DLNA description and Browse requests, AVPlay HTTP streams
+    tv.inputdevice       tizen.tvinputdevice.registerKey for the player's media keys only
+    application.launch   tizen.application.launch to open Netflix, Disney+, BBC, Music and Samsung TV Plus
+    application.info     tizen.application.getAppsInfo to find those apps' ids on this TV by name
+  Not requested: tv.window, tv.audio, tv.channel, tv.display, keymanager (not required for Key Manager since Tizen 3.0;
+  if this firmware refuses Key Manager without it, the app fails closed and secrets are simply not kept).
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://unifiedtv.invalid/frame" version="0.1.0" viewmodes="maximized">
+  <tizen:application id="UTVFRAME00.UnifiedTV" package="UTVFRAME00" required_version="3.0"/>
+  <tizen:profile name="tv-samsung"/>
+  <name>Unified TV</name>
+  <description>Unified TV Home for the Samsung Frame. Development build; not tested on the TV.</description>
+  <content src="index.html"/>
+  <icon src="icon.png"/>
+  <!-- Household addresses are entered by the owner on the TV, so they can't be listed here in advance. -->
+  <access origin="*" subdomains="true"/>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+  <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                 encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

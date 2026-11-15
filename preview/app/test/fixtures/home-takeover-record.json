@@ -1,0 +1,26 @@
+{
+  "created": "2026-10-27T12:00:00+0000",
+  "device": {
+    "android_id": "a1b2c3d4e5f60718",
+    "serial": "TESTSERIAL0001"
+  },
+  "fingerprint": "TCL/BeyondTV6/BeyondTV4:11/RP1A.200622.001/AR10:user/release-keys",
+  "home": "com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity",
+  "home_takeover": {
+    "launcher": "com.google.android.tvlauncher",
+    "previous_home": "com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity"
+  },
+  "host": "127.0.0.1",
+  "list": "unifiedtv-cleanup.txt",
+  "packages": {
+    "com.google.android.tvlauncher": "enabled"
+  },
+  "port": "5555",
+  "settings": {
+    "animator_duration_scale": "null",
+    "transition_animation_scale": "1.0",
+    "window_animation_scale": "1.0"
+  },
+  "source": "Unified TV Optional clean-up",
+  "version": 1
+}

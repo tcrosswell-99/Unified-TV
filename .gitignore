@@ -23,3 +23,16 @@ launcher/hs_err_pid*.log
 launcher/replay_pid*.log
 
 tools/venv/
+vpn-evidence/
+# preview/tools/install_preview.py records: hashes and versions only, kept local with the other evidence
+preview-evidence/
+# preview/tools/home_recovery.py records: which app answers Home, never addresses
+home-evidence/
+# Signing keys are never committed (preview/tools/make_preview_key.py keeps them outside the repository)
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Samsung Frame build output (unsigned test packages)
+samsung/out/

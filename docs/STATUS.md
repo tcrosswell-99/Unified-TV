@@ -1,6 +1,8 @@
 # What is working today?
 
-Unified TV remains an experimental development fork, not a supported household release. Changes are recorded in the [changelog](../CHANGELOG.md); the detailed source-versus-evidence matrix for the Android Preview is [FEATURE_STATUS.md](FEATURE_STATUS.md).
+Unified TV remains an experimental development fork, not a supported household release. Changes are recorded in the [changelog](../CHANGELOG.md). The only live status record is [ACCEPTANCE_REGISTER.csv](ACCEPTANCE_REGISTER.csv); [FEATURE_STATUS.md](FEATURE_STATUS.md) describes what each feature does.
+
+- **Preview 0.5 "The Viewing Experience"** is built and unit-tested in source, and **not yet tested on any TV**. It is two apps from one codebase: the preview (`io.unifiedtv.preview`, no HOME entry, unchanged identity) and the Unified TV launcher (`io.unifiedtv.launcher`, an opt-in Home entry, signed with the owner's durable key: [SIGNING.md](SIGNING.md)). A launcher review build installs beside both: see [OWNER_TESTING.md](OWNER_TESTING.md).
 
 ## Unified TV Android Preview
 

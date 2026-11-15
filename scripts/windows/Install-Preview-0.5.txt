@@ -1,0 +1,30 @@
+Unified TV Android Preview 0.5 "The Viewing Experience": Windows sideload instructions
+
+This is an experimental Android TV APK for owner-authorised testing. It is hardware-unverified. It cannot run on native Samsung Tizen.
+
+Installing it does not change the TV's Home screen. The APK carries a Home entry that is switched off; it is only offered to Android if an adult later chooses "Make Unified TV the Home screen" in Settings, and Android itself asks for confirmation. "Open original TV interface" in Settings undoes it.
+
+1. Download the APK, SHA256SUMS.txt and SIGNING.txt from this exact GitHub release. In PowerShell run:
+   Get-FileHash -Algorithm SHA256 -LiteralPath .\UnifiedTV-Preview.apk
+   Compare the result with the published hash. SIGNING.txt gives the signing certificate's SHA-256 and says whether this release is test-signed.
+
+2. Use the TV's supported Developer options/network debugging route and Google's official Android platform-tools. Confirm the actual TV address and debug port locally. Do not scan or change unrelated devices.
+
+3. Preferred: from a computer with Python, use the safe install tool from the repository. It compares the signing certificate and version with any preview already on the TV, refuses a mismatch or downgrade, never uninstalls or clears data, and checks the Home screen is unchanged:
+   python preview\tools\install_preview.py --check <path to UnifiedTV-Preview.apk>
+   python preview\tools\install_preview.py <path to UnifiedTV-Preview.apk>
+   Set TV_HOST to the TV's address first, as for tools\tv.py. Never commit it.
+
+4. Manual route, only for a new install or a verified matching certificate:
+   .\adb.exe connect <TV_ADDRESS>:<DEBUG_PORT>
+   .\adb.exe -s <TV_ADDRESS>:<DEBUG_PORT> install -r .\UnifiedTV-Preview.apk
+   .\adb.exe -s <TV_ADDRESS>:<DEBUG_PORT> shell am start -n io.unifiedtv.preview/.UnifiedPreviewActivity
+   IMPORTANT: if installation reports a signature/update incompatibility, STOP. Do not uninstall, clear data or remove encryption keys from a configured build.
+
+5. Work through docs\PREVIEW_0_5_TESTS.md and record each result in docs\ACCEPTANCE_REGISTER.csv with the TV model and firmware.
+
+6. Live TV stays locked until the network-level check in docs\VPN_PROTECTION.md has passed on that TV and been recorded.
+
+7. Returning to normal TV: press Home on the physical remote. If Unified TV was made the Home screen, Settings > TV & performance > Open original TV interface hands Home back.
+
+Exclude household addresses, account names, camera feeds and personal media details from public screenshots. No installation or TV verification of this release is claimed by these instructions.

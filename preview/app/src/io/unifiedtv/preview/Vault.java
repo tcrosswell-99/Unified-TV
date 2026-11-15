@@ -16,7 +16,14 @@ final class Vault {
     private static final String ALIAS = "unified-tv-connections-v1";
     private final Context context;
     Vault(Context context) { this.context = context; }
+    /**
+     * Tests only (SET-005 round-trip test): a key in place of the Android Keystore's, which JVM tests don't have. Production
+     * never sets it, so on a TV the key always comes from the Keystore below: non-exportable, AES-256-GCM, a fresh IV per
+     * save and the record's id bound in as associated data. There is no plaintext fallback: without a key, save and read throw.
+     */
+    static volatile SecretKey testKey;
     private SecretKey key() throws Exception {
+        SecretKey t = testKey; if (t != null) return t;
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
         if (!store.containsAlias(ALIAS)) {
             KeyGenerator gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");

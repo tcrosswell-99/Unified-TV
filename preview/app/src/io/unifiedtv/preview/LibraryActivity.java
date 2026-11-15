@@ -23,7 +23,10 @@ public final class LibraryActivity extends Screen {
     private String currentRequest="";
     private void navigate(String path){history.push(currentRequest);shelf=false;load(path);}
     @Override public void onCreate(Bundle b){super.onCreate(b);shelf=getIntent().getBooleanExtra("shelf",false);
-        try {if("dlna".equals(getSharedPreferences("unified-tv-preview",0).getString("librarySource",""))||!new Vault(this).read(Vault.mediaKey(this)).optBoolean("enabled")){startActivity(new Intent(this,DlnaLibraryActivity.class));finish();return;}}catch(Exception e){page("Your Films & TV");text("Unlock your saved library in Settings.",20);button("Back",this::finish);return;}load("");}
+        try {if("dlna".equals(getSharedPreferences("unified-tv-preview",0).getString("librarySource",""))||!new Vault(this).read(Vault.mediaKey(this)).optBoolean("enabled")){
+            // Folder shortcuts (folder, name, fromShelf, root) pass through; DlnaLibraryActivity accepts them only for saved collections.
+            Intent dlna=new Intent(this,DlnaLibraryActivity.class);for(String key:new String[]{"folder","name","root","search"})if(getIntent().hasExtra(key))dlna.putExtra(key,getIntent().getStringExtra(key));
+            if(getIntent().getBooleanExtra("fromShelf",false))dlna.putExtra("fromShelf",true);startActivity(dlna);finish();return;}}catch(Exception e){page("Your Films & TV");text("Unlock your saved library in Settings.",20);button("Back",this::finish);return;}load("");}
     private String rootQuery(String type,String search){
         return "/Users/"+LocalApi.segment(config.optString("user"))+"/Items?Recursive=true&IncludeItemTypes="+type+
             "&Fields=Overview,UserData&EnableImageTypes=Primary,Backdrop&Limit="+(shelf?"12":"24")+
@@ -39,7 +42,7 @@ public final class LibraryActivity extends Screen {
         content.setBackgroundColor(0xb5101827);scene.addView(content);setContentView(scene);
         text(shelf?"Recently added · choose a title or View All":"Films, series and episodes from your own library",20);
         try {config=new Vault(this).read(Vault.mediaKey(this));}catch(Exception e){unavailable("Unlock your media connection again in Settings.");return;}
-        if(!config.optBoolean("enabled")){unavailable("Connect your library in Settings > Connections.");return;}
+        if(!config.optBoolean("enabled")){unavailable("Connect your library in Settings > Library & Media.");return;}
         if(request.isEmpty()){
             button(shelf?"View All":"Films",()->navigate(rootQuery("Movie","")));
             button("Series",()->navigate(rootQuery("Series","")));

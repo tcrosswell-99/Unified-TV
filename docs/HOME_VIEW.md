@@ -29,15 +29,18 @@ One alert is on screen at a time. A higher alert replaces a lower one; the lower
 
 | Priority | Alert | Default presentation | Typical source |
 | --- | --- | --- | --- |
+| 0 | **Smoke or carbon monoxide alarm** | Full-screen takeover with plain instructions; other sound paused; a doorbell press becomes one line on it | Home Assistant smoke and carbon monoxide sensors (their own device class) |
 | 1 | **Doorbell:** a Ring press or a person detected | Live picture-in-picture; full takeover over artwork or wallpaper | Ring integration, camera alerts |
 | 2 | **Reminders**, for example from Alexa | Small toast at a safe corner | Alexa reminder entities |
 | 3 | **Deliveries and arrivals:** parcel delivered, someone home | Small toast | Doorbell/camera events, presence sensors |
 | 4 | **Sport:** matchday kick-off, no score spoilers | Glance | A calendar or fixtures sensor |
 | 5 | **Everything else:** weather, bin day, energy prices | Glance | Weather, calendar and energy sensors |
 
-Priorities 1 and 2 are the Product Spec's own order: **Ring is priority 1 with absolute precedence, then Alexa reminders** (spec section 4.10; [AGENTS.md](../AGENTS.md) rule 7). An Alexa reminder that arrives during a Ring alert is queued briefly, then dropped once stale. Priorities 3 to 5 are proposed glances from the [ideas catalogue](IDEAS.md). VPN prompts (priority 3 in the spec, only when Live TV is activated) and voice (priority 4) are not Home view alerts and keep the spec's order.
+Priorities 1 and 2 are the Product Spec's own order: **Ring is priority 1 among everyday alerts, then Alexa reminders**; only a smoke or carbon monoxide alarm ranks above Ring (spec section 4.10; [AGENTS.md](../AGENTS.md) rule 7). An Alexa reminder that arrives during a Ring alert is queued briefly, then dropped once stale. Priorities 3 to 5 are proposed glances from the [ideas catalogue](IDEAS.md). VPN prompts (priority 3 in the spec, only when Live TV is activated) and voice (priority 4) are not Home view alerts and keep the spec's order.
 
-**Proposals awaiting an owner decision.** Two ideas would change the spec's order, so they are not ranked here until the owner decides and the spec is updated: a **smoke or carbon monoxide alarm** taking over the screen *above* the doorbell, and a **baby monitor** picture-in-picture. Until then, neither is part of the design.
+**Owner decision OD-07, 25 October 2026: smoke and carbon monoxide come first.** A smoke or carbon monoxide alarm ranks above the doorbell (priority 0). Among everyday alerts, the spec's order is unchanged: Ring first, then reminders. The alarm screen adds to the home's alarms and never replaces them; it only reaches a TV that is on with household alerts running. Not yet tested on a TV.
+
+**Proposal awaiting an owner decision:** a **baby monitor** picture-in-picture. Until then it is not part of the design.
 
 Further rules:
 
